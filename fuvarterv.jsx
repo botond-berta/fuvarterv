@@ -459,20 +459,43 @@ function planVissza(state, order, venueId, departAt, dwell) {
 }
 
 /* A csapat útvonal-sorrendje: automatikus (opcionális rögzített kezdő megállóval)
-   vagy kézi (a chipek bekapcsolási sorrendje; VISSZA fordítva). */
-function teamRouteOrder(state, team, venueId, dir) {
-  const ids = (team.stationIds || []).filter((id) => byId(state.stations, id));
+   vagy kézi (a chipek bekapcsolási sorrendje; VISSZA fordítva). Feladatbontásnál
+   egy megálló-részhalmaz is átadható; a rögzített kezdő megálló csak akkor
+   érvényes, ha benne van a részhalmazban. */
+function teamRouteOrder(state, team, venueId, dir, stationIds) {
+  const ids = (stationIds || team.stationIds || []).filter((id) => byId(state.stations, id));
   if (ids.length <= 1 || team.routeMode === "manual") return dir === "oda" ? ids : [...ids].reverse();
-  if (dir === "oda") return bestStationOrder(state, ids, { post: venueId, fixedFirst: team.routeAnchorId || null });
-  return bestStationOrder(state, ids, { pre: venueId, fixedLast: team.routeAnchorId || null });
+  const anchor = team.routeAnchorId && ids.includes(team.routeAnchorId) ? team.routeAnchorId : null;
+  if (dir === "oda") return bestStationOrder(state, ids, { post: venueId, fixedFirst: anchor });
+  return bestStationOrder(state, ids, { pre: venueId, fixedLast: anchor });
 }
 
-/* Egy nap feladatai: minden edzés-előfordulásból ODA + VISSZA */
+/* Megállók csomagolása a lehető legkevesebb buszba (first-fit-decreasing):
+   minden busz létszáma <= cap, egy megálló teljes létszáma egyetlen buszba kerül.
+   null, ha nincs megállónkénti létszámadat, vagy ha egy megálló önmagában több,
+   mint egy busz (ekkor megállónként nem osztható). A visszaadott buszok megállói
+   a csapat eredeti sorrendjét követik. */
+function splitStationsByCapacity(stationIds, cnt, cap) {
+  const withCount = stationIds.map((id, i) => ({ id, i, c: cnt(id) })).filter((x) => x.c > 0);
+  if (!withCount.length || withCount.some((x) => x.c > cap)) return null;
+  const bins = [];
+  for (const s of [...withCount].sort((a, b) => b.c - a.c)) {
+    let b = bins.find((x) => x.load + s.c <= cap);
+    if (!b) { b = { items: [], load: 0 }; bins.push(b); }
+    b.items.push(s); b.load += s.c;
+  }
+  return bins.map((b) => b.items.sort((a, z) => a.i - z.i).map((x) => x.id));
+}
+
+/* Egy nap feladatai: minden edzés-előfordulásból ODA + VISSZA. Ha a csapat
+   létszáma meghaladja a legnagyobb jármű férőhelyét, a feladatot megállónként
+   több buszra bontjuk (mindegyik önálló, párhuzamos fuvar ugyanarra a helyszínre). */
 function genDayTasks(state, weekday, weekMon) {
   const occs = weekOccurrences(state, weekMon).filter((o) => o.dayIdx === weekday);
   const tasks = [], skipped = [];
   const N = state.settings.arriveEarlyMin ?? 10, M = state.settings.departAfterMin ?? 10;
   const dwell = state.settings.dwellMin ?? 2;
+  const maxSeats = Math.max(0, ...state.vehicles.map((v) => Number(v.seats) || 0));
   for (const o of occs) {
     const t = o.training, team = byId(state.teams, t.teamId);
     if (!team) continue;
@@ -484,25 +507,46 @@ function genDayTasks(state, weekday, weekMon) {
     const cnt = (sid) => Number(sc[sid]) || 0;
     const suffix = t.type === "weekly" ? weekday : "x";
 
-    const oOrder = teamRouteOrder(state, team, t.venueId, "oda");
-    const op = planOda(state, oOrder, t.venueId, timeToMin(t.start) - N, dwell);
-    tasks.push({
-      id: `${t.id}:${suffix}:oda`, dir: "oda", teamId: team.id, trainingId: t.id,
-      from: oOrder[0], to: t.venueId, start: op.start, end: op.end, pax,
-      plan: op.stops.map((s) => ({ ...s, count: cnt(s.stationId) })), venueTime: op.venueArr,
-      breakdown: oOrder.map((sid) => ({ stationId: sid, count: cnt(sid) })).filter((x) => x.count > 0),
-      label: `${team.name} · ODA`,
-    });
+    /* Egy irány (oda/vissza) feladata egy megálló-részhalmazra. idx=null: teljes
+       csapat egy buszon; idx>=1: a `count` buszra bontott feladat idx-edik része. */
+    const mkTask = (dir, subset, idx, count) => {
+      const order = teamRouteOrder(state, team, t.venueId, dir, subset);
+      const split = idx != null;
+      const tag = split ? `#${idx}` : "";
+      const name = `${team.name} · ${dir === "oda" ? "ODA" : "VISSZA"}${split ? ` (${idx}/${count})` : ""}`;
+      const base = {
+        id: `${t.id}:${suffix}:${dir}${tag}`, dir, teamId: team.id, trainingId: t.id,
+        pax: split ? order.reduce((a, s) => a + cnt(s), 0) : pax, label: name,
+        breakdown: order.map((sid) => ({ stationId: sid, count: cnt(sid) })).filter((x) => x.count > 0),
+      };
+      if (dir === "oda") {
+        const op = planOda(state, order, t.venueId, timeToMin(t.start) - N, dwell);
+        return { ...base, from: order[0], to: t.venueId, start: op.start, end: op.end,
+          plan: op.stops.map((s) => ({ ...s, count: cnt(s.stationId) })), venueTime: op.venueArr };
+      }
+      const vp = planVissza(state, order, t.venueId, timeToMin(t.end) + M, dwell);
+      return { ...base, from: t.venueId, to: order[order.length - 1], start: vp.start, end: vp.end,
+        plan: vp.stops.map((s) => ({ ...s, count: cnt(s.stationId) })), venueTime: vp.venueDep };
+    };
 
-    const vOrder = teamRouteOrder(state, team, t.venueId, "vissza");
-    const vp = planVissza(state, vOrder, t.venueId, timeToMin(t.end) + M, dwell);
-    tasks.push({
-      id: `${t.id}:${suffix}:vissza`, dir: "vissza", teamId: team.id, trainingId: t.id,
-      from: t.venueId, to: vOrder[vOrder.length - 1], start: vp.start, end: vp.end, pax,
-      plan: vp.stops.map((s) => ({ ...s, count: cnt(s.stationId) })), venueTime: vp.venueDep,
-      breakdown: vOrder.map((sid) => ({ stationId: sid, count: cnt(sid) })).filter((x) => x.count > 0),
-      label: `${team.name} · VISSZA`,
-    });
+    const bins = maxSeats > 0 && pax > maxSeats ? splitStationsByCapacity(st, cnt, maxSeats) : null;
+    if (bins && bins.length > 1) {
+      skipped.push(`${team.name}: a ${pax} fős létszám meghaladja a legnagyobb jármű férőhelyét (${maxSeats} fő), ezért ${bins.length} buszra bontva, megállónként.`);
+      bins.forEach((subset, k) => {
+        tasks.push(mkTask("oda", subset, k + 1, bins.length));
+        tasks.push(mkTask("vissza", subset, k + 1, bins.length));
+      });
+    } else {
+      if (maxSeats > 0 && pax > maxSeats) {
+        const big = st.filter((sid) => cnt(sid) > maxSeats);
+        if (big.length)
+          skipped.push(`${team.name}: megállónként sem osztható — ${big.map((sid) => `${locName(state, sid)} (${cnt(sid)} fő)`).join(", ")} önmagában több, mint a legnagyobb jármű (${maxSeats} fő).`);
+        else if (!st.some((sid) => cnt(sid) > 0))
+          skipped.push(`${team.name}: a ${pax} fő meghaladja a legnagyobb jármű férőhelyét (${maxSeats} fő), de nincs megállónkénti létszámbontás, ezért nem osztható buszokra — add meg a megállónkénti létszámokat a felosztáshoz.`);
+      }
+      tasks.push(mkTask("oda", st, null));
+      tasks.push(mkTask("vissza", st, null));
+    }
   }
   tasks.sort((a, b) => a.start - b.start || a.end - b.end);
   return { tasks, skipped };

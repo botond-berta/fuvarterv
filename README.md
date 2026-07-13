@@ -109,7 +109,7 @@ One file, but with marked layers (the file header documents the same split plan)
 
 ## Known limitations, roadmap
 
-- **Task splitting:** real team sizes (10–14 kids) exceed the 8-seat buses, so the optimizer currently marks those tasks as uncoverable — with exact reasons. The next step is partitioning tasks across multiple buses by stop (the manual ride layer already supports this today).
+- **Task splitting:** real team sizes (10–14 kids) exceed the 8-seat buses. When a team's headcount is larger than the biggest vehicle, the optimizer now partitions the task across multiple buses **by stop** — each stop's whole headcount goes to one bus, packed into the fewest buses (first-fit-decreasing) that each fit within capacity. Every partition is an independent, parallel run to the same venue with its own optimal route and timetable, and the optimizer assigns a distinct driver+vehicle to each. Splitting only happens when per-stop headcounts are known; a single stop larger than every vehicle (or a team with only a total headcount and no per-stop breakdown) still can't be split and is reported with an exact reason.
 - Manual rides and optimized tasks are two parallel layers; syncing them (generating rides from an applied schedule) is planned.
 - Sample-data coordinates are accurate to ~100–200 m; two points ("Szeged, Petőfi iskola", "Újszeged Gellért") are explicitly marked for refinement on the map.
 - No headcount data exists for the NB2 team in the source documents.
