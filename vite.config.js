@@ -7,4 +7,8 @@ import tailwindcss from "@tailwindcss/vite";
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: { host: true, fs: { allow: [".", ".."] } },
+  test: {
+    environment: "jsdom",
+    include: ["test/**/*.test.{js,jsx}"],
+  },
 });

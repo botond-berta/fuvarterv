@@ -26,6 +26,18 @@ import {
 
 const STORAGE_KEY = "fuvarterv:v1";
 
+/* Az összes hangolható beállítás alapértéke — EGY forrás, hogy a seedState() és az
+   ensureShape() ne csúszhasson szét. Mindkettő innen dolgozik. */
+export const DEFAULT_SETTINGS = {
+  arriveEarlyMin: 10,   // perc: mennyivel az edzés előtt érjen oda a busz
+  departAfterMin: 10,   // perc: mennyivel az edzés után induljon a visszaút
+  calloutFee: 1500,     // Ft: egy sofőr egyszeri kiszállási díja
+  dwellMin: 2,          // perc: megállási idő megállónként
+  estSpeedKmh: 50,      // km/h: légvonalas menetidő-becsléshez
+  fallbackLegMin: 12,   // perc: üresjárat, ha se mátrix, se koordináta nincs
+  preferredBias: 1000,  // Ft: büntetés, ha a sofőr nem a preferált buszát kapja (0 = kikapcsolva)
+};
+
 async function loadState() {
   try {
     const r = await window.storage.get(STORAGE_KEY);
@@ -40,8 +52,8 @@ async function persistState(state) {
 }
 
 /* Régebbi mentett állapotok felokosítása az új mezőkkel */
-function ensureShape(s) {
-  s.settings = { arriveEarlyMin: 10, departAfterMin: 10, calloutFee: 1500, dwellMin: 2, estSpeedKmh: 30, fallbackLegMin: 10, preferredBias: 1000, ...(s.settings || {}) };
+export function ensureShape(s) {
+  s.settings = { ...DEFAULT_SETTINGS, ...(s.settings || {}) };
   s.drivers = (s.drivers || []).map((d) => ({ ...d, wage: d.wage ?? 3000, minShiftMin: d.minShiftMin ?? 120, availability: d.availability || [], preferredVehicleId: d.preferredVehicleId ?? null }));
   s.teams = (s.teams || []).map((t) => ({ ...t, passengerCount: t.passengerCount ?? null, stationCounts: t.stationCounts || {}, routeMode: t.routeMode || "auto", routeAnchorId: t.routeAnchorId ?? null }));
   s.matrix = s.matrix || null;
@@ -49,7 +61,7 @@ function ensureShape(s) {
   return s;
 }
 
-function seedState() {
+export function seedState() {
   return {
     /* Források: 2025–26 terembeosztás (edzések), sofőrök lap (sofőrök, rendszámok),
        csütörtöki fuvarlista (megállók, létszámok, indulási idők). */
@@ -192,7 +204,7 @@ function seedState() {
           { id: "x27", stationId: "sZSOM", time: "16:35", count: 5 },
         ] },
     ],
-    settings: { arriveEarlyMin: 10, departAfterMin: 10, calloutFee: 1500, dwellMin: 2, estSpeedKmh: 50, fallbackLegMin: 12, preferredBias: 1000 },
+    settings: { ...DEFAULT_SETTINGS },
     matrix: null,
     assignments: {},
   };
