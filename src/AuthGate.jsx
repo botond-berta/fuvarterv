@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { supabase, isConfigured, WORKSPACE_ID } from "./supabaseClient.js";
 import { supabaseStorage } from "./supabaseStorage.js";
 import RestorePanel from "./RestorePanel.jsx";
+import "./theme.css";
 
 // Install the Supabase-backed KV store the app expects. Assigned at import time
 // so it is in place before <App/> ever mounts (App only renders once a session
@@ -10,180 +11,130 @@ if (typeof window !== "undefined") {
   window.storage = supabaseStorage;
 }
 
-const wrap = {
-  minHeight: "100vh",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  background: "#12151C",
-  color: "#fff",
-  fontFamily: "system-ui, sans-serif",
-  padding: 24,
-};
-const card = { width: "100%", maxWidth: 360, display: "flex", flexDirection: "column", gap: 12 };
-const input = {
-  padding: "12px 14px",
-  borderRadius: 10,
-  border: "1px solid #2A2F3A",
-  background: "#0C0E13",
-  color: "#fff",
-  fontSize: 16,
-};
-const button = {
-  padding: "12px 14px",
-  borderRadius: 10,
-  border: "none",
-  background: "#E8590C",
-  color: "#fff",
-  fontSize: 16,
-  fontWeight: 600,
-  cursor: "pointer",
-};
+// Vector app-ikon: kerek cián csempe egy egyszerű útvonal-jellel.
+function AppIcon() {
+  return (
+    <span className="v-appicon" aria-hidden="true">
+      <svg viewBox="0 0 32 32" fill="none">
+        <circle cx="7" cy="24" r="3.4" fill="#fff" />
+        <path d="M7 24 C 14 24, 12 11, 20 9" stroke="#fff" strokeWidth="3" strokeLinecap="round" />
+        <path d="M18 5 L26 9 L18 13 Z" fill="#fff" />
+      </svg>
+    </span>
+  );
+}
 
 function LoginScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [status, setStatus] = useState("idle"); // idle | signing | error
-  const [message, setMessage] = useState("");
 
   const submit = async (e) => {
     e.preventDefault();
     if (!email.trim() || !password) return;
     setStatus("signing");
-    setMessage("");
     const { error } = await supabase.auth.signInWithPassword({
       email: email.trim(),
       password,
     });
-    if (error) {
-      setStatus("error");
-      setMessage(error.message);
-    }
+    if (error) setStatus("error");
     // On success onAuthStateChange updates the session and the app renders.
   };
 
   return (
-    <div style={wrap}>
-      <form style={card} onSubmit={submit}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-          <span style={{ width: 10, height: 10, borderRadius: "50%", background: "#E8590C" }} />
-          <span style={{ fontSize: 22, letterSpacing: ".12em", fontWeight: 700 }}>FUVARTERV</span>
+    <div className="v-screen">
+      <form className="v-card v-login" onSubmit={submit}>
+        <div className="v-login-head">
+          <AppIcon />
+          <div>
+            <div className="v-title">Üdv újra!</div>
+            <div className="sub">Lépj be a Vectorba</div>
+          </div>
         </div>
-        <label style={{ fontSize: 13, color: "#8B93A3" }} htmlFor="email">
-          E‑mail
-        </label>
-        <input
-          id="email"
-          type="email"
-          autoComplete="email"
-          placeholder="pelda@klub.hu"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          style={input}
-          required
-        />
-        <label style={{ fontSize: 13, color: "#8B93A3" }} htmlFor="password">
-          Jelszó
-        </label>
-        <input
-          id="password"
-          type="password"
-          autoComplete="current-password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          style={input}
-          required
-        />
-        <button type="submit" style={button} disabled={status === "signing"}>
+
+        <div className="v-field">
+          <label className="v-label" htmlFor="email">E‑mail</label>
+          <input
+            id="email"
+            type="email"
+            autoComplete="email"
+            placeholder="edzo@klub.hu"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="v-input"
+            required
+          />
+        </div>
+
+        <div className="v-field">
+          <label className="v-label" htmlFor="password">Jelszó</label>
+          <input
+            id="password"
+            type="password"
+            autoComplete="current-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            className="v-input"
+            required
+          />
+        </div>
+
+        <button type="submit" className="v-btn v-btn-primary v-btn-block" disabled={status === "signing"}>
           {status === "signing" ? "Belépés…" : "Bejelentkezés"}
         </button>
-        {status === "error" && (
-          <p style={{ color: "#FF8787", fontSize: 13 }}>Hibás e‑mail vagy jelszó.</p>
-        )}
+        {status === "error" && <p className="v-error">Hibás e‑mail vagy jelszó.</p>}
       </form>
     </div>
   );
 }
 
 // Blocking overlay: once the data changed elsewhere, saves can no longer
-// succeed, so we stop the user from editing on (silently unsaved) — the only
-// safe action is to reload. This covers the whole app and captures clicks.
+// succeed, so we stop the user from editing (silently unsaved) — the only safe
+// action is to reload. This covers the whole app and captures clicks.
 function StaleOverlay({ onReload }) {
   return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 1000,
-        background: "rgba(18, 21, 28, 0.72)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: 24,
-      }}
-    >
-      <div style={{ ...card, lineHeight: 1.5, background: "#1B1E27", padding: 24, borderRadius: 14, textAlign: "center" }}>
-        <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 8 }}>Az adatok máshol módosultak</div>
-        <p style={{ color: "#B9C0CC", marginBottom: 16 }}>
+    <div className="v-overlay">
+      <div className="v-dialog">
+        <span className="v-noteic warn">!</span>
+        <div className="v-title">Az adatok máshol módosultak</div>
+        <p className="v-muted">
           Valaki más időközben mentett, ezért a mentés le van tiltva, hogy ne írd
-          felül a módosításait. A mostani, nem mentett változtatásaid nem
-          menthetők — töltsd újra az oldalt a legfrissebb adatokkal, és dolgozz
-          onnan tovább.
+          felül a módosításait. A nem mentett változtatásaid nem menthetők — tölts
+          újra a legfrissebb adatokkal, és onnan dolgozz tovább.
         </p>
-        <button onClick={onReload} style={{ ...button, width: "100%" }}>
-          Újratöltés
-        </button>
+        <button onClick={onReload} className="v-btn v-btn-primary v-btn-block">Újratöltés</button>
       </div>
     </div>
   );
 }
 
-function SaveErrorBanner({ onDismiss }) {
+function SaveErrorToast({ onDismiss }) {
   return (
-    <div
-      style={{
-        position: "fixed",
-        top: 0,
-        left: 0,
-        right: 0,
-        zIndex: 1000,
-        background: "#C92A2A",
-        color: "#fff",
-        padding: "10px 14px",
-        display: "flex",
-        alignItems: "center",
-        gap: 12,
-        fontSize: 14,
-      }}
-    >
-      <span style={{ flex: 1 }}>
-        A mentés nem sikerült (hálózat vagy jogosultság). A legutóbbi módosításod
-        lehet, hogy nem lett elmentve — ellenőrizd a kapcsolatot, és próbáld újra.
-      </span>
-      <button
-        onClick={onDismiss}
-        aria-label="Bezárás"
-        style={{ background: "transparent", border: "none", color: "#fff", fontSize: 18, cursor: "pointer" }}
-      >
-        ×
-      </button>
+    <div className="v-toast" role="alert">
+      <span className="v-noteic crit">!</span>
+      <div className="body">
+        <b>A mentés nem sikerült</b>
+        <p>
+          Úgy tűnik, megszakadt a kapcsolat. A legutóbbi módosításod lehet, hogy nem
+          mentődött — ellenőrizd a netet, és próbáld újra.
+        </p>
+      </div>
+      <button onClick={onDismiss} aria-label="Bezárás" className="v-toast-x">×</button>
     </div>
   );
 }
 
 function LoadErrorScreen({ onRetry }) {
   return (
-    <div style={wrap}>
-      <div style={{ ...card, lineHeight: 1.5 }}>
-        <span style={{ fontSize: 22, letterSpacing: ".12em", fontWeight: 700 }}>FUVARTERV</span>
-        <p>
-          Nem sikerült betölteni az adatokat. Ez általában hálózati hiba — az
-          adataid biztonságban vannak a szerveren. Ellenőrizd a kapcsolatot, és
-          próbáld újra.
+    <div className="v-screen">
+      <div className="v-card v-pad v-info-card">
+        <AppIcon />
+        <div className="v-title">Nem sikerült betölteni</div>
+        <p className="v-muted" style={{ margin: 0 }}>
+          Ez általában hálózati hiba — az adataid biztonságban vannak a szerveren.
+          Ellenőrizd a kapcsolatot, és próbáld újra.
         </p>
-        <button onClick={onRetry} style={button}>
-          Újrapróbálkozás
-        </button>
+        <button onClick={onRetry} className="v-btn v-btn-primary v-btn-block">Újrapróbálkozás</button>
       </div>
     </div>
   );
@@ -219,11 +170,19 @@ export default function AuthGate({ children }) {
   useEffect(() => {
     const onStale = () => setStale(true);
     const onSaveError = () => setSaveError(true);
+    // The app's header buttons live in fuvarterv.jsx (which never imports auth);
+    // they signal the shell through the same event seam as stale/saveerror.
+    const onRestore = () => setShowRestore(true);
+    const onSignout = () => supabase.auth.signOut();
     window.addEventListener("fuvarterv:stale", onStale);
     window.addEventListener("fuvarterv:saveerror", onSaveError);
+    window.addEventListener("fuvarterv:restore", onRestore);
+    window.addEventListener("fuvarterv:signout", onSignout);
     return () => {
       window.removeEventListener("fuvarterv:stale", onStale);
       window.removeEventListener("fuvarterv:saveerror", onSaveError);
+      window.removeEventListener("fuvarterv:restore", onRestore);
+      window.removeEventListener("fuvarterv:signout", onSignout);
     };
   }, []);
 
@@ -251,13 +210,14 @@ export default function AuthGate({ children }) {
 
   if (!isConfigured) {
     return (
-      <div style={wrap}>
-        <div style={{ ...card, lineHeight: 1.5 }}>
-          <span style={{ fontSize: 22, letterSpacing: ".12em", fontWeight: 700 }}>FUVARTERV</span>
-          <p>
-            Hiányzik a Supabase konfiguráció. Másold a <code>.env.example</code> fájlt{" "}
-            <code>.env</code> néven, és add meg a <code>VITE_SUPABASE_URL</code> és{" "}
-            <code>VITE_SUPABASE_ANON_KEY</code> értékeket, majd indítsd újra a szervert.
+      <div className="v-screen">
+        <div className="v-card v-pad v-info-card">
+          <AppIcon />
+          <div className="v-title">Hiányzik a beállítás</div>
+          <p className="v-muted" style={{ margin: 0 }}>
+            Másold a <code>.env.example</code> fájlt <code>.env</code> néven, és add meg a{" "}
+            <code>VITE_SUPABASE_URL</code> és <code>VITE_SUPABASE_ANON_KEY</code> értékeket,
+            majd indítsd újra a szervert.
           </p>
         </div>
       </div>
@@ -265,9 +225,7 @@ export default function AuthGate({ children }) {
   }
 
   if (loading) {
-    return (
-      <div style={{ ...wrap, fontSize: 20 }}>Betöltés…</div>
-    );
+    return <div className="v-screen v-muted" style={{ fontSize: 18, fontWeight: 700 }}>Betöltés…</div>;
   }
 
   if (!session) return <LoginScreen />;
@@ -277,45 +235,13 @@ export default function AuthGate({ children }) {
   }
 
   if (preflight !== "ready") {
-    return <div style={{ ...wrap, fontSize: 20 }}>Betöltés…</div>;
+    return <div className="v-screen v-muted" style={{ fontSize: 18, fontWeight: 700 }}>Betöltés…</div>;
   }
 
   return (
     <>
       {stale && <StaleOverlay onReload={() => window.location.reload()} />}
-      {saveError && !stale && (
-        <SaveErrorBanner onDismiss={() => setSaveError(false)} />
-      )}
-      <div style={{ position: "fixed", top: 8, right: 8, zIndex: 999, display: "flex", gap: 6 }}>
-        <button
-          onClick={() => setShowRestore(true)}
-          style={{
-            padding: "4px 10px",
-            borderRadius: 8,
-            border: "1px solid rgba(255,255,255,.3)",
-            background: "rgba(0,0,0,.35)",
-            color: "#fff",
-            fontSize: 12,
-            cursor: "pointer",
-          }}
-        >
-          Korábbi mentések
-        </button>
-        <button
-          onClick={() => supabase.auth.signOut()}
-          style={{
-            padding: "4px 10px",
-            borderRadius: 8,
-            border: "1px solid rgba(255,255,255,.3)",
-            background: "rgba(0,0,0,.35)",
-            color: "#fff",
-            fontSize: 12,
-            cursor: "pointer",
-          }}
-        >
-          Kijelentkezés
-        </button>
-      </div>
+      {saveError && !stale && <SaveErrorToast onDismiss={() => setSaveError(false)} />}
       {showRestore && <RestorePanel onClose={() => setShowRestore(false)} />}
       {children}
     </>
