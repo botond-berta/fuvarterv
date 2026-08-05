@@ -1,5 +1,5 @@
 /* =====================================================================
-   FUVARTERV — kézilabda klub fuvarszervező
+   VECTOR — kézilabda klub fuvarszervező
    ---------------------------------------------------------------------
    Az élő előnézet miatt egy fájl, de rétegekre bontva. Szétvágási terv:
      1. adat/storage.js   — perzisztencia (window.storage) + mintaadatok
@@ -13,11 +13,11 @@
 
 import { useState, useEffect, useMemo, useRef } from "react";
 import {
-  CalendarDays, Users, Boxes, Route, Car, Plus, Minus, Pencil, Trash2,
+  CalendarDays, Boxes, Car, Plus, Minus, Pencil, Trash2,
   ChevronLeft, ChevronRight, GripVertical, ArrowUp, ArrowDown,
   AlertTriangle, MapPin, Clock, X, Flag, ChevronsRight, Search,
   Lock, Unlock, Zap, Workflow, ArrowLeftRight, Settings2, Table, ChevronDown, ChevronUp,
-  ClipboardCheck,
+  ClipboardCheck, HelpCircle, RotateCcw, LogOut,
 } from "lucide-react";
 
 /* =====================================================================
@@ -924,81 +924,102 @@ function optimizeDay(state, weekday, weekMon) {
    ===================================================================== */
 
 const CSS = `
-@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap');
 :root{
-  --ink:#1C2433; --ink2:#5B6472; --paper:#F4F4EF; --card:#FFFFFF;
-  --line:#DCDDD2; --acc:#FFC400; --acc-soft:#FFF3C4; --danger:#C93A28; --ok:#177A52;
+  --ink:#14161C; --ink2:#6A7180; --paper:#F6F7F9; --card:#FFFFFF;
+  --line:#EAECEF; --acc:#00C2E8; --acc-soft:#E1F7FC; --on-acc:#00303D;
+  --danger:#F04438; --danger-soft:#FDE7E4; --ok:#12B76A;
+  --warn:#F79009; --warn-soft:#FEF0D8; --paper2:#EEF0F3;
 }
-.ft-root{font-family:'Barlow',system-ui,sans-serif;background:var(--paper);color:var(--ink);min-height:100vh;}
-.disp{font-family:'Barlow Condensed','Barlow',sans-serif;text-transform:uppercase;letter-spacing:.045em;font-weight:600;}
-.tnum{font-family:'Barlow Condensed','Barlow',sans-serif;font-weight:600;font-variant-numeric:tabular-nums;letter-spacing:.02em;}
-.card{background:var(--card);border:1px solid var(--line);border-radius:14px;}
-.inp{width:100%;background:#fff;border:1px solid var(--line);border-radius:10px;padding:10px 12px;font:inherit;color:var(--ink);min-height:44px;}
-.inp:focus{outline:2px solid var(--acc);outline-offset:1px;border-color:var(--ink);}
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border-radius:10px;padding:10px 16px;font-weight:600;min-height:44px;border:1px solid transparent;cursor:pointer;font-family:inherit;font-size:15px;}
-.btn:focus-visible{outline:2px solid var(--acc);outline-offset:2px;}
-.btn-pri{background:var(--ink);color:#fff;}
-.btn-pri:disabled{opacity:.4;cursor:not-allowed;}
-.btn-ghost{background:#fff;border-color:var(--line);color:var(--ink);}
-.btn-danger{background:#fff;border-color:var(--danger);color:var(--danger);}
+.ft-root{font-family:'Nunito',system-ui,sans-serif;background:var(--paper);color:var(--ink);min-height:100vh;-webkit-font-smoothing:antialiased;}
+.disp{font-family:'Nunito',system-ui,sans-serif;font-weight:800;letter-spacing:-.01em;}
+.tnum{font-family:'Nunito',system-ui,sans-serif;font-weight:700;font-variant-numeric:tabular-nums;}
+.card{background:var(--card);border:1px solid var(--line);border-radius:18px;box-shadow:0 1px 2px rgba(16,24,40,.04);}
+.inp{width:100%;background:var(--card);border:2px solid var(--line);border-radius:12px;padding:11px 14px;font:inherit;font-weight:600;color:var(--ink);min-height:48px;}
+.inp:focus{outline:none;border-color:var(--acc);}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border-radius:999px;padding:11px 18px;font-weight:800;min-height:48px;border:1px solid transparent;cursor:pointer;font-family:inherit;font-size:15px;}
+.btn:focus-visible{outline:3px solid var(--acc-soft);outline-offset:2px;}
+.btn-pri{background:var(--acc);color:var(--on-acc);}
+.btn-pri:disabled{opacity:.5;cursor:not-allowed;}
+.btn-ghost{background:var(--card);border-color:var(--line);color:var(--ink);}
+.btn-ghost:hover{background:var(--paper2);}
+.btn-danger{background:var(--card);border-color:var(--danger);color:var(--danger);}
 .btn-danger.armed{background:var(--danger);color:#fff;}
-.iconbtn{display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:10px;border:1px solid var(--line);background:#fff;color:var(--ink2);cursor:pointer;}
-.iconbtn:focus-visible{outline:2px solid var(--acc);outline-offset:2px;}
-.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:#fff;border-radius:999px;padding:8px 14px;font-weight:500;font-size:14px;cursor:pointer;min-height:40px;}
+.iconbtn{display:inline-flex;align-items:center;justify-content:center;width:42px;height:42px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--ink2);cursor:pointer;}
+.iconbtn:focus-visible{outline:3px solid var(--acc-soft);outline-offset:2px;}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--card);border-radius:999px;padding:8px 14px;font-weight:700;font-size:14px;cursor:pointer;min-height:40px;}
 .chip.on{background:var(--ink);border-color:var(--ink);color:#fff;}
-.chip:focus-visible{outline:2px solid var(--acc);outline-offset:2px;}
+.chip:focus-visible{outline:3px solid var(--acc-soft);outline-offset:2px;}
 .plate{display:inline-flex;align-items:stretch;border:1.5px solid var(--ink);border-radius:5px;overflow:hidden;background:#fff;line-height:1;}
-.plate i{background:#1B44A8;color:#fff;font-style:normal;font-size:9px;display:flex;align-items:flex-end;padding:2px 3px;font-weight:700;}
-.plate b{font-family:'Barlow Condensed',sans-serif;font-weight:600;letter-spacing:.08em;padding:3px 6px 2px;font-size:14px;color:var(--ink);}
+.plate i{background:#1B44A8;color:#fff;font-style:normal;font-size:9px;display:flex;align-items:flex-end;padding:2px 3px;font-weight:800;}
+.plate b{font-family:'Nunito',sans-serif;font-weight:800;letter-spacing:.06em;padding:3px 7px 2px;font-size:14px;color:var(--ink);}
 .rail{position:relative;}
 .rail::before{content:'';position:absolute;left:8px;top:14px;bottom:14px;width:2px;background:var(--line);}
 .rail-row{position:relative;padding-left:30px;}
 .rail-dot{position:absolute;left:2px;top:50%;transform:translateY(-50%);width:14px;height:14px;border-radius:50%;background:#fff;border:3.5px solid var(--ink);z-index:1;}
 .rail-dot.dest{border-color:var(--ok);background:var(--ok);}
 .rail-dot.next{border-color:var(--acc);background:var(--acc);}
-.banner{display:flex;gap:10px;align-items:flex-start;border-radius:12px;padding:10px 12px;font-size:14px;font-weight:500;}
-.banner-warn{background:var(--acc-soft);border:1px solid var(--acc);color:#5c4a00;}
-.banner-danger{background:#FBE9E5;border:1px solid var(--danger);color:var(--danger);}
-.pill{display:inline-flex;align-items:center;gap:4px;border-radius:999px;padding:3px 10px;font-size:12px;font-weight:700;}
-.pill-miss{background:var(--acc);color:#3a2f00;}
+.banner{display:flex;gap:10px;align-items:flex-start;border-radius:14px;padding:12px 14px;font-size:14px;font-weight:600;}
+.banner-warn{background:var(--warn-soft);border:1px solid transparent;color:var(--warn);}
+.banner-danger{background:var(--danger-soft);border:1px solid transparent;color:var(--danger);}
+.pill{display:inline-flex;align-items:center;gap:4px;border-radius:999px;padding:4px 11px;font-size:12px;font-weight:800;}
+.pill-miss{background:var(--warn-soft);color:var(--warn);}
 .pill-conf{background:var(--danger);color:#fff;}
-.seg{display:flex;background:#E9EAE0;border-radius:12px;padding:3px;gap:3px;}
-.seg button{flex:1;border:none;background:transparent;border-radius:9px;padding:9px 6px;font-weight:600;font-size:13px;color:var(--ink2);cursor:pointer;font-family:inherit;min-height:40px;}
-.seg button.on{background:#fff;color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.08);}
+.seg{display:flex;background:var(--paper2);border-radius:14px;padding:4px;gap:3px;}
+.seg button{flex:1;border:none;background:transparent;border-radius:11px;padding:9px 6px;font-weight:800;font-size:13px;color:var(--ink2);cursor:pointer;font-family:inherit;min-height:40px;}
+.seg button.on{background:var(--card);color:var(--ink);box-shadow:0 1px 3px rgba(16,24,40,.12);}
+.data-cats{scrollbar-width:none;-ms-overflow-style:none;}
+.data-cats::-webkit-scrollbar{display:none;}
 .tabbar{position:fixed;left:0;right:0;bottom:0;background:var(--ink);display:flex;z-index:40;padding-bottom:env(safe-area-inset-bottom);}
-.tabbar button{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:9px 1px 8px;border:none;background:transparent;color:#8B93A3;cursor:pointer;font-family:'Barlow Condensed',sans-serif;font-size:10px;letter-spacing:.06em;font-weight:600;border-top:3px solid transparent;}
+.tabbar button{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:9px 1px 8px;border:none;background:transparent;color:#98A2B3;cursor:pointer;font-family:'Nunito',sans-serif;font-size:10px;letter-spacing:.04em;font-weight:800;border-top:3px solid transparent;}
 .tabbar button.on{color:#fff;border-top-color:var(--acc);}
-.modal-bg{position:fixed;inset:0;background:rgba(20,25,35,.45);z-index:50;display:flex;align-items:flex-end;justify-content:center;}
-.modal{background:var(--paper);width:100%;max-width:560px;border-radius:18px 18px 0 0;padding:18px 16px 24px;overflow-y:auto;}
-.map-bg{position:fixed;inset:0;background:rgba(20,25,35,.5);z-index:60;display:flex;align-items:stretch;justify-content:center;}
-.map-modal{background:var(--paper);width:100%;height:100%;display:flex;flex-direction:column;font-family:'Barlow',system-ui,sans-serif;color:var(--ink);}
+.modal-bg{position:fixed;inset:0;background:rgba(16,20,28,.5);z-index:50;display:flex;align-items:flex-end;justify-content:center;}
+.modal{background:var(--paper);width:100%;max-width:560px;border-radius:22px 22px 0 0;padding:18px 16px 24px;overflow-y:auto;}
+.map-bg{position:fixed;inset:0;background:rgba(16,20,28,.55);z-index:60;display:flex;align-items:stretch;justify-content:center;}
+.map-modal{background:var(--paper);width:100%;height:100%;display:flex;flex-direction:column;font-family:'Nunito',system-ui,sans-serif;color:var(--ink);}
 @media(min-width:640px){
   .map-bg{align-items:center;padding:24px;}
-  .map-modal{max-width:680px;height:82vh;border-radius:18px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.35);}
+  .map-modal{max-width:680px;height:82vh;border-radius:22px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.35);}
 }
 .map-head{padding:12px 14px 8px;position:relative;z-index:1100;background:var(--paper);}
 .map-results{position:absolute;top:100%;left:0;right:0;margin-top:4px;max-height:220px;overflow-y:auto;z-index:1200;box-shadow:0 10px 30px rgba(0,0,0,.2);}
 .map-result{display:block;width:100%;text-align:left;padding:10px 12px;border:none;background:#fff;border-bottom:1px solid var(--line);font:inherit;font-size:13px;cursor:pointer;}
 .map-result:hover{background:var(--acc-soft);}
-.map-body{flex:1;position:relative;min-height:0;background:#E4E2D8;}
+.map-body{flex:1;position:relative;min-height:0;background:#E6EDEF;}
 .map-canvas{position:absolute;inset:0;}
 .map-overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:var(--paper);z-index:500;padding:16px;text-align:center;}
 .map-foot{display:flex;align-items:center;gap:10px;padding:10px 14px calc(10px + env(safe-area-inset-bottom));background:var(--paper);border-top:1px solid var(--line);position:relative;z-index:1100;}
 .ft-pin{width:30px;height:40px;position:relative;cursor:grab;}
 .ft-pin::before{content:'';position:absolute;left:3px;top:2px;width:24px;height:24px;background:var(--ink);border-radius:50% 50% 50% 0;transform:rotate(-45deg);box-shadow:0 2px 6px rgba(0,0,0,.35);}
 .ft-pin span{position:absolute;left:11px;top:10px;width:8px;height:8px;border-radius:50%;background:var(--acc);z-index:1;}
-.dirpill{font-family:'Barlow Condensed',sans-serif;font-weight:600;letter-spacing:.06em;font-size:11px;border:1.5px solid var(--ink);border-radius:5px;padding:1px 6px;color:var(--ink);flex-shrink:0;}
+.dirpill{font-family:'Nunito',sans-serif;font-weight:800;letter-spacing:.02em;font-size:11px;border:1.5px solid var(--ink);border-radius:6px;padding:1px 6px;color:var(--ink);flex-shrink:0;}
 .dirpill.v{background:var(--ink);color:#fff;}
 .linkline{font-size:12.5px;color:var(--ink2);padding:0 0 0 30px;display:flex;align-items:center;gap:5px;flex-wrap:wrap;}
 .rail-dot.sm{width:10px;height:10px;border-width:3px;left:4px;}
 .statgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;}
-.stat{background:#fff;border:1px solid var(--line);border-radius:12px;padding:8px 4px;text-align:center;}
-.stat b{display:block;font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:600;line-height:1.1;}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:10px 4px;text-align:center;}
+.stat b{display:block;font-family:'Nunito',sans-serif;font-size:22px;font-weight:800;line-height:1.1;}
 .stat span{font-size:10.5px;color:var(--ink2);letter-spacing:.02em;}
 .cmp{width:100%;border-collapse:collapse;}
 .cmp td,.cmp th{padding:7px 10px;border-bottom:1px solid var(--line);font-size:14px;text-align:left;}
-.cmp th{font-size:12px;color:var(--ink2);font-weight:600;}
-.cmp td.b{font-weight:700;font-variant-numeric:tabular-nums;}
+.cmp th{font-size:12px;color:var(--ink2);font-weight:700;}
+.cmp td.b{font-weight:800;font-variant-numeric:tabular-nums;}
+.infodot-wrap{position:relative;display:inline-flex;vertical-align:middle;}
+.infodot{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;border:none;background:transparent;color:var(--ink2);cursor:pointer;padding:0;}
+.infodot:hover{color:var(--acc);}
+.infodot:focus-visible{outline:3px solid var(--acc-soft);outline-offset:2px;}
+.infodot-scrim{position:fixed;inset:0;z-index:69;background:transparent;border:none;padding:0;cursor:default;}
+.infodot-pop{position:absolute;z-index:70;top:calc(100% + 8px);width:240px;max-width:76vw;background:var(--ink);color:#fff;border-radius:12px;padding:10px 12px;font-size:13px;font-weight:600;line-height:1.45;letter-spacing:normal;text-transform:none;box-shadow:0 10px 30px rgba(16,24,40,.28);}
+.infodot-pop.c{left:50%;transform:translateX(-50%);}
+.infodot-pop.r{right:0;}
+.infodot-pop.l{left:0;}
+.header-ic{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:50%;border:none;background:rgba(255,255,255,.14);color:#fff;cursor:pointer;flex-shrink:0;}
+.header-ic:hover{background:rgba(255,255,255,.24);}
+.header-ic:focus-visible{outline:3px solid var(--acc-soft);outline-offset:2px;}
+.help-steps{list-style:none;counter-reset:s;padding:0;margin:0;display:flex;flex-direction:column;gap:10px;}
+.help-steps li{counter-increment:s;position:relative;padding-left:40px;min-height:28px;display:flex;align-items:center;font-size:14px;line-height:1.5;}
+.help-steps li::before{content:counter(s);position:absolute;left:0;top:50%;transform:translateY(-50%);width:28px;height:28px;border-radius:50%;background:var(--acc);color:var(--on-acc);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;}
+.help-ic{width:40px;height:40px;border-radius:12px;background:var(--acc-soft);color:var(--acc);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
 :focus-visible{outline:2px solid var(--acc);outline-offset:2px;}
 @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important;}}
 `;
@@ -1058,6 +1079,64 @@ function TeamDot({ color, size = 12 }) {
 
 function EmptyState({ children }) {
   return <div className="card p-5 text-center text-sm" style={{ color: "var(--ink2)", borderStyle: "dashed" }}>{children}</div>;
+}
+
+/* Kis „?” buborék — koppintásra rövid magyarázatot mutat. `align`: l | c | r */
+function InfoDot({ text, align = "c", label = "Mi ez?" }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <span className="infodot-wrap">
+      <button type="button" className="infodot" aria-label={label} aria-expanded={open}
+        onClick={(e) => { e.preventDefault(); e.stopPropagation(); setOpen((o) => !o); }}>
+        <HelpCircle size={16} />
+      </button>
+      {open && (
+        <>
+          <button className="infodot-scrim" aria-hidden="true" tabIndex={-1}
+            onClick={(e) => { e.stopPropagation(); setOpen(false); }} />
+          <span className={`infodot-pop ${align}`} role="tooltip">{text}</span>
+        </>
+      )}
+    </span>
+  );
+}
+
+/* Súgó lap: hogyan működik az app + ajánlott munkamenet */
+function HelpSheet({ onClose }) {
+  const rows = [
+    [CalendarDays, "Hét", "A hét összes edzése és fuvarja egy helyen. Koppints egy fuvarra a szerkesztéshez."],
+    [Workflow, "Beosztás", "A napi beosztás. Az Optimalizálás a legolcsóbb sofőr+jármű láncokat számolja ki; a láncok kézzel is átrendezhetők."],
+    [Boxes, "Adatok", "Itt tartod karban a csapatokat, állomásokat, helyszíneket, járműveket és sofőröket."],
+    [Car, "Sofőr", "Napi, nyomtatható nézet egy-egy sofőr fuvarjairól."],
+  ];
+  return (
+    <Modal title="Hogyan működik?" onClose={onClose}>
+      <div className="flex flex-col gap-5">
+        <p className="text-sm" style={{ color: "var(--ink2)", margin: 0 }}>
+          A Vector megtervezi, ki melyik járművel és mikor viszi a csapatokat az
+          edzésekre és haza. Így érdemes haladni:
+        </p>
+        <ol className="help-steps">
+          <li><span>Vedd fel az <b>alapadatokat</b> (Adatok): állomások, helyszínek, járművek, sofőrök.</span></li>
+          <li><span>Hozd létre a <b>csapatokat és edzéseket</b> (Adatok › Csapatok).</span></li>
+          <li><span>A <b>Beosztás</b> fülön futtasd az <b>Optimalizálást</b>.</span></li>
+          <li><span>Oszd meg a sofőrökkel a <b>Sofőr</b> nézetet.</span></li>
+        </ol>
+        <div className="flex flex-col gap-3">
+          {rows.map(([Icon, t, d]) => (
+            <div key={t} className="flex gap-3 items-start">
+              <span className="help-ic"><Icon size={19} /></span>
+              <div><div className="font-semibold">{t}</div><div className="text-sm" style={{ color: "var(--ink2)" }}>{d}</div></div>
+            </div>
+          ))}
+        </div>
+        <div className="banner banner-warn">
+          <AlertTriangle size={18} />
+          <span>Jó tudni: minden mentés előtti állapotot megőrzünk. A fejléc „Korábbi mentések” gombjával bármikor visszaállhatsz.</span>
+        </div>
+      </div>
+    </Modal>
+  );
 }
 
 /* =====================================================================
@@ -1181,20 +1260,20 @@ function OfflinePicker({ state, view, setView, pos, setPos }) {
   const hLines = []; for (let y = offY; y <= size.h; y += stepPx) hLines.push(y);
 
   return (
-    <div ref={boxRef} className="map-canvas" style={{ touchAction: "none", userSelect: "none", cursor: "crosshair", background: "#EDEEE4", overflow: "hidden" }}
+    <div ref={boxRef} className="map-canvas" style={{ touchAction: "none", userSelect: "none", cursor: "crosshair", background: "#E6EDEF", overflow: "hidden" }}
       onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={() => { drag.current = null; }}>
       <svg width={size.w} height={size.h} style={{ display: "block" }} aria-label="Egyszerűsített térkép">
-        {vLines.map((x) => <line key={"v" + x} x1={x} y1={0} x2={x} y2={size.h} stroke="#DCDDD2" strokeWidth="1" />)}
-        {hLines.map((y) => <line key={"h" + y} x1={0} y1={y} x2={size.w} y2={y} stroke="#DCDDD2" strokeWidth="1" />)}
+        {vLines.map((x) => <line key={"v" + x} x1={x} y1={0} x2={x} y2={size.h} stroke="#DCE1E7" strokeWidth="1" />)}
+        {hLines.map((y) => <line key={"h" + y} x1={0} y1={y} x2={size.w} y2={y} stroke="#DCE1E7" strokeWidth="1" />)}
         {pts.map((p) => {
           const q = projPx(view, size, p.lat, p.lon);
           if (q.x < -80 || q.y < -30 || q.x > size.w + 80 || q.y > size.h + 30) return null;
           return (
             <g key={p.kind + p.id}>
               {p.kind === "ve"
-                ? <rect x={q.x - 5} y={q.y - 5} width={10} height={10} rx={2} fill="#177A52" />
-                : <circle cx={q.x} cy={q.y} r={5} fill="#1C2433" />}
-              <text x={q.x + 8} y={q.y + 4} fontSize="11" fill="#5B6472">{p.name}</text>
+                ? <rect x={q.x - 5} y={q.y - 5} width={10} height={10} rx={2} fill="#12B76A" />
+                : <circle cx={q.x} cy={q.y} r={5} fill="#14161C" />}
+              <text x={q.x + 8} y={q.y + 4} fontSize="11" fill="#6A7180">{p.name}</text>
             </g>
           );
         })}
@@ -1202,13 +1281,13 @@ function OfflinePicker({ state, view, setView, pos, setPos }) {
           const q = projPx(view, size, pos.lat, pos.lon);
           return (
             <g transform={`translate(${q.x},${q.y})`} style={{ cursor: "grab" }}>
-              <path d="M0 0 C -8 -12, -13 -17, -13 -25 A 13 13 0 1 1 13 -25 C 13 -17, 8 -12, 0 0 Z" fill="#1C2433" />
-              <circle cx="0" cy="-25" r="4.5" fill="#FFC400" />
+              <path d="M0 0 C -8 -12, -13 -17, -13 -25 A 13 13 0 1 1 13 -25 C 13 -17, 8 -12, 0 0 Z" fill="#14161C" />
+              <circle cx="0" cy="-25" r="4.5" fill="#00C2E8" />
             </g>
           );
         })()}
-        <rect x={10} y={size.h - 24} width={stepPx} height={3} fill="#1C2433" />
-        <text x={10} y={size.h - 30} fontSize="11" fill="#5B6472">{stepM >= 1000 ? `${stepM / 1000} km` : `${stepM} m`}</text>
+        <rect x={10} y={size.h - 24} width={stepPx} height={3} fill="#14161C" />
+        <text x={10} y={size.h - 30} fontSize="11" fill="#6A7180">{stepM >= 1000 ? `${stepM / 1000} km` : `${stepM} m`}</text>
       </svg>
       <div style={{ position: "absolute", right: 10, top: 10, display: "flex", flexDirection: "column", gap: 6 }}
         onPointerDown={(e) => e.stopPropagation()}>
@@ -1453,7 +1532,7 @@ function OccCard({ state, occ, onOpen }) {
         <div className="flex items-center gap-2 flex-wrap">
           <span className="tnum text-lg">{training.start}–{training.end}</span>
           <span className="font-semibold truncate">{team?.name || "?"}</span>
-          {training.type === "once" && <span className="text-xs pill" style={{ background: "#E9EAE0", color: "var(--ink2)" }}>egyszeri</span>}
+          {training.type === "once" && <span className="text-xs pill" style={{ background: "#EEF0F3", color: "var(--ink2)" }}>egyszeri</span>}
         </div>
         <div className="flex items-center gap-1 text-sm mt-1" style={{ color: "var(--ink2)" }}>
           <MapPin size={14} /> <span className="truncate">{venue?.name || "nincs helyszín"}</span>
@@ -1505,7 +1584,7 @@ function TeamsScreen({ state, update, notice }) {
   return (
     <div className="px-4 pb-4">
       <div className="flex items-center justify-between py-3">
-        <h2 className="disp text-xl">Csapatok</h2>
+        <span className="text-sm" style={{ color: "var(--ink2)" }}>{state.teams.length} csapat</span>
         <button className="btn btn-pri" onClick={() => setCreating(true)}><Plus size={17} /> Új csapat</button>
       </div>
       <div className="flex flex-col gap-2">
@@ -1627,7 +1706,7 @@ function TeamDetail({ state, update, team, onBack, notice }) {
         {state.stations.map((s) => (
           <button key={s.id} className={`chip ${team.stationIds.includes(s.id) ? "on" : ""}`} onClick={() => toggle("stationIds", s.id)}>{s.name}</button>
         ))}
-        {state.stations.length === 0 && <span className="text-sm" style={{ color: "var(--ink2)" }}>Vegyél fel állomást a Törzsadat fülön.</span>}
+        {state.stations.length === 0 && <span className="text-sm" style={{ color: "var(--ink2)" }}>Vegyél fel állomást az Adatok fülön.</span>}
       </div>
       <p className="text-xs mb-2 px-1" style={{ color: "var(--ink2)" }}>A fuvarokhoz csak a bekapcsolt állomások választhatók.</p>
       {team.stationIds.length > 0 && (
@@ -1692,7 +1771,7 @@ function TeamDetail({ state, update, team, onBack, notice }) {
         {state.venues.map((v) => (
           <button key={v.id} className={`chip ${team.venueIds.includes(v.id) ? "on" : ""}`} onClick={() => toggle("venueIds", v.id)}>{v.name}</button>
         ))}
-        {state.venues.length === 0 && <span className="text-sm" style={{ color: "var(--ink2)" }}>Vegyél fel helyszínt a Törzsadat fülön.</span>}
+        {state.venues.length === 0 && <span className="text-sm" style={{ color: "var(--ink2)" }}>Vegyél fel helyszínt az Adatok fülön.</span>}
       </div>
 
       <div className="flex items-center justify-between mb-2">
@@ -1797,8 +1876,7 @@ const MASTER_TABS = [
   { key: "drivers", label: "Sofőrök", sing: "sofőr" },
 ];
 
-function MasterScreen({ state, update, resetSeed, notice, setNotice }) {
-  const [tab, setTab] = useState("stations");
+function MasterScreen({ tab, state, update, resetSeed, notice, setNotice }) {
   const [form, setForm] = useState(null); // null | {} | entity
   const items = state[tab];
   const meta = MASTER_TABS.find((t) => t.key === tab);
@@ -1814,13 +1892,8 @@ function MasterScreen({ state, update, resetSeed, notice, setNotice }) {
   return (
     <div className="px-4 pb-4">
       <div className="flex items-center justify-between py-3">
-        <h2 className="disp text-xl">Törzsadatok</h2>
+        <span className="text-sm" style={{ color: "var(--ink2)" }}>{items.length} {meta.label.toLowerCase()}</span>
         <button className="btn btn-pri" onClick={() => setForm({})}><Plus size={17} /> Új {meta.sing}</button>
-      </div>
-      <div className="seg mb-3">
-        {MASTER_TABS.map((t) => (
-          <button key={t.key} className={tab === t.key ? "on" : ""} onClick={() => { setTab(t.key); setNotice(""); }}>{t.label}</button>
-        ))}
       </div>
 
       {notice && <div className="banner banner-warn mb-3"><AlertTriangle size={18} />{notice}</div>}
@@ -1997,7 +2070,7 @@ function MasterForm({ kind, state, entity, onSave, onCancel }) {
 }
 
 /* ---------- 4.4 FUVAR SZERKESZTŐ ---------- */
-function RideScreen({ state, update, target, setTarget }) {
+function RideScreen({ state, update, target, setTarget, onExit }) {
   if (!target) return <RidePicker state={state} onPick={setTarget} />;
   const training = byId(state.trainings, target.trainingId);
   if (!training) return <RidePicker state={state} onPick={setTarget} />;
@@ -2005,7 +2078,7 @@ function RideScreen({ state, update, target, setTarget }) {
     <RideEditor key={`${target.trainingId}-${target.dayIdx}`}
       state={state} update={update} training={training}
       dayIdx={target.dayIdx} dateISO={target.dateISO}
-      onBack={() => setTarget(null)} />
+      onBack={onExit || (() => setTarget(null))} />
   );
 }
 
@@ -2176,7 +2249,7 @@ function RideForm({ state, update, training, dayIdx, dateISO, existing, onBack }
 
       <div className="flex items-center justify-between mt-4 mb-2">
         <h3 className="disp text-base">Megállók sorrendben</h3>
-        {vehicle && <span className={`pill ${over ? "pill-conf" : ""}`} style={over ? {} : { background: "#E9EAE0", color: "var(--ink2)" }}>{pax} / {vehicle.seats} fő</span>}
+        {vehicle && <span className={`pill ${over ? "pill-conf" : ""}`} style={over ? {} : { background: "#EEF0F3", color: "var(--ink2)" }}>{pax} / {vehicle.seats} fő</span>}
       </div>
       {over && <div className="banner banner-danger mb-2"><AlertTriangle size={18} />Az utaslétszám ({pax} fő) meghaladja a jármű férőhelyeit ({vehicle.seats}).</div>}
 
@@ -2553,7 +2626,10 @@ function ScheduleScreen({ state, update }) {
   return (
     <div className="px-4 pb-4">
       <div className="flex items-center justify-between py-3">
-        <h2 className="disp text-xl">Beosztás</h2>
+        <span className="flex items-center gap-1">
+          <h2 className="disp text-xl">Beosztás</h2>
+          <InfoDot align="l" text="A napi beosztás. Az „Optimalizálás” a legolcsóbb sofőr+jármű láncokat számolja ki; a „Mátrix” pontosabb üresjárati időket ad. A láncokat kézzel is átrendezheted." />
+        </span>
         <button className="iconbtn" onClick={() => setShowSettings(!showSettings)} aria-label="Paraméterek"><Settings2 size={17} /></button>
       </div>
 
@@ -2588,11 +2664,12 @@ function ScheduleScreen({ state, update }) {
         <button className="btn btn-pri flex-1" onClick={doOptimize}><Zap size={16} /> Beosztás optimalizálása</button>
         <button className="btn btn-ghost" onClick={doMatrix} disabled={busyMx}><Table size={16} /> {busyMx ? "Számítás…" : "Mátrix"}</button>
       </div>
-      <div className="flex gap-2 mb-2">
+      <div className="flex gap-2 mb-2 items-center">
         <button className="btn btn-ghost flex-1" onClick={() => setConfirmGen(true)} disabled={rideCount === 0}
           title={rideCount === 0 ? "Előbb rendelj feladatokat láncokba (optimalizálás vagy kézi áthelyezés)." : ""}>
           <ClipboardCheck size={16} /> Fuvarok generálása a beosztásból
         </button>
+        <InfoDot align="r" text="A kész beosztásból tényleges fuvarokat készít, amiket a sofőrök is látnak. Akkor futtasd, ha kész a napi lánc." />
       </div>
       <p className="text-xs mb-3 px-1" style={{ color: "var(--ink2)" }}>
         {state.matrix
@@ -2679,7 +2756,7 @@ function DriverScreen({ state }) {
 
   return (
     <div className="px-4 pb-4">
-      <div className="py-3"><h2 className="disp text-xl">Sofőr nézet</h2></div>
+      <div className="py-3 flex items-center gap-1"><h2 className="disp text-xl">Sofőr nézet</h2><InfoDot align="l" text="Egy sofőr napi fuvarjai, nyomtatható formában. Fent válts sofőrt és napot." /></div>
 
       <div className="flex gap-2 overflow-x-auto pb-2 mb-2">
         {state.drivers.map((d) => (
@@ -2695,7 +2772,7 @@ function DriverScreen({ state }) {
         <button className="iconbtn" onClick={() => setDateISO(toISO(addDays(parseISO(dateISO), 1)))} aria-label="Következő nap"><ChevronRight size={18} /></button>
       </div>
 
-      {!driver && <EmptyState>Nincs sofőr felvéve. A Törzsadat fülön adhatsz hozzá.</EmptyState>}
+      {!driver && <EmptyState>Nincs sofőr felvéve. Az Adatok fülön adhatsz hozzá.</EmptyState>}
       {driver && rides.length === 0 && <EmptyState><b>{driver.name}</b> részére erre a napra nincs fuvar.</EmptyState>}
 
       <div className="flex flex-col gap-4">
@@ -2771,13 +2848,37 @@ function DriverScreen({ state }) {
    5. APP — navigáció, állapot, perzisztencia
    ===================================================================== */
 
+/* ---------- 4.x ADATOK — csapatok + törzsadatok egy helyen ---------- */
+const DATA_CATS = [
+  { key: "teams", label: "Csapatok" },
+  { key: "stations", label: "Állomások" },
+  { key: "venues", label: "Helyszínek" },
+  { key: "vehicles", label: "Járművek" },
+  { key: "drivers", label: "Sofőrök" },
+];
+
+function DataScreen({ state, update, resetSeed, notice, setNotice }) {
+  const [sub, setSub] = useState("teams");
+  return (
+    <div className="pb-4">
+      <div className="data-cats flex gap-2 overflow-x-auto px-4 pt-3 pb-1">
+        {DATA_CATS.map((c) => (
+          <button key={c.key} className={`chip ${sub === c.key ? "on" : ""}`} style={{ whiteSpace: "nowrap" }}
+            onClick={() => { setSub(c.key); setNotice(""); }}>{c.label}</button>
+        ))}
+      </div>
+      {sub === "teams"
+        ? <TeamsScreen state={state} update={update} notice={notice} />
+        : <MasterScreen tab={sub} state={state} update={update} resetSeed={resetSeed} notice={notice} setNotice={setNotice} />}
+    </div>
+  );
+}
+
 const TABS = [
-  { key: "week", label: "HÉT", icon: CalendarDays },
-  { key: "sched", label: "BEOSZTÁS", icon: Workflow },
-  { key: "teams", label: "CSAPAT", icon: Users },
-  { key: "master", label: "TÖRZS", icon: Boxes },
-  { key: "ride", label: "FUVAR", icon: Route },
-  { key: "driver", label: "SOFŐR", icon: Car },
+  { key: "week", label: "Hét", icon: CalendarDays },
+  { key: "sched", label: "Beosztás", icon: Workflow },
+  { key: "data", label: "Adatok", icon: Boxes },
+  { key: "driver", label: "Sofőr", icon: Car },
 ];
 
 export default function App() {
@@ -2787,6 +2888,7 @@ export default function App() {
   const [notice, setNotice] = useState("");
   const [loadError, setLoadError] = useState(false);
   const [retryTick, setRetryTick] = useState(0);
+  const [helpOpen, setHelpOpen] = useState(false);
   const loaded = useRef(false);
 
   useEffect(() => {
@@ -2847,7 +2949,7 @@ export default function App() {
     return (
       <div className="ft-root flex items-center justify-center" style={{ minHeight: "100vh" }}>
         <style>{CSS}</style>
-        <div className="disp text-2xl">Fuvarterv betöltése…</div>
+        <div className="disp text-2xl">Vector betöltése…</div>
       </div>
     );
   }
@@ -2857,17 +2959,20 @@ export default function App() {
       <style>{CSS}</style>
       <header className="flex items-center gap-2 px-4" style={{ background: "var(--ink)", color: "#fff", height: 52 }}>
         <span aria-hidden style={{ width: 10, height: 10, borderRadius: "50%", background: "var(--acc)" }} />
-        <span className="disp text-xl" style={{ letterSpacing: ".12em" }}>Fuvarterv</span>
-        <span className="text-xs ml-auto" style={{ color: "#8B93A3" }}>kézilabda fuvarszervező</span>
+        <span className="disp text-xl" style={{ letterSpacing: ".12em" }}>Vector</span>
+        <div className="ml-auto flex items-center gap-1">
+          <button className="header-ic" onClick={() => window.dispatchEvent(new CustomEvent("fuvarterv:restore"))} aria-label="Korábbi mentések"><RotateCcw size={18} /></button>
+          <button className="header-ic" onClick={() => window.dispatchEvent(new CustomEvent("fuvarterv:signout"))} aria-label="Kijelentkezés"><LogOut size={18} /></button>
+          <button className="header-ic" onClick={() => setHelpOpen(true)} aria-label="Súgó — hogyan működik?"><HelpCircle size={20} /></button>
+        </div>
       </header>
 
       <main className="mx-auto w-full max-w-2xl" style={{ paddingBottom: 84 }}>
         {tab === "week" && <WeekScreen state={state} openRide={openRide} />}
         {tab === "sched" && <ScheduleScreen state={state} update={update} />}
-        {tab === "teams" && <TeamsScreen state={state} update={update} notice={notice} />}
-        {tab === "master" && <MasterScreen state={state} update={update} resetSeed={resetSeed} notice={notice} setNotice={setNotice} />}
-        {tab === "ride" && <RideScreen state={state} update={update} target={rideTarget} setTarget={setRideTarget} />}
+        {tab === "data" && <DataScreen state={state} update={update} resetSeed={resetSeed} notice={notice} setNotice={setNotice} />}
         {tab === "driver" && <DriverScreen state={state} />}
+        {tab === "ride" && <RideScreen state={state} update={update} target={rideTarget} setTarget={setRideTarget} onExit={() => { setRideTarget(null); setTab("week"); }} />}
       </main>
 
       <nav className="tabbar" aria-label="Fő navigáció">
@@ -2881,6 +2986,7 @@ export default function App() {
           );
         })}
       </nav>
+      {helpOpen && <HelpSheet onClose={() => setHelpOpen(false)} />}
     </div>
   );
 }
