@@ -38,12 +38,19 @@ export const DEFAULT_SETTINGS = {
   preferredBias: 1000,  // Ft: büntetés, ha a sofőr nem a preferált buszát kapja (0 = kikapcsolva)
 };
 
+/* Igaz, ha a hiba azt jelenti: "még nincs mentett adat" (üres munkaterület).
+   Csak ekkor szabad mintaadatot vetni; minden más hiba valódi (hálózat, jogosultság),
+   olyankor NEM vetünk mintaadatot a fel nem olvasott valós adat fölé. */
+export function isNotFound(err) {
+  return !!(err && err.code === "NOT_FOUND");
+}
+
+/* Betölti a mentett állapotot. Nincs adat → NOT_FOUND hibát dob (a hívó vet
+   mintaadatot). Bármely más hiba továbbdobódik, hogy a hívó újratöltő képernyőt
+   mutathasson mintaadat helyett. */
 async function loadState() {
-  try {
-    const r = await window.storage.get(STORAGE_KEY);
-    if (r && r.value) return JSON.parse(r.value);
-  } catch (e) { /* nincs mentett adat */ }
-  return null;
+  const r = await window.storage.get(STORAGE_KEY);
+  return r && r.value ? JSON.parse(r.value) : null;
 }
 
 async function persistState(state) {
@@ -2772,15 +2779,34 @@ export default function App() {
   const [tab, setTab] = useState("week");
   const [rideTarget, setRideTarget] = useState(null);
   const [notice, setNotice] = useState("");
+  const [loadError, setLoadError] = useState(false);
+  const [retryTick, setRetryTick] = useState(0);
   const loaded = useRef(false);
 
   useEffect(() => {
+    let cancelled = false;
+    setLoadError(false);
     (async () => {
-      const s = await loadState();
-      setState(ensureShape(s || seedState()));
-      loaded.current = true;
+      try {
+        const s = await loadState();
+        if (cancelled) return;
+        setState(ensureShape(s || seedState()));
+        loaded.current = true;
+      } catch (e) {
+        if (cancelled) return;
+        if (isNotFound(e)) {
+          // Genuinely empty workspace → seed sample data.
+          setState(ensureShape(seedState()));
+          loaded.current = true;
+        } else {
+          // Real read failure (network/permissions) → show a retry screen,
+          // never mount the app on seed data over unread real data.
+          setLoadError(true);
+        }
+      }
     })();
-  }, []);
+    return () => { cancelled = true; };
+  }, [retryTick]);
 
   useEffect(() => {
     if (!loaded.current || !state) return;
@@ -2791,6 +2817,25 @@ export default function App() {
   const update = (fn) => setState((s) => fn(s));
   const openRide = (occ) => { setRideTarget(o2t(occ)); setTab("ride"); };
   const resetSeed = () => { setState(ensureShape(seedState())); setNotice(""); };
+
+  if (loadError) {
+    return (
+      <div className="ft-root flex items-center justify-center" style={{ minHeight: "100vh", padding: 24 }}>
+        <style>{CSS}</style>
+        <div className="card p-4" style={{ maxWidth: 380, textAlign: "center" }}>
+          <div className="disp text-2xl mb-2">Nem sikerült betölteni</div>
+          <p className="mb-3" style={{ color: "var(--ink2)", lineHeight: 1.5 }}>
+            Az adatok betöltése nem sikerült (valószínűleg hálózati hiba). Az
+            adataid biztonságban vannak a szerveren. Ellenőrizd a kapcsolatot, és
+            próbáld újra.
+          </p>
+          <button className="btn btn-pri w-full" onClick={() => { setLoadError(false); setRetryTick((t) => t + 1); }}>
+            Újrapróbálkozás
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (!state) {
     return (

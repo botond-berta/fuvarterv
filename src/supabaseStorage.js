@@ -103,8 +103,12 @@ export const supabaseStorage = {
 
     if (error) throw error;
     if (!data) {
-      // No row yet: mirror the localStorage shim so loadState() seeds.
-      throw new Error("key not found");
+      // No row yet → a *typed* not-found error. Only this specific case should
+      // make the app seed sample data; any other failure (network, permissions)
+      // keeps its own error so the caller can tell them apart and never seeds
+      // over real data it simply failed to read. Postgres/PostgREST error codes
+      // never collide with this sentinel.
+      throw Object.assign(new Error("key not found"), { code: "NOT_FOUND" });
     }
 
     lastSeen.set(key, data.updated_at);
