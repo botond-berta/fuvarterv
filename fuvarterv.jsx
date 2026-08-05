@@ -871,6 +871,11 @@ function optimizeDay(state, weekday, weekMon) {
     return { asg, cost: skl.reduce((a, c) => a + skelCost(c), 0) + asg.cost };
   };
   let skl = skel, fre = freeChains, plan = evalPlan(skl, fre);
+  // The optimizer's objective before the local-improvement loop. The loop only
+  // accepts a trial when it strictly lowers plan.cost, so this never increases.
+  // (This is money + an uncovered-task penalty — the true monetary cost alone
+  // can legitimately rise when improvement covers a previously uncovered task.)
+  const objectiveBefore = plan.cost;
   for (let guard = 0; guard < 60; guard++) {
     let improved = false;
     outer:
@@ -910,7 +915,8 @@ function optimizeDay(state, weekday, weekMon) {
     else result.push({ ...p.chain, driverId: p.driverId, vehicleId: p.vehicleId });
   }
   result.sort((a, b) => a.start - b.start);
-  return { empty: false, chains: result, uncovered, notes, stats: dayStats(state, result) };
+  return { empty: false, chains: result, uncovered, notes, stats: dayStats(state, result),
+    improve: { before: objectiveBefore, after: plan.cost } };
 }
 
 /* =====================================================================
@@ -2878,3 +2884,16 @@ export default function App() {
     </div>
   );
 }
+
+/* =====================================================================
+   Named exports of pure domain/optimizer functions — for unit and
+   property tests (test/). The default export above stays the app; these
+   add no imports and do not change runtime behaviour.
+   ===================================================================== */
+export {
+  normalizePlate, plateExists,
+  timeToMin, minToTime, weekdayIdx, mondayOf, toISO, addDays,
+  legMin, bestStationOrder, teamRouteOrder, splitStationsByCapacity,
+  rideWindow, findConflicts, teamPax,
+  genDayTasks, resolveDay, mkChain, dayStats, driverAvailableFor, optimizeDay,
+};
