@@ -26,6 +26,13 @@ import { supabase } from "./supabaseClient.js";
 // (fresh workspace) — the first save inserts.
 const lastSeen = new Map();
 
+// Last blob we read or wrote per key. Used to archive the *previous* version to
+// app_state_history when the next save overwrites it.
+const lastData = new Map();
+
+// How many snapshots to keep per workspace in app_state_history.
+const HISTORY_LIMIT = 20;
+
 // Serializes writes: every set() waits for the previous one to settle before
 // running, so `lastSeen` is always current when the guard checks it.
 let writeChain = Promise.resolve();
@@ -39,6 +46,30 @@ function announceStale() {
 function announceSaveError(error) {
   if (typeof window !== "undefined") {
     window.dispatchEvent(new CustomEvent("fuvarterv:saveerror", { detail: error }));
+  }
+}
+
+// Best-effort: archive the blob that was just replaced, then prune to the last
+// HISTORY_LIMIT snapshots. Fire-and-forget — history must never fail a save, so
+// all errors (incl. the table not existing yet) are swallowed here.
+async function archivePrevious(key, blob) {
+  if (blob === undefined) return;
+  try {
+    const { error } = await supabase
+      .from("app_state_history")
+      .insert({ workspace_id: key, data: blob });
+    if (error) throw error;
+    const { data: extra } = await supabase
+      .from("app_state_history")
+      .select("id")
+      .eq("workspace_id", key)
+      .order("saved_at", { ascending: false })
+      .range(HISTORY_LIMIT, HISTORY_LIMIT + 1000);
+    if (extra && extra.length) {
+      await supabase.from("app_state_history").delete().in("id", extra.map((r) => r.id));
+    }
+  } catch (e) {
+    if (typeof console !== "undefined") console.warn("Előzmény mentése sikertelen:", e);
   }
 }
 
@@ -65,7 +96,9 @@ async function doSet(key, value) {
       announceSaveError(error);
       throw error;
     }
+    // Fresh workspace: no previous blob to archive.
     lastSeen.set(key, data.updated_at);
+    lastData.set(key, parsed);
     return { key, value };
   }
 
@@ -89,7 +122,12 @@ async function doSet(key, value) {
     throw new Error("stale write: workspace changed elsewhere");
   }
 
+  // Overwrite succeeded → archive the blob we just replaced (fire-and-forget),
+  // then adopt the new one as current.
+  const replaced = lastData.get(key);
   lastSeen.set(key, data[0].updated_at);
+  lastData.set(key, parsed);
+  archivePrevious(key, replaced);
   return { key, value };
 }
 
@@ -112,6 +150,7 @@ export const supabaseStorage = {
     }
 
     lastSeen.set(key, data.updated_at);
+    lastData.set(key, data.data);
     return { key, value: JSON.stringify(data.data) };
   },
 
@@ -135,6 +174,7 @@ export const supabaseStorage = {
     const { error } = await supabase.from("app_state").delete().eq("id", key);
     if (error) throw error;
     lastSeen.delete(key);
+    lastData.delete(key);
     return { key, deleted: true };
   },
 

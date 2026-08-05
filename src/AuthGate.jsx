@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { supabase, isConfigured, WORKSPACE_ID } from "./supabaseClient.js";
 import { supabaseStorage } from "./supabaseStorage.js";
+import RestorePanel from "./RestorePanel.jsx";
 
 // Install the Supabase-backed KV store the app expects. Assigned at import time
 // so it is in place before <App/> ever mounts (App only renders once a session
@@ -198,6 +199,7 @@ export default function AuthGate({ children }) {
   // (which would make the app seed fresh sample data over the user's real data).
   const [preflight, setPreflight] = useState("checking");
   const [retryTick, setRetryTick] = useState(0);
+  const [showRestore, setShowRestore] = useState(false);
 
   useEffect(() => {
     if (!isConfigured) {
@@ -284,7 +286,21 @@ export default function AuthGate({ children }) {
       {saveError && !stale && (
         <SaveErrorBanner onDismiss={() => setSaveError(false)} />
       )}
-      <div style={{ position: "fixed", top: 8, right: 8, zIndex: 999 }}>
+      <div style={{ position: "fixed", top: 8, right: 8, zIndex: 999, display: "flex", gap: 6 }}>
+        <button
+          onClick={() => setShowRestore(true)}
+          style={{
+            padding: "4px 10px",
+            borderRadius: 8,
+            border: "1px solid rgba(255,255,255,.3)",
+            background: "rgba(0,0,0,.35)",
+            color: "#fff",
+            fontSize: 12,
+            cursor: "pointer",
+          }}
+        >
+          Korábbi mentések
+        </button>
         <button
           onClick={() => supabase.auth.signOut()}
           style={{
@@ -300,6 +316,7 @@ export default function AuthGate({ children }) {
           Kijelentkezés
         </button>
       </div>
+      {showRestore && <RestorePanel onClose={() => setShowRestore(false)} />}
       {children}
     </>
   );
