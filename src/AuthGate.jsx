@@ -104,41 +104,35 @@ function LoginScreen() {
   );
 }
 
-function StaleBanner({ onReload, onDismiss }) {
+// Blocking overlay: once the data changed elsewhere, saves can no longer
+// succeed, so we stop the user from editing on (silently unsaved) — the only
+// safe action is to reload. This covers the whole app and captures clicks.
+function StaleOverlay({ onReload }) {
   return (
     <div
       style={{
         position: "fixed",
-        top: 0,
-        left: 0,
-        right: 0,
+        inset: 0,
         zIndex: 1000,
-        background: "#E8590C",
-        color: "#fff",
-        padding: "10px 14px",
+        background: "rgba(18, 21, 28, 0.72)",
         display: "flex",
         alignItems: "center",
-        gap: 12,
-        fontSize: 14,
+        justifyContent: "center",
+        padding: 24,
       }}
     >
-      <span style={{ flex: 1 }}>
-        Az adatok időközben máshol módosultak. A mentés le van tiltva, hogy ne írd
-        felül a másik módosítást.
-      </span>
-      <button
-        onClick={onReload}
-        style={{ ...button, padding: "6px 12px", fontSize: 14, background: "#fff", color: "#E8590C" }}
-      >
-        Újratöltés
-      </button>
-      <button
-        onClick={onDismiss}
-        aria-label="Bezárás"
-        style={{ background: "transparent", border: "none", color: "#fff", fontSize: 18, cursor: "pointer" }}
-      >
-        ×
-      </button>
+      <div style={{ ...card, lineHeight: 1.5, background: "#1B1E27", padding: 24, borderRadius: 14, textAlign: "center" }}>
+        <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 8 }}>Az adatok máshol módosultak</div>
+        <p style={{ color: "#B9C0CC", marginBottom: 16 }}>
+          Valaki más időközben mentett, ezért a mentés le van tiltva, hogy ne írd
+          felül a módosításait. A mostani, nem mentett változtatásaid nem
+          menthetők — töltsd újra az oldalt a legfrissebb adatokkal, és dolgozz
+          onnan tovább.
+        </p>
+        <button onClick={onReload} style={{ ...button, width: "100%" }}>
+          Újratöltés
+        </button>
+      </div>
     </div>
   );
 }
@@ -286,12 +280,7 @@ export default function AuthGate({ children }) {
 
   return (
     <>
-      {stale && (
-        <StaleBanner
-          onReload={() => window.location.reload()}
-          onDismiss={() => setStale(false)}
-        />
-      )}
+      {stale && <StaleOverlay onReload={() => window.location.reload()} />}
       {saveError && !stale && (
         <SaveErrorBanner onDismiss={() => setSaveError(false)} />
       )}
