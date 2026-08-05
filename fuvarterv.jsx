@@ -17,6 +17,7 @@ import {
   ChevronLeft, ChevronRight, GripVertical, ArrowUp, ArrowDown,
   AlertTriangle, MapPin, Clock, X, Flag, ChevronsRight, Search,
   Lock, Unlock, Zap, Workflow, ArrowLeftRight, Settings2, Table, ChevronDown, ChevronUp,
+  ClipboardCheck,
 } from "lucide-react";
 
 /* =====================================================================
@@ -40,8 +41,8 @@ async function persistState(state) {
 
 /* Régebbi mentett állapotok felokosítása az új mezőkkel */
 function ensureShape(s) {
-  s.settings = { arriveEarlyMin: 10, departAfterMin: 10, calloutFee: 1500, dwellMin: 2, estSpeedKmh: 30, fallbackLegMin: 10, ...(s.settings || {}) };
-  s.drivers = (s.drivers || []).map((d) => ({ ...d, wage: d.wage ?? 3000, minShiftMin: d.minShiftMin ?? 120, availability: d.availability || [] }));
+  s.settings = { arriveEarlyMin: 10, departAfterMin: 10, calloutFee: 1500, dwellMin: 2, estSpeedKmh: 30, fallbackLegMin: 10, preferredBias: 1000, ...(s.settings || {}) };
+  s.drivers = (s.drivers || []).map((d) => ({ ...d, wage: d.wage ?? 3000, minShiftMin: d.minShiftMin ?? 120, availability: d.availability || [], preferredVehicleId: d.preferredVehicleId ?? null }));
   s.teams = (s.teams || []).map((t) => ({ ...t, passengerCount: t.passengerCount ?? null, stationCounts: t.stationCounts || {}, routeMode: t.routeMode || "auto", routeAnchorId: t.routeAnchorId ?? null }));
   s.matrix = s.matrix || null;
   s.assignments = s.assignments || {};
@@ -107,14 +108,14 @@ function seedState() {
       { id: "jSLP753", name: "Kisbusz 7", plate: "SLP-753", seats: 8, note: "Megyei engedély · Zámbó Zsolti" },
     ],
     drivers: [
-      { id: "dSIP", name: "Sipos Zsolti", phone: "", note: "Állandó busz: PAK-543", wage: 3000, minShiftMin: 120, availability: [] },
-      { id: "dVIN", name: "Vincze Gábor", phone: "", note: "Állandó busz: PAK-544", wage: 3000, minShiftMin: 120, availability: [] },
-      { id: "dHAB", name: "Habenyák Alex", phone: "", note: "PAK-545, váltásban Csomor Tamással", wage: 3000, minShiftMin: 120, availability: [] },
-      { id: "dCSO", name: "Csomor Tamás", phone: "", note: "PAK-545, váltásban Habenyák Alexszel", wage: 3000, minShiftMin: 120, availability: [] },
-      { id: "dNAG", name: "Nagy Ferenc", phone: "", note: "Állandó busz: PPC-574", wage: 3000, minShiftMin: 120, availability: [] },
-      { id: "dGER", name: "Gera Józsi", phone: "", note: "Állandó busz: PWF-852", wage: 3000, minShiftMin: 120, availability: [] },
-      { id: "dKOL", name: "Kolumbán Józsi", phone: "", note: "Állandó busz: SLP-752", wage: 3000, minShiftMin: 120, availability: [] },
-      { id: "dZAM", name: "Zámbó Zsolti", phone: "", note: "Állandó busz: SLP-753", wage: 3000, minShiftMin: 120, availability: [] },
+      { id: "dSIP", name: "Sipos Zsolti", phone: "", note: "Állandó busz: PAK-543", wage: 3000, minShiftMin: 120, availability: [], preferredVehicleId: "jPAK543" },
+      { id: "dVIN", name: "Vincze Gábor", phone: "", note: "Állandó busz: PAK-544", wage: 3000, minShiftMin: 120, availability: [], preferredVehicleId: "jPAK544" },
+      { id: "dHAB", name: "Habenyák Alex", phone: "", note: "PAK-545, váltásban Csomor Tamással", wage: 3000, minShiftMin: 120, availability: [], preferredVehicleId: "jPAK545" },
+      { id: "dCSO", name: "Csomor Tamás", phone: "", note: "PAK-545, váltásban Habenyák Alexszel", wage: 3000, minShiftMin: 120, availability: [], preferredVehicleId: "jPAK545" },
+      { id: "dNAG", name: "Nagy Ferenc", phone: "", note: "Állandó busz: PPC-574", wage: 3000, minShiftMin: 120, availability: [], preferredVehicleId: "jPPC574" },
+      { id: "dGER", name: "Gera Józsi", phone: "", note: "Állandó busz: PWF-852", wage: 3000, minShiftMin: 120, availability: [], preferredVehicleId: "jPWF852" },
+      { id: "dKOL", name: "Kolumbán Józsi", phone: "", note: "Állandó busz: SLP-752", wage: 3000, minShiftMin: 120, availability: [], preferredVehicleId: "jSLP752" },
+      { id: "dZAM", name: "Zámbó Zsolti", phone: "", note: "Állandó busz: SLP-753", wage: 3000, minShiftMin: 120, availability: [], preferredVehicleId: "jSLP753" },
     ],
     /* Napok: 0=H, 1=K, 2=Sze, 3=Cs, 4=P */
     trainings: [
@@ -191,7 +192,7 @@ function seedState() {
           { id: "x27", stationId: "sZSOM", time: "16:35", count: 5 },
         ] },
     ],
-    settings: { arriveEarlyMin: 10, departAfterMin: 10, calloutFee: 1500, dwellMin: 2, estSpeedKmh: 50, fallbackLegMin: 12 },
+    settings: { arriveEarlyMin: 10, departAfterMin: 10, calloutFee: 1500, dwellMin: 2, estSpeedKmh: 50, fallbackLegMin: 12, preferredBias: 1000 },
     matrix: null,
     assignments: {},
   };
@@ -276,11 +277,23 @@ function findRides(state, training, dayIdx) {
   return state.rides.filter((r) => r.trainingId === training.id && (training.type !== "weekly" || r.day === dayIdx));
 }
 
-/* Fuvar foglaltsági ablaka: első megálló indulása → utolsó megálló + út a helyszínig.
-   Így ugyanaz a sofőr/jármű mehet két kört is ugyanahhoz az edzéshez álütközés nélkül. */
+/* A helyszíni indulás ideje egy VISSZA fuvarnál (edzés vége + ráhagyás). */
+function venueDepartMin(state, training) {
+  return (timeToMin(training.end) ?? 0) + (state.settings?.departAfterMin ?? 0);
+}
+
+/* Fuvar foglaltsági ablaka. ODA: első megálló indulása → utolsó megálló + út a
+   helyszínig (így egy sofőr/jármű több kört is vihet ugyanahhoz az edzéshez
+   álütközés nélkül). VISSZA: helyszíni indulás → utolsó megálló érkezése. */
 function rideWindow(state, ride, training) {
-  const startCap = timeToMin(training.start) ?? 0;
   const stops = (ride.stops || []).filter((s) => timeToMin(s.time) != null);
+  if ((ride.dir || "oda") === "vissza") {
+    const dep = venueDepartMin(state, training);
+    if (!stops.length) return [dep, dep + 1];
+    const last = Math.max(...stops.map((s) => timeToMin(s.time)));
+    return [dep, Math.max(dep + 1, last)];
+  }
+  const startCap = timeToMin(training.start) ?? 0;
   if (!stops.length) return [startCap, startCap];
   const first = Math.min(...stops.map((s) => timeToMin(s.time)));
   const last = stops.reduce((a, b) => (timeToMin(a.time) >= timeToMin(b.time) ? a : b));
@@ -642,7 +655,14 @@ function assignResources(state, weekday, freeChains, fixedUse) {
         if (v.seats < c.maxPax) continue;
         if (used.some((u) => u.vehicleId === v.id && overlaps(u, c))) continue;
         const paid = Math.max(c.end - c.start, d.minShiftMin || 0);
-        opts.push({ d, v, cost: (state.settings.calloutFee || 0) + (paid / 60) * (d.wage || 0) });
+        const base = (state.settings.calloutFee || 0) + (paid / 60) * (d.wage || 0);
+        // Soft preferred-vehicle bias: penalize putting a driver on any bus
+        // other than their preferred one, so the optimizer keeps drivers on
+        // their usual vehicle unless a real constraint (capacity/availability/
+        // contention) or a larger true saving makes it worthwhile.
+        const offPreferred = d.preferredVehicleId && v.id !== d.preferredVehicleId;
+        const bias = offPreferred ? (state.settings.preferredBias || 0) : 0;
+        opts.push({ d, v, cost: base + bias });
       }
     }
     opts.sort((x, y) => x.cost - y.cost || x.v.seats - y.v.seats);
@@ -719,6 +739,53 @@ function dayStats(state, chains) {
     for (const l of c.links) { dead += l.dead; idle += l.idle; }
   }
   return { drivers: ds.size, chains: chains.length, paidMin: paid, dead, idle, cost: Math.round(cost) };
+}
+
+/* A beosztás láncaiból tényleges fuvarokat készít: minden feladat (ODA/VISSZA)
+   egy fuvar, a feladat menetrendje (plan) adja a megállók idejét. Így a beosztás
+   a Hét és a Sofőr nézetben is megjelenik. */
+function ridesFromChains(state, weekday, chains) {
+  const out = [];
+  for (const ch of chains || []) {
+    for (const t of ch.tasks || []) {
+      const tr = byId(state.trainings, t.trainingId);
+      if (!tr) continue;
+      out.push({
+        id: uid(),
+        trainingId: t.trainingId,
+        day: tr.type === "weekly" ? weekday : null,
+        date: tr.type === "once" ? tr.date : null,
+        vehicleId: ch.vehicleId || "",
+        driverId: ch.driverId || "",
+        dir: t.dir,
+        source: "schedule",
+        stops: (t.plan || []).map((s) => ({
+          id: uid(), stationId: s.stationId, time: minToTime(s.arr),
+          count: Number(s.count) > 0 ? s.count : "",
+        })),
+      });
+    }
+  }
+  return out;
+}
+
+/* Igaz, ha az adott fuvar az adott hétköznap érintett feladataihoz tartozik
+   (ezeket cseréli le a beosztásból való fuvargenerálás). */
+function rideBelongsToDay(state, ride, weekday, affectedTrainingIds) {
+  if (!affectedTrainingIds.has(ride.trainingId)) return false;
+  const tr = byId(state.trainings, ride.trainingId);
+  if (!tr) return false;
+  return tr.type === "weekly" ? ride.day === weekday : true;
+}
+
+/* Az adott napra érintett edzések összes fuvarját lecseréli a beosztás
+   láncaiból generáltakra (a felhasználó választása szerint a nap teljes
+   fuvarkészletét a beosztás adja). */
+function withGeneratedRides(state, weekday, weekMon, chains) {
+  const { tasks } = genDayTasks(state, weekday, weekMon);
+  const affected = new Set(tasks.map((t) => t.trainingId));
+  const kept = state.rides.filter((r) => !rideBelongsToDay(state, r, weekday, affected));
+  return [...kept, ...ridesFromChains(state, weekday, chains)];
 }
 
 /* A napi optimalizálás fő belépési pontja */
@@ -857,7 +924,7 @@ const CSS = `
 .chip:focus-visible{outline:2px solid var(--acc);outline-offset:2px;}
 .plate{display:inline-flex;align-items:stretch;border:1.5px solid var(--ink);border-radius:5px;overflow:hidden;background:#fff;line-height:1;}
 .plate i{background:#1B44A8;color:#fff;font-style:normal;font-size:9px;display:flex;align-items:flex-end;padding:2px 3px;font-weight:700;}
-.plate b{font-family:'Barlow Condensed',sans-serif;font-weight:600;letter-spacing:.08em;padding:3px 6px 2px;font-size:14px;}
+.plate b{font-family:'Barlow Condensed',sans-serif;font-weight:600;letter-spacing:.08em;padding:3px 6px 2px;font-size:14px;color:var(--ink);}
 .rail{position:relative;}
 .rail::before{content:'';position:absolute;left:8px;top:14px;bottom:14px;width:2px;background:var(--line);}
 .rail-row{position:relative;padding-left:30px;}
@@ -1370,18 +1437,21 @@ function OccCard({ state, occ, onOpen }) {
           const vehicle = byId(state.vehicles, ride.vehicleId);
           const driver = byId(state.drivers, ride.driverId);
           const conflicts = findConflicts(state, ride);
+          const dir = ride.dir || "oda";
           const firstStop = ride.stops.length
             ? ride.stops.reduce((a, b) => ((timeToMin(a.time) ?? 9999) <= (timeToMin(b.time) ?? 9999) ? a : b))
             : null;
+          const depTime = dir === "vissza" ? minToTime(venueDepartMin(state, training)) : (firstStop?.time || null);
           const pax = seatSum(ride.stops);
           const over = vehicle && pax > vehicle.seats;
           return (
             <div key={ride.id} className="flex items-center gap-2 mt-2 flex-wrap">
+              <span className={`dirpill ${dir === "vissza" ? "v" : ""}`}>{dir === "oda" ? "ODA" : "VISSZA"}</span>
               {vehicle && <PlateChip plate={vehicle.plate} />}
               <span className="text-sm font-medium truncate">{driver?.name || "?"}</span>
-              {firstStop && firstStop.time && (
+              {depTime && (
                 <span className="text-sm tnum flex items-center gap-1" style={{ color: "var(--ink2)" }}>
-                  <Clock size={14} /> indulás {firstStop.time}
+                  <Clock size={14} /> {dir === "vissza" ? "indulás a helyszínről" : "indulás"} {depTime}
                 </span>
               )}
               {conflicts.length > 0 && <span className="pill pill-conf disp"><AlertTriangle size={12} /> ÜTKÖZÉS</span>}
@@ -1838,6 +1908,12 @@ function MasterForm({ kind, state, entity, onSave, onCancel }) {
       {kind === "drivers" && (
         <>
           <Field label="Telefonszám"><input type="tel" className="inp" value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} placeholder="+36 30 …" /></Field>
+          <Field label="Preferált jármű" hint="Ha megadod, az optimalizáló ehhez a sofőrhöz ezt a járművet részesíti előnyben (nem kötelező érvényű).">
+            <select className="inp" value={f.preferredVehicleId || ""} onChange={(e) => setF({ ...f, preferredVehicleId: e.target.value || null })}>
+              <option value="">— nincs —</option>
+              {state.vehicles.map((v) => <option key={v.id} value={v.id}>{v.name} ({v.plate})</option>)}
+            </select>
+          </Field>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Órabér (Ft/óra)">
               <input type="number" min="0" className="inp" value={f.wage ?? ""} onChange={(e) => setF({ ...f, wage: e.target.value })} />
@@ -1943,7 +2019,7 @@ function RideEditor({ state, update, training, dayIdx, dateISO, onBack }) {
             const d = byId(state.drivers, r.driverId);
             return (
               <button key={r.id} className={`chip ${i === idx ? "on" : ""}`} onClick={() => setSelIdx(i)}>
-                {i + 1}. fuvar{d ? ` · ${d.name}` : ""}
+                {i + 1}. fuvar{(r.dir || "oda") === "vissza" ? " · VISSZA" : ""}{d ? ` · ${d.name}` : ""}
               </button>
             );
           })}
@@ -2039,11 +2115,15 @@ function RideForm({ state, update, training, dayIdx, dateISO, existing, onBack }
       <div className="card p-3 mb-4 flex gap-3 overflow-hidden">
         <div style={{ width: 6, background: team?.color || "#999", borderRadius: 3, flexShrink: 0 }} aria-hidden />
         <div className="min-w-0">
-          <div className="font-semibold">{team?.name}</div>
+          <div className="font-semibold flex items-center gap-2">
+            {draft.dir && <span className={`dirpill ${draft.dir === "vissza" ? "v" : ""}`}>{draft.dir === "oda" ? "ODA" : "VISSZA"}</span>}
+            {team?.name}
+          </div>
           <div className="tnum text-lg">{DAYS[dayIdx]} · {training.start}–{training.end}</div>
           <div className="text-sm flex items-center gap-1" style={{ color: "var(--ink2)" }}>
             <MapPin size={14} /> {venue?.name} <span>· {fmtDateFull(dateISO)}</span>
           </div>
+          {draft.source === "schedule" && <div className="text-xs mt-1" style={{ color: "var(--ink2)" }}>Beosztásból generált fuvar — kézi módosítás után az újragenerálás felülírja.</div>}
         </div>
       </div>
 
@@ -2353,7 +2433,7 @@ function ProposalModal({ state, before, out, onApply, onClose }) {
         <button className="btn btn-pri flex-1" onClick={onApply}>Alkalmazás</button>
         <button className="btn btn-ghost" onClick={onClose}>Mégse</button>
       </div>
-      <p className="text-xs mt-2" style={{ color: "var(--ink2)" }}>A zárolt feladatok hozzárendelését az optimalizálás megőrizte.</p>
+      <p className="text-xs mt-2" style={{ color: "var(--ink2)" }}>A zárolt feladatok hozzárendelését az optimalizálás megőrizte. Az alkalmazás a menetrendet fuvarokként is rögzíti (a nap addigi fuvarjait lecseréli).</p>
     </Modal>
   );
 }
@@ -2366,6 +2446,7 @@ function ScheduleScreen({ state, update }) {
   const [showSettings, setShowSettings] = useState(false);
   const [busyMx, setBusyMx] = useState(false);
   const [msg, setMsg] = useState("");
+  const [confirmGen, setConfirmGen] = useState(false);
 
   const res = useMemo(() => resolveDay(state, weekday, weekMon), [state, weekday]);
   const curStats = useMemo(() => dayStats(state, res.chains), [state, res]);
@@ -2399,8 +2480,18 @@ function ScheduleScreen({ state, update }) {
           })),
         },
       },
+      rides: withGeneratedRides(s, weekday, weekMon, out.chains),
     }));
     setProposal(null);
+    setMsg("A beosztás alkalmazva és a menetrend rögzítve — a fuvarok a Hét és a Sofőr nézetben is megjelennek.");
+  };
+
+  /* Fuvarok (újra)generálása a jelenlegi napi beosztásból, kézi módosítások után. */
+  const rideCount = res.chains.reduce((a, c) => a + c.tasks.length, 0);
+  const doGenerate = () => {
+    update((s) => ({ ...s, rides: withGeneratedRides(s, weekday, weekMon, res.chains) }));
+    setConfirmGen(false);
+    setMsg(`${rideCount} fuvar rögzítve a beosztásból — a Hét és a Sofőr nézetben megjelennek.`);
   };
 
   const toggleLock = (taskId) => update((s) => ({
@@ -2450,6 +2541,7 @@ function ScheduleScreen({ state, update }) {
             <Field label="Megállónkénti idő (perc)"><input type="number" className="inp" value={state.settings.dwellMin} onChange={(e) => setSetting("dwellMin", Number(e.target.value) || 0)} /></Field>
             <Field label="Becsült sebesség (km/h)"><input type="number" className="inp" value={state.settings.estSpeedKmh} onChange={(e) => setSetting("estSpeedKmh", Number(e.target.value) || 1)} /></Field>
             <Field label="Alap üresjárat adat híján (perc)"><input type="number" className="inp" value={state.settings.fallbackLegMin} onChange={(e) => setSetting("fallbackLegMin", Number(e.target.value) || 0)} /></Field>
+            <Field label="Preferált jármű súlya (Ft)" hint="Mennyire ragaszkodjon a sofőr saját buszához. 0 = kikapcsolva."><input type="number" className="inp" value={state.settings.preferredBias} onChange={(e) => setSetting("preferredBias", Number(e.target.value) || 0)} /></Field>
           </div>
         </div>
       )}
@@ -2470,6 +2562,12 @@ function ScheduleScreen({ state, update }) {
       <div className="flex gap-2 mb-2 flex-wrap">
         <button className="btn btn-pri flex-1" onClick={doOptimize}><Zap size={16} /> Beosztás optimalizálása</button>
         <button className="btn btn-ghost" onClick={doMatrix} disabled={busyMx}><Table size={16} /> {busyMx ? "Számítás…" : "Mátrix"}</button>
+      </div>
+      <div className="flex gap-2 mb-2">
+        <button className="btn btn-ghost flex-1" onClick={() => setConfirmGen(true)} disabled={rideCount === 0}
+          title={rideCount === 0 ? "Előbb rendelj feladatokat láncokba (optimalizálás vagy kézi áthelyezés)." : ""}>
+          <ClipboardCheck size={16} /> Fuvarok generálása a beosztásból
+        </button>
       </div>
       <p className="text-xs mb-3 px-1" style={{ color: "var(--ink2)" }}>
         {state.matrix
@@ -2508,6 +2606,27 @@ function ScheduleScreen({ state, update }) {
       {proposal && (
         <ProposalModal state={state} before={proposal.before} out={proposal.out}
           onApply={applyProposal} onClose={() => setProposal(null)} />
+      )}
+      {confirmGen && (
+        <Modal title="Fuvarok generálása" onClose={() => setConfirmGen(false)}>
+          <p className="text-sm mb-2">
+            A(z) <b>{DAYS[weekday]}</b> napra a beosztás <b>{res.chains.length}</b> láncából{" "}
+            <b>{rideCount}</b> fuvar készül (ODA és VISSZA irány külön).
+          </p>
+          <div className="banner banner-warn mb-2" style={{ display: "block" }}>
+            <div className="flex items-center gap-2 mb-1"><AlertTriangle size={15} /><b>Figyelem</b></div>
+            Ezen a napon az érintett edzések <b>összes eddigi fuvarja lecserélődik</b> (a kézzel felvett fuvarok is), a beosztás lesz az egyetlen forrás.
+          </div>
+          {res.unassigned.length > 0 && (
+            <p className="text-sm mb-2" style={{ color: "var(--danger)" }}>
+              {res.unassigned.length} feladat még fedetlen — ezekhez nem készül fuvar.
+            </p>
+          )}
+          <div className="flex gap-2 mt-3">
+            <button className="btn btn-pri flex-1" onClick={doGenerate}><ClipboardCheck size={16} /> Fuvarok rögzítése</button>
+            <button className="btn btn-ghost" onClick={() => setConfirmGen(false)}>Mégse</button>
+          </div>
+        </Modal>
       )}
     </div>
   );
@@ -2560,14 +2679,50 @@ function DriverScreen({ state }) {
           const venue = byId(state.venues, training.venueId);
           const vehicle = byId(state.vehicles, ride.vehicleId);
           const isToday = dateISO === todayISO;
+          const dir = ride.dir || "oda";
           const nextIdx = isToday ? ride.stops.findIndex((s) => (timeToMin(s.time) ?? 0) >= nowMin) : -1;
           const pax = seatSum(ride.stops);
+          const stopRows = ride.stops.map((s, i) => {
+            const st = byId(state.stations, s.stationId);
+            const past = isToday && (timeToMin(s.time) ?? 0) < nowMin && i !== nextIdx;
+            const isNext = i === nextIdx;
+            return (
+              <div key={s.id} className="rail-row" style={past ? { opacity: 0.45 } : {}}>
+                <span className={`rail-dot ${isNext ? "next" : ""}`} aria-hidden />
+                <div className="flex items-baseline gap-3 flex-wrap">
+                  <span className="tnum" style={{ fontSize: 28, lineHeight: 1 }}>{s.time || "–:–"}</span>
+                  <span className="font-semibold" style={{ fontSize: 19 }}>{st?.name || "?"}</span>
+                  {Number(s.count) > 0 && <span className="text-base" style={{ color: "var(--ink2)" }}>{s.count} fő</span>}
+                  {isNext && <span className="pill pill-miss disp">KÖVETKEZŐ</span>}
+                </div>
+                {st?.address && <div className="text-sm mt-1" style={{ color: "var(--ink2)" }}>{st.address}</div>}
+              </div>
+            );
+          });
+          const venueRow = (
+            <div className="rail-row" key="__venue">
+              <span className="rail-dot dest" aria-hidden />
+              <div className="flex items-baseline gap-3 flex-wrap">
+                <span className="tnum" style={{ fontSize: 28, lineHeight: 1, color: "var(--ok)" }}>
+                  {dir === "vissza" ? minToTime(venueDepartMin(state, training)) : training.start}
+                </span>
+                <span className="font-semibold" style={{ fontSize: 19 }}>{venue?.name}</span>
+              </div>
+              <div className="text-sm mt-1" style={{ color: "var(--ink2)" }}>
+                {venue?.address ? `${venue.address} · ` : ""}
+                {dir === "vissza" ? "innen indul a hazaszállítás" : "eddigre kell a helyszínen lenni"}
+              </div>
+            </div>
+          );
           return (
             <div key={ride.id} className="card overflow-hidden">
               <div className="p-3 flex items-center gap-3" style={{ background: "var(--ink)", color: "#fff" }}>
                 <TeamDot color={team?.color || "#999"} size={14} />
                 <div className="flex-1 min-w-0">
-                  <div className="disp text-lg truncate">{team?.name}</div>
+                  <div className="disp text-lg truncate flex items-center gap-2">
+                    <span className={`dirpill ${dir === "vissza" ? "v" : ""}`} style={dir === "vissza" ? { borderColor: "#fff", background: "#fff", color: "var(--ink)" } : { borderColor: "#fff", color: "#fff" }}>{dir === "oda" ? "ODA" : "VISSZA"}</span>
+                    <span className="truncate">{team?.name}</span>
+                  </div>
                   <div className="text-sm" style={{ color: "#B9C0CC" }}>edzés {training.start}–{training.end}</div>
                 </div>
                 {vehicle && <div className="text-right">
@@ -2576,33 +2731,7 @@ function DriverScreen({ state }) {
                 </div>}
               </div>
               <div className="rail p-4 flex flex-col" style={{ gap: 18 }}>
-                {ride.stops.map((s, i) => {
-                  const st = byId(state.stations, s.stationId);
-                  const past = isToday && (timeToMin(s.time) ?? 0) < nowMin && i !== nextIdx;
-                  const isNext = i === nextIdx;
-                  return (
-                    <div key={s.id} className="rail-row" style={past ? { opacity: 0.45 } : {}}>
-                      <span className={`rail-dot ${isNext ? "next" : ""}`} aria-hidden />
-                      <div className="flex items-baseline gap-3 flex-wrap">
-                        <span className="tnum" style={{ fontSize: 28, lineHeight: 1 }}>{s.time || "–:–"}</span>
-                        <span className="font-semibold" style={{ fontSize: 19 }}>{st?.name || "?"}</span>
-                        {Number(s.count) > 0 && <span className="text-base" style={{ color: "var(--ink2)" }}>{s.count} fő</span>}
-                        {isNext && <span className="pill pill-miss disp">KÖVETKEZŐ</span>}
-                      </div>
-                      {st?.address && <div className="text-sm mt-1" style={{ color: "var(--ink2)" }}>{st.address}</div>}
-                    </div>
-                  );
-                })}
-                <div className="rail-row">
-                  <span className="rail-dot dest" aria-hidden />
-                  <div className="flex items-baseline gap-3 flex-wrap">
-                    <span className="tnum" style={{ fontSize: 28, lineHeight: 1, color: "var(--ok)" }}>{training.start}</span>
-                    <span className="font-semibold" style={{ fontSize: 19 }}>{venue?.name}</span>
-                  </div>
-                  <div className="text-sm mt-1" style={{ color: "var(--ink2)" }}>
-                    {venue?.address ? `${venue.address} · ` : ""}eddigre kell a helyszínen lenni
-                  </div>
-                </div>
+                {dir === "vissza" ? [venueRow, ...stopRows] : [...stopRows, venueRow]}
                 {ride.stops.length === 0 && <div className="text-sm" style={{ color: "var(--ink2)" }}>Ehhez a fuvarhoz még nincsenek megállók megadva.</div>}
               </div>
             </div>

@@ -1,31 +1,25 @@
 #!/usr/bin/env bash
 #
-# run-local.sh — set up and run Fuvarterv (fuvarterv.jsx) on http://localhost:5173/
+# run-local.sh — set up and run Fuvarterv on http://localhost:5173/
 #
 # Does everything needed, without root:
 #   1. Installs Node.js 22 LTS into ~/.local (only if a suitable node is missing).
-#   2. Scaffolds a Vite project in ./.devserver that wraps fuvarterv.jsx
-#      (App.jsx is a symlink to the real file, so edits hot-reload).
-#   3. npm install, then starts the dev server.
+#   2. npm install + starts the Vite dev server for the committed root project.
 #
-# Re-running is safe: existing steps are skipped. Pass --reinstall to rebuild
-# the scaffold from scratch. Ctrl-C stops the server.
+# The project is now a normal committed Vite app (package.json, src/, index.html);
+# App source is fuvarterv.jsx at the repo root. Persistence + login are handled by
+# Supabase — copy .env.example to .env and fill in your project's URL and anon key
+# (see README). Ctrl-C stops the server.
 
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-APP="$REPO/.devserver"
 PORT="${PORT:-5173}"
 NODE_MAJOR=22
 LOCAL="$HOME/.local"
 export PATH="$LOCAL/bin:$PATH"
 
 log() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
-
-if [[ "${1:-}" == "--reinstall" ]]; then
-  log "Removing existing scaffold ($APP)"
-  rm -rf "$APP"
-fi
 
 # ---------------------------------------------------------------------------
 # 1. Node.js (no root; prebuilt tarball into ~/.local)
@@ -62,125 +56,15 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 2. Scaffold the Vite project (wraps fuvarterv.jsx)
+# 2. Install deps + run
 # ---------------------------------------------------------------------------
-if [[ ! -f "$APP/package.json" ]]; then
-  log "Scaffolding Vite project in $APP"
-  mkdir -p "$APP/src"
+cd "$REPO"
 
-  # App.jsx -> the real source file, so edits hot-reload.
-  ln -sf "$REPO/fuvarterv.jsx" "$APP/src/App.jsx"
-
-  cat > "$APP/package.json" <<'JSON'
-{
-  "name": "fuvarterv-dev",
-  "private": true,
-  "version": "0.0.0",
-  "type": "module",
-  "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview"
-  },
-  "dependencies": {
-    "lucide-react": "^0.469.0",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1"
-  },
-  "devDependencies": {
-    "@tailwindcss/vite": "^4.0.0",
-    "@vitejs/plugin-react": "^4.3.4",
-    "tailwindcss": "^4.0.0",
-    "vite": "^6.0.0"
-  }
-}
-JSON
-
-  cat > "$APP/vite.config.js" <<'JS'
-import { defineConfig } from "vite";
-import react from "@vitejs/plugin-react";
-import tailwindcss from "@tailwindcss/vite";
-
-export default defineConfig({
-  plugins: [react(), tailwindcss()],
-  // App.jsx is a symlink to the repo's fuvarterv.jsx. preserveSymlinks keeps
-  // module resolution anchored at src/ so bare imports (react, lucide-react)
-  // resolve from this project's node_modules instead of the repo dir.
-  resolve: { preserveSymlinks: true },
-  optimizeDeps: { include: ["react", "react-dom", "react-dom/client", "lucide-react"] },
-  server: { host: true, fs: { allow: ["."], strict: false } },
-});
-JS
-
-  cat > "$APP/index.html" <<'HTML'
-<!doctype html>
-<html lang="hu">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <title>Fuvarterv</title>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.jsx"></script>
-  </body>
-</html>
-HTML
-
-  cat > "$APP/src/index.css" <<'CSS'
-@import "tailwindcss";
-CSS
-
-  cat > "$APP/src/main.jsx" <<'JSX'
-import React from "react";
-import { createRoot } from "react-dom/client";
-import "./index.css";
-
-// The app uses the Claude artifact `window.storage` API for persistence.
-// In a regular browser, back it with localStorage (see README).
-if (!window.storage) {
-  window.storage = {
-    async get(key) {
-      const value = localStorage.getItem(key);
-      if (value === null) throw new Error("key not found");
-      return { key, value };
-    },
-    async set(key, value) {
-      localStorage.setItem(key, value);
-      return { key, value };
-    },
-    async delete(key) {
-      localStorage.removeItem(key);
-      return { key, deleted: true };
-    },
-    async list(prefix = "") {
-      return { keys: Object.keys(localStorage).filter((k) => k.startsWith(prefix)) };
-    },
-  };
-}
-
-import App from "./App.jsx";
-
-createRoot(document.getElementById("root")).render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
-);
-JSX
-
-  # Keep the scaffold out of git.
-  cat > "$APP/.gitignore" <<'GI'
-*
-GI
-else
-  log "Scaffold already present ($APP)"
-  ln -sf "$REPO/fuvarterv.jsx" "$APP/src/App.jsx"   # ensure symlink is intact
+if [[ ! -f .env ]]; then
+  log "No .env found — copy .env.example to .env and add your Supabase URL + anon key."
+  log "(The dev server will start, but login/persistence won't work until you do.)"
 fi
 
-# ---------------------------------------------------------------------------
-# 3. Install deps + run
-# ---------------------------------------------------------------------------
-cd "$APP"
 if [[ ! -d node_modules ]]; then
   log "Installing dependencies (npm install)"
   npm install --no-fund --no-audit

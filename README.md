@@ -22,59 +22,34 @@ The app is a single React file (`fuvarterv.jsx`), originally built as a Claude a
 - **Optimizer:** compatibility graph → chaining via min-cost flow (gap × average wage − callout fee) → exact (driver, vehicle) assignment via backtracking search → a local-improvement loop on the true cost function (minimum shifts, differing wages). When a task can't be covered, it explains exactly why (capacity / availability / resource contention).
 - **Conflict handling:** vehicle and driver conflicts are detected from occupancy windows (a bus is free after its last stop plus the leg to the venue — so one driver can run several waves to the same training without false alarms).
 - **Map:** Leaflet + OpenStreetMap, lazy-loaded; Nominatim address search; if the environment blocks tile loading, it switches to a built-in offline SVG map showing your existing points; coordinates can also be pasted manually (Google Maps format, decimal commas accepted).
-- **Persistence:** all data is saved to a key-value store (see the shim below).
+- **Persistence:** all data is saved to a **Supabase** table as a single JSON blob, behind an email + password login. In the Claude artifact preview the app still uses the sandbox's `window.storage`; the committed Vite project swaps in a Supabase-backed implementation of the same key-value contract (`src/supabaseStorage.js`).
+
+## Supabase setup (one time)
+
+1. Create a Supabase project; from **Settings → API** copy the **Project URL** and the **publishable** (anon) key.
+2. In the **SQL editor**, run [`supabase/migrations/0001_app_state.sql`](supabase/migrations/0001_app_state.sql) — it creates the `app_state` table and the RLS policies (authenticated users only).
+3. **Create your login(s):** the app uses email + password (no public sign-up). Add each staff member under **Authentication → Users → Add user**, set a password, and enable **Auto Confirm User**. No emails are sent.
 
 ## Running locally
 
-The app uses the Claude artifact environment's `window.storage` API for persistence — in a regular browser a ~10-line localStorage shim replaces it.
+The project is a normal committed Vite app; the app source is `fuvarterv.jsx` at the repo root (imported by `src/main.jsx`). `src/AuthGate.jsx` renders the login screen and installs the Supabase-backed `window.storage`.
 
 ```bash
-npm create vite@latest fuvarterv -- --template react
-cd fuvarterv
-npm i lucide-react
-npm i -D tailwindcss @tailwindcss/vite
+cp .env.example .env      # then fill in VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY
+./run-local.sh            # bootstraps Node if needed, npm install, npm run dev
+# or, if you already have Node 18+:
+npm install && npm run dev
 ```
 
-`vite.config.js` — Tailwind v4 plugin:
+Open http://localhost:5173, sign in with a user you created in step 3 above, and you're in. The first save seeds the shared workspace from `seedState()`.
 
-```js
-import { defineConfig } from "vite";
-import react from "@vitejs/plugin-react";
-import tailwindcss from "@tailwindcss/vite";
+## Deploy (Vercel)
 
-export default defineConfig({ plugins: [react(), tailwindcss()] });
-```
+1. Import the repo into Vercel — the **Vite** preset is auto-detected (build `npm run build`, output `dist`).
+2. Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` under **Settings → Environment Variables** (Production **and** Preview). Both are browser-safe; RLS protects the data.
+3. `vercel.json` already adds the SPA catch-all rewrite so deep links / refreshes resolve to the app.
 
-`src/index.css`:
-
-```css
-@import "tailwindcss";
-```
-
-Copy `fuvarterv.jsx` to `src/App.jsx` (it has a default export), then add the storage shim to the top of `src/main.jsx`, **before** the render call:
-
-```js
-if (!window.storage) {
-  window.storage = {
-    async get(key) {
-      const value = localStorage.getItem(key);
-      if (value === null) throw new Error("key not found");
-      return { key, value };
-    },
-    async set(key, value) { localStorage.setItem(key, value); return { key, value }; },
-    async delete(key) { localStorage.removeItem(key); return { key, deleted: true }; },
-    async list(prefix = "") {
-      return { keys: Object.keys(localStorage).filter((k) => k.startsWith(prefix)) };
-    },
-  };
-}
-```
-
-```bash
-npm run dev
-```
-
-Build and deploy as usual (`npm run build` → Vercel / Netlify / any static host). When deployed, the full OSM map, the Nominatim search and the OSRM matrix all work — inside the artifact preview these are restricted by CSP, which is what the fallbacks are for.
+When deployed, the full OSM map, the Nominatim search and the OSRM matrix all work — inside the artifact preview these are restricted by CSP, which is what the fallbacks are for.
 
 ## Architecture
 
@@ -110,7 +85,7 @@ One file, but with marked layers (the file header documents the same split plan)
 ## Known limitations, roadmap
 
 - **Task splitting:** real team sizes (10–14 kids) exceed the 8-seat buses. When a team's headcount is larger than the biggest vehicle, the optimizer now partitions the task across multiple buses **by stop** — each stop's whole headcount goes to one bus, packed into the fewest buses (first-fit-decreasing) that each fit within capacity. Every partition is an independent, parallel run to the same venue with its own optimal route and timetable, and the optimizer assigns a distinct driver+vehicle to each. Splitting only happens when per-stop headcounts are known; a single stop larger than every vehicle (or a team with only a total headcount and no per-stop breakdown) still can't be split and is reported with an exact reason.
-- Manual rides and optimized tasks are two parallel layers; syncing them (generating rides from an applied schedule) is planned.
+- **Schedule → rides sync (done):** applying an optimizer proposal (or the **Fuvarok generálása a beosztásból** button on the Beosztás screen) now materializes the schedule chains into real `rides` — one ride per task, both ODA and VISSZA, direction stored on the ride (`dir`) and tagged `source: "schedule"`. Generated rides show up in the Hét and Sofőr views (return rides render venue→stops, outbound stops→venue) and feed conflict detection. Generation replaces every ride of the day's affected trainings (schedule becomes the single source), so manual edits to a generated ride are overwritten on the next regeneration.
 - Sample-data coordinates are accurate to ~100–200 m; two points ("Szeged, Petőfi iskola", "Újszeged Gellért") are explicitly marked for refinement on the map.
 - No headcount data exists for the NB2 team in the source documents.
 - The weekly schedule is a per-weekday template; chains never cross days.
