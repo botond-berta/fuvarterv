@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { supabase, isConfigured, WORKSPACE_ID } from "./supabaseClient.js";
 import { supabaseStorage } from "./supabaseStorage.js";
 import RestorePanel from "./RestorePanel.jsx";
+import ErrorBoundary from "./ErrorBoundary.jsx";
 import "./theme.css";
 
 // Install the Supabase-backed KV store the app expects. Assigned at import time
@@ -268,7 +269,9 @@ export default function AuthGate({ children }) {
       {stale && <StaleOverlay onReload={() => window.location.reload()} />}
       {saveError && !stale && <SaveErrorToast onDismiss={() => setSaveError(false)} />}
       {showRestore && <RestorePanel onClose={() => setShowRestore(false)} />}
-      {children}
+      {/* A határ a shellen BELÜL van, hogy egy képernyő-hiba után a korábbi
+          mentések és a kijelentkezés még elérhető maradjon. */}
+      <ErrorBoundary>{children}</ErrorBoundary>
     </>
   );
 }

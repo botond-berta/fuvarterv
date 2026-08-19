@@ -16,7 +16,7 @@ import {
   CalendarDays, Boxes, Car, Plus, Minus, Pencil, Trash2,
   ChevronLeft, ChevronRight, GripVertical, ArrowUp, ArrowDown,
   AlertTriangle, MapPin, Clock, X, Flag, ChevronsRight, Search,
-  Lock, Unlock, Zap, Workflow, ArrowLeftRight, Settings2, Table, ChevronDown, ChevronUp,
+  Lock, Unlock, Zap, Workflow, ArrowLeftRight, Settings2, Table,
   ClipboardCheck, HelpCircle, RotateCcw, LogOut,
 } from "lucide-react";
 
@@ -332,8 +332,11 @@ function rideWindow(state, ride, training) {
 
 function occursOnSameDay(rA, tA, rB, tB) {
   if (tA.type === "once" && tB.type === "once") return tA.date === tB.date;
-  const dayA = tA.type === "weekly" ? rA.day : weekdayIdx(tA.date);
-  const dayB = tB.type === "weekly" ? rB.day : weekdayIdx(tB.date);
+  // Dátum nélküli egyszeri edzés nem helyezhető el a héten — a weekdayIdx(null)
+  // korábban TypeError-t dobott innen, a Hét képernyő renderelése közben.
+  const dayOf = (t, r) => (t.type === "weekly" ? r.day : (t.date ? weekdayIdx(t.date) : null));
+  const dayA = dayOf(tA, rA), dayB = dayOf(tB, rB);
+  if (dayA == null || dayB == null) return false;
   return dayA === dayB;
 }
 
@@ -629,11 +632,29 @@ function teamPax(team) {
   return Math.max(sum, Number(team.passengerCount) || 0);
 }
 
+/* Elérhető-e a sofőr a teljes [startMin, endMin] sávban az adott hétköznapon?
+   Az egymáshoz érő vagy átfedő ablakok ÖSSZEÁLLNAK: a 15:00–17:00 és a
+   17:00–19:00 együtt lefed egy 15:00–19:00-s műszakot. Korábban egyetlen
+   ablaknak kellett önmagában tartalmaznia a sávot, így egy ilyen sofőr
+   indoklás nélkül kiesett a napból. A hiányos (kezdet vagy vég nélküli)
+   ablakokat figyelmen kívül hagyjuk — azok korábban némán egész napra
+   elérhetetlenné tették a sofőrt. */
 function driverAvailableFor(driver, weekday, startMin, endMin) {
   const ws = driver.availability || [];
   if (!ws.length) return true; // nincs megadva → bármikor elérhető
-  return ws.some((w) => (w.days || []).includes(weekday)
-    && timeToMin(w.start) <= startMin && endMin <= timeToMin(w.end));
+  const spans = ws
+    .filter((w) => (w.days || []).includes(weekday))
+    .map((w) => [timeToMin(w.start), timeToMin(w.end)])
+    .filter(([a, b]) => a != null && b != null && b > a)
+    .sort((x, y) => x[0] - y[0]);
+  if (!spans.length) return false;
+  let [lo, hi] = spans[0];
+  for (const [a, b] of spans.slice(1)) {
+    if (a <= hi) { hi = Math.max(hi, b); continue; }   // érintkező/átfedő → összeolvad
+    if (lo <= startMin && endMin <= hi) return true;
+    [lo, hi] = [a, b];
+  }
+  return lo <= startMin && endMin <= hi;
 }
 
 /* Lánc nézetmodell: rendezett feladatok + átkötések (üresjárat, várakozás) */
@@ -648,7 +669,12 @@ function mkChain(state, ts, extra = {}) {
   }
   return {
     ...extra, tasks, links,
-    start: tasks[0].start, end: tasks[tasks.length - 1].end,
+    /* A lánc vége a LEGKÉSŐBBI befejezés, nem az utolsóként induló feladaté. Egy
+       beágyazott feladat (15:00–19:00 mellett 15:30–16:00) különben 16:00-ra
+       rövidítené a láncot, és ezzel elrontaná a rendelkezésre állást, az
+       ütközésvizsgálatot és a fizetett idő számítását is. */
+    start: Math.min(...tasks.map((t) => t.start)),
+    end: Math.max(...tasks.map((t) => t.end)),
     maxPax: Math.max(...tasks.map((t) => t.pax)),
   };
 }
@@ -665,7 +691,9 @@ function minCostChains(n, edges) {
   };
   for (let i = 0; i < n; i++) { addEdge(S, i, 1, 0); addEdge(n + i, T, 1, 0); }
   for (const e of edges) addEdge(e.a, n + e.b, 1, e.cost);
-  while (true) {
+  // Biztonsági korlát: legfeljebb n javító út létezhet (minden út egy feladatot
+  // köt be), a ciklus enélkül egy elfajult reziduális gráfon megállás nélkül futna.
+  for (let guard = 0; guard <= n; guard++) {
     const dist = Array(NN).fill(Infinity), inq = Array(NN).fill(false), pre = Array(NN).fill(-1);
     dist[S] = 0; const q = [S]; inq[S] = true;
     while (q.length) {
@@ -688,9 +716,21 @@ function minCostChains(n, edges) {
       const e = g[ei];
       if (ei % 2 === 0 && e.v >= n && e.v < 2 * n && e.cap === 0) { succ[u] = e.v - n; pred[e.v - n] = u; }
     }
+  /* Láncok kiolvasása. Minden feladatnak PONTOSAN egy láncba kell kerülnie: ha a
+     succ/pred körré záródna (elfajult, nulla vagy negatív hosszú feladatablakok
+     esetén lehetséges), a régi "csak pred === -1 indít láncot" szabály mellett a
+     kör összes feladata némán eltűnt — se láncban, se a fedetlenek közt. A
+     `seen` halmaz garantálja, hogy minden index pontosan egyszer szerepel. */
   const chains = [];
-  for (let i = 0; i < n; i++)
-    if (pred[i] === -1) { const seq = [i]; let c = i; while (succ[c] !== -1) { c = succ[c]; seq.push(c); } chains.push(seq); }
+  const seen = new Array(n).fill(false);
+  const walk = (startIdx) => {
+    const seq = [];
+    let c = startIdx;
+    while (c !== -1 && !seen[c]) { seen[c] = true; seq.push(c); c = succ[c]; }
+    if (seq.length) chains.push(seq);
+  };
+  for (let i = 0; i < n; i++) if (pred[i] === -1) walk(i);
+  for (let i = 0; i < n; i++) if (!seen[i]) walk(i);   // körben maradt maradék
   return chains;
 }
 
@@ -825,7 +865,9 @@ function dayStats(state, chains) {
     if (c.driverId) ds.add(c.driverId);
     const p = Math.max(c.end - c.start, d?.minShiftMin || 0);
     paid += p;
-    cost += (state.settings.calloutFee || 0) + (p / 60) * (d?.wage || 0);
+    // Kiszállási díj csak akkor jár, ha tényleg kiszáll valaki: a sofőr nélküli
+    // lánc korábban is 1500 Ft-ot vitt, felfújva a javaslat "előtte" oszlopát.
+    if (d) cost += (state.settings.calloutFee || 0) + (p / 60) * (d.wage || 0);
     for (const l of c.links) { dead += l.dead; idle += l.idle; }
   }
   return { drivers: ds.size, chains: chains.length, paidMin: paid, dead, idle, cost: Math.round(cost) };
@@ -849,8 +891,14 @@ function ridesFromChains(state, weekday, chains) {
         driverId: ch.driverId || "",
         dir: t.dir,
         source: "schedule",
+        /* ODA-nál a megálló ideje az INDULÁS (a felszállás után), VISSZA-nál az
+           ÉRKEZÉS (a leszállás). A generálás korábban mindkét irányban az
+           érkezést írta ki, ezért a Hét nézet ütközésablaka rendszeresen
+           `dwellMin` perccel elcsúszott a beosztáshoz képest, és a kiírt idő sem
+           azt jelentette, amit a fuvarszerkesztő mezője állít. */
         stops: (t.plan || []).map((s) => ({
-          id: uid(), stationId: s.stationId, time: minToTime(s.arr),
+          id: uid(), stationId: s.stationId,
+          time: minToTime(t.dir === "vissza" ? s.arr : s.dep),
           count: Number(s.count) > 0 ? s.count : "",
         })),
       });
@@ -890,7 +938,11 @@ function optimizeDay(state, weekday, weekMon) {
   for (const ch of cur.chains) {
     const lt = ch.tasks.filter((t) => t.locked);
     if (!lt.length) continue;
-    const k = `${ch.driverId}|${ch.vehicleId}`;
+    /* Láncazonosító szerint csoportosítunk, NEM sofőr|jármű szerint. Utóbbi két
+       szándékosan külön műszakot (pl. egy reggelit és egy estit, ugyanazzal a
+       sofőrrel és busszal) egyetlen 07:00–20:00-s lánccá olvasztott, egyetlen
+       kiszállási díjjal — a költségbecslés és a kiírt beosztás is hibás lett. */
+    const k = ch.id || `${ch.driverId}|${ch.vehicleId}`;
     if (!lockedGroups.has(k)) lockedGroups.set(k, { driverId: ch.driverId, vehicleId: ch.vehicleId, tasks: [] });
     lockedGroups.get(k).tasks.push(...lt);
   }
@@ -1112,6 +1164,28 @@ function Field({ label, children, hint }) {
   );
 }
 
+/* Számmező, ami gépelés közben nem ugrál. A nyers `Number(e.target.value) || 0`
+   mintával a mező kiürítése azonnal 0-t (vagy 1-et) írt vissza, így az "50"
+   begépeléséből "150" lett. Itt a gépelt szöveg helyben marad, és csak elhagyáskor
+   (blur / Enter) rögzül számként — érvénytelen bevitelnél az előző érték áll vissza. */
+function NumField({ label, hint, value, min = 0, onCommit }) {
+  const [raw, setRaw] = useState(null);          // null = a mentett érték látszik
+  const commit = () => {
+    const n = Number(raw);
+    if (raw !== null && raw.trim() !== "" && Number.isFinite(n)) onCommit(Math.max(min, n));
+    setRaw(null);
+  };
+  return (
+    <Field label={label} hint={hint}>
+      <input type="number" className="inp" min={min}
+        value={raw ?? value}
+        onChange={(e) => setRaw(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); e.currentTarget.blur(); } }} />
+    </Field>
+  );
+}
+
 function Modal({ title, onClose, children }) {
   const titleId = useRef(`mtitle-${uid()}`).current;
   /* A háttérre kattintás csak akkor zár, ha az egérgomb LENYOMÁSA is a háttéren
@@ -1242,14 +1316,25 @@ function loadLeaflet() {
   if (window.L) return Promise.resolve(window.L);
   if (leafletLoader) return leafletLoader;
   leafletLoader = new Promise((resolve, reject) => {
-    const css = document.createElement("link");
-    css.rel = "stylesheet";
-    css.href = "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css";
-    document.head.appendChild(css);
+    const CSS_ID = "leaflet-css";
+    // Csak egyszer fűzzük be a stíluslapot: újrapróbálkozáskor korábban minden
+    // kísérlet hagyott maga után egy halott <link>-et és egy halott <script>-et.
+    if (!document.getElementById(CSS_ID)) {
+      const css = document.createElement("link");
+      css.id = CSS_ID;
+      css.rel = "stylesheet";
+      css.href = "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css";
+      document.head.appendChild(css);
+    }
     const js = document.createElement("script");
     js.src = "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js";
-    js.onload = () => resolve(window.L);
-    js.onerror = () => { leafletLoader = null; reject(new Error("Leaflet betöltési hiba")); };
+    js.onload = () => {
+      // A script betöltődhet úgy is, hogy a globális L nem jön létre (pl. CSP);
+      // ilyenkor a hívó egyértelmű hibát kapjon, ne egy undefined-ot.
+      if (window.L) resolve(window.L);
+      else { js.remove(); leafletLoader = null; reject(new Error("Leaflet betöltési hiba")); }
+    };
+    js.onerror = () => { js.remove(); leafletLoader = null; reject(new Error("Leaflet betöltési hiba")); };
     document.head.appendChild(js);
   });
   return leafletLoader;
@@ -1969,7 +2054,7 @@ const MASTER_TABS = [
   { key: "drivers", label: "Sofőrök", sing: "sofőr" },
 ];
 
-function MasterScreen({ tab, state, update, resetSeed, notice, setNotice }) {
+function MasterScreen({ tab, state, update, notice, setNotice }) {
   const [form, setForm] = useState(null); // null | {} | entity
   const items = state[tab];
   const meta = MASTER_TABS.find((t) => t.key === tab);
@@ -2014,10 +2099,6 @@ function MasterScreen({ tab, state, update, resetSeed, notice, setNotice }) {
           </div>
         ))}
         {items.length === 0 && <EmptyState>Üres lista. Az <b>Új {meta.sing}</b> gombbal vehetsz fel elemet.</EmptyState>}
-      </div>
-
-      <div className="mt-8 flex justify-center">
-        <DangerBtn label="Mintaadatok visszaállítása" confirmLabel="Minden adat felülíródik!" onConfirm={resetSeed} />
       </div>
 
       {form !== null && (
@@ -2677,6 +2758,7 @@ function ScheduleScreen({ state, update }) {
   const [busyMx, setBusyMx] = useState(false);
   const [msg, setMsg] = useState("");
   const [confirmGen, setConfirmGen] = useState(false);
+  const [busyOpt, setBusyOpt] = useState(false);
 
   const res = useMemo(() => resolveDay(state, weekday, weekMon), [state, weekday]);
   const curStats = useMemo(() => dayStats(state, res.chains), [state, res]);
@@ -2694,8 +2776,17 @@ function ScheduleScreen({ state, update }) {
     setBusyMx(false);
   };
 
-  const doOptimize = () =>
-    setProposal({ out: optimizeDay(state, weekday, weekMon), before: { stats: curStats, uncovered: res.unassigned.length } });
+  /* Az optimalizálás szinkron és a nap méretétől függően pár tized–másfél
+     másodperc; a böngésző addig nem rajzol. Egy képkockányi késleltetéssel
+     előbb kirajzoljuk a "Számítás…" állapotot, hogy a gomb ne tűnjön halottnak. */
+  const doOptimize = () => {
+    setBusyOpt(true);
+    requestAnimationFrame(() => setTimeout(() => {
+      const out = optimizeDay(state, weekday, weekMon);
+      setProposal({ out, before: { stats: curStats, uncovered: res.unassigned.length } });
+      setBusyOpt(false);
+    }, 0));
+  };
 
   const applyProposal = () => {
     const out = proposal.out;
@@ -2768,13 +2859,14 @@ function ScheduleScreen({ state, update }) {
       {showSettings && (
         <div className="card p-3 mb-3">
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Érkezés edzés előtt (perc)"><input type="number" className="inp" value={state.settings.arriveEarlyMin} onChange={(e) => setSetting("arriveEarlyMin", Number(e.target.value) || 0)} /></Field>
-            <Field label="Indulás edzés után (perc)"><input type="number" className="inp" value={state.settings.departAfterMin} onChange={(e) => setSetting("departAfterMin", Number(e.target.value) || 0)} /></Field>
-            <Field label="Kiszállási díj (Ft)"><input type="number" className="inp" value={state.settings.calloutFee} onChange={(e) => setSetting("calloutFee", Number(e.target.value) || 0)} /></Field>
-            <Field label="Megállónkénti idő (perc)"><input type="number" className="inp" value={state.settings.dwellMin} onChange={(e) => setSetting("dwellMin", Number(e.target.value) || 0)} /></Field>
-            <Field label="Becsült sebesség (km/h)"><input type="number" className="inp" value={state.settings.estSpeedKmh} onChange={(e) => setSetting("estSpeedKmh", Number(e.target.value) || 1)} /></Field>
-            <Field label="Alap üresjárat adat híján (perc)"><input type="number" className="inp" value={state.settings.fallbackLegMin} onChange={(e) => setSetting("fallbackLegMin", Number(e.target.value) || 0)} /></Field>
-            <Field label="Preferált jármű súlya (Ft)" hint="Mennyire ragaszkodjon a sofőr saját buszához. 0 = kikapcsolva."><input type="number" className="inp" value={state.settings.preferredBias} onChange={(e) => setSetting("preferredBias", Number(e.target.value) || 0)} /></Field>
+            <NumField label="Érkezés edzés előtt (perc)" value={state.settings.arriveEarlyMin} min={0} onCommit={(v) => setSetting("arriveEarlyMin", v)} />
+            <NumField label="Indulás edzés után (perc)" value={state.settings.departAfterMin} min={0} onCommit={(v) => setSetting("departAfterMin", v)} />
+            <NumField label="Kiszállási díj (Ft)" value={state.settings.calloutFee} min={0} onCommit={(v) => setSetting("calloutFee", v)} />
+            <NumField label="Megállónkénti idő (perc)" value={state.settings.dwellMin} min={0} onCommit={(v) => setSetting("dwellMin", v)} />
+            <NumField label="Becsült sebesség (km/h)" value={state.settings.estSpeedKmh} min={1} onCommit={(v) => setSetting("estSpeedKmh", v)} />
+            <NumField label="Alap üresjárat adat híján (perc)" value={state.settings.fallbackLegMin} min={0} onCommit={(v) => setSetting("fallbackLegMin", v)} />
+            <NumField label="Preferált jármű súlya (Ft)" hint="Mennyire ragaszkodjon a sofőr saját buszához. 0 = kikapcsolva."
+              value={state.settings.preferredBias} min={0} onCommit={(v) => setSetting("preferredBias", v)} />
           </div>
         </div>
       )}
@@ -2793,7 +2885,9 @@ function ScheduleScreen({ state, update }) {
       </div>
 
       <div className="flex gap-2 mb-2 flex-wrap">
-        <button className="btn btn-pri flex-1" onClick={doOptimize}><Zap size={16} /> Beosztás optimalizálása</button>
+        <button className="btn btn-pri flex-1" onClick={doOptimize} disabled={busyOpt}>
+          <Zap size={16} /> {busyOpt ? "Számítás…" : "Beosztás optimalizálása"}
+        </button>
         <button className="btn btn-ghost" onClick={doMatrix} disabled={busyMx}><Table size={16} /> {busyMx ? "Számítás…" : "Mátrix"}</button>
       </div>
       <div className="flex gap-2 mb-2 items-center">
@@ -2872,7 +2966,14 @@ function DriverScreen({ state }) {
   const driverId = byId(state.drivers, selDriverId) ? selDriverId : (state.drivers[0]?.id || "");
   const [dateISO, setDateISO] = useState(() => toISO(new Date()));
   const todayISO = toISO(new Date());
-  const now = new Date();
+  /* Percenként újrarenderelünk: e nélkül a "KÖVETKEZŐ" jelölés és a múltbeli
+     megállók halványítása a képernyő megnyitásának percén ragadt, vagyis a
+     nézet fő funkciója egy letett telefonon sosem lépett tovább. */
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 60000);
+    return () => clearInterval(id);
+  }, []);
   const nowMin = now.getHours() * 60 + now.getMinutes();
 
   const rides = useMemo(() => {
@@ -3001,7 +3102,14 @@ function DataScreen({ state, update, resetSeed, notice, setNotice }) {
       </div>
       {sub === "teams"
         ? <TeamsScreen state={state} update={update} notice={notice} />
-        : <MasterScreen tab={sub} state={state} update={update} resetSeed={resetSeed} notice={notice} setNotice={setNotice} />}
+        : <MasterScreen tab={sub} state={state} update={update} notice={notice} setNotice={setNotice} />}
+
+      {/* Egyszer, az Adatok fül alján — korábban mind a négy törzsadat-alfülön
+          ott volt, vagyis a teljes valós adat felülírása négy helyen, két
+          kattintásra volt elérhető. */}
+      <div className="mt-8 mb-2 flex justify-center">
+        <DangerBtn label="Mintaadatok visszaállítása" confirmLabel="Minden adat felülíródik!" onConfirm={resetSeed} />
+      </div>
     </div>
   );
 }
@@ -3152,7 +3260,7 @@ export default function App() {
           const Icon = t.icon;
           return (
             <button key={t.key} className={tab === t.key ? "on" : ""}
-              onClick={() => { setTab(t.key); if (t.key === "ride") setRideTarget(null); setNotice(""); }}>
+              onClick={() => { setTab(t.key); setNotice(""); }}>
               <Icon size={20} /> {t.label}
             </button>
           );
