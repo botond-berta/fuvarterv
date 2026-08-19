@@ -51,8 +51,21 @@ export default function RestorePanel({ onClose }) {
       .limit(20)
       .then(({ data, error }) => {
         if (cancelled) return;
-        if (error) { setErr(error.message || "Nem sikerült betölteni az előzményeket."); setRows([]); }
-        else setRows(data || []);
+        if (error) {
+          // A leggyakoribb ok, hogy a 0002 migráció nem futott le: ilyenkor a
+          // tábla nem létezik, és a felhasználó azt hinné, egyszerűen nincs még
+          // mentése — pedig valójában soha nem is készül egy sem.
+          const missing = error.code === "42P01" || /relation .* does not exist/i.test(error.message || "");
+          setErr(missing
+            ? "Az előzménytábla hiányzik az adatbázisból — a 0002_app_state_history.sql migráció nem futott le. Amíg ez így van, nem készül biztonsági mentés."
+            : (error.message || "Nem sikerült betölteni az előzményeket."));
+          setRows([]);
+        } else setRows(data || []);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setErr("Nem sikerült betölteni az előzményeket (hálózati hiba).");
+        setRows([]);
       });
     return () => { cancelled = true; };
   }, []);

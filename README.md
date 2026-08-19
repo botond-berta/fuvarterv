@@ -27,8 +27,12 @@ The app is a single React file (`fuvarterv.jsx`), originally built as a Claude a
 ## Supabase setup (one time)
 
 1. Create a Supabase project; from **Settings → API** copy the **Project URL** and the **publishable** (anon) key.
-2. In the **SQL editor**, run [`supabase/migrations/0001_app_state.sql`](supabase/migrations/0001_app_state.sql) — it creates the `app_state` table and the RLS policies (authenticated users only).
-3. **Create your login(s):** the app uses email + password (no public sign-up). Add each staff member under **Authentication → Users → Add user**, set a password, and enable **Auto Confirm User**. No emails are sent.
+2. In the **SQL editor**, run **all three** migrations in order:
+   - [`0001_app_state.sql`](supabase/migrations/0001_app_state.sql) — the `app_state` table and its RLS policies.
+   - [`0002_app_state_history.sql`](supabase/migrations/0002_app_state_history.sql) — the snapshot history behind the **Korábbi mentések** panel. **Skipping this leaves the restore feature silently non-functional:** the button is still there, the panel still opens, and it will always say there are no snapshots. History writes fail quietly by design (they must never fail a save), so nothing else tells you.
+   - [`0003_tighten_rls.sql`](supabase/migrations/0003_tighten_rls.sql) — restricts writes to the one workspace row, makes the history append-only, and moves `updated_at` onto the server clock.
+3. **Turn off public sign-up — this is the security boundary, not an optional hardening step.** Under **Authentication → Providers → Email**, switch **Enable sign-ups** OFF. The anon key is public by design (it ships in the JS bundle) and every policy grants access to any *authenticated* user, so while sign-ups are open anyone who reads the key out of the bundle can register and then read, overwrite and delete all of your data.
+4. **Create your login(s):** add each staff member under **Authentication → Users → Add user**, set a password, and enable **Auto Confirm User**. No emails are sent.
 
 ## Running locally
 
