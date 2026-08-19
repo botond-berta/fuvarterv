@@ -35,7 +35,8 @@ bus and which driver does which run, at what time, for the lowest cost.
 16. [Environment variables](#16-environment-variables)
 17. [Known limitations and gotchas](#17-known-limitations-and-gotchas)
 18. [How to extend the app](#18-how-to-extend-the-app)
-19. [Glossary (Hungarian ↔ English)](#19-glossary-hungarian--english)
+19. [Tests](#19-tests)
+20. [Glossary (Hungarian ↔ English)](#20-glossary-hungarian--english)
 
 ---
 
@@ -89,7 +90,8 @@ So there are two "sides":
 - **External HTTP services** — OSRM (road travel times), Nominatim (address
   search). Both have offline fallbacks. See [§13](#13-the-map-and-external-services).
 
-No test framework is set up yet.
+Tests run on **vitest** in a jsdom environment (`npm test`); linting is ESLint
+flat config (`npm run lint`). See [§19](#19-tests).
 
 ---
 
@@ -97,28 +99,64 @@ No test framework is set up yet.
 
 ```
 .
-├── fuvarterv.jsx              ← THE APP (one big file, ~2800 lines)
-├── index.html                ← HTML entry; loads /src/main.jsx
-├── package.json              ← deps + scripts (dev / build / preview)
-├── vite.config.js            ← Vite config (React + Tailwind plugins)
+├── fuvarterv.jsx             ← barrel only (~40 lines): re-exports src/App.jsx
+│                               and the pure functions the tests import
+├── index.html                ← HTML entry; loads /src/main.jsx + the Nunito font
+├── package.json              ← deps + scripts (dev / build / preview / test / lint)
+├── vite.config.js            ← Vite config (React + Tailwind) and the vitest block
+├── eslint.config.js          ← flat ESLint config (react + react-hooks)
 ├── vercel.json               ← SPA rewrite for Vercel hosting
 ├── run-local.sh              ← one-command local setup (installs Node if needed)
 ├── .env.example              ← template for the two required env vars
 ├── .env                      ← your real Supabase keys (git-ignored)
-├── .gitignore
 ├── README.md                 ← short overview + setup steps
-├── docs/
-│   └── DEVELOPER.md          ← this document
+├── docs/DEVELOPER.md         ← this document
+├── test/                     ← vitest suites (see §20)
+│   ├── domain.test.js        ← plates, times, routing, ride windows
+│   ├── optimizer.test.js     ← property tests over 100 generated states
+│   ├── fixes.test.js         ← regressions for the fixed defects
+│   ├── smoke.test.jsx        ← mounts <App/> and walks every tab
+│   ├── load-error.test.js    ← NOT_FOUND vs. a real read failure
+│   ├── settings.test.js      ← DEFAULT_SETTINGS is the single source
+│   └── setup.js              ← IS_REACT_ACT_ENVIRONMENT for the smoke test
 ├── src/
-│   ├── main.jsx              ← React entry point; renders <AuthGate><App/></AuthGate>
+│   ├── main.jsx              ← React entry; renders <AuthGate><App/></AuthGate>
 │   ├── index.css             ← just: @import "tailwindcss";
+│   ├── App.jsx               ← navigation, state, debounced saving
+│   ├── AuthGate.jsx          ← login, session, stale/save-error UI, error boundary
+│   ├── ErrorBoundary.jsx     ← keeps a screen crash from white-screening the app
+│   ├── RestorePanel.jsx      ← the "Korábbi mentések" snapshot list
+│   ├── theme.css             ← the --v-* design tokens (incl. dark mode)
 │   ├── supabaseClient.js     ← creates the Supabase client from env vars
 │   ├── supabaseStorage.js    ← implements window.storage on top of Supabase
-│   └── AuthGate.jsx          ← login screen + session handling + error banners
-└── supabase/
-    └── migrations/
-        └── 0001_app_state.sql ← creates the app_state table + security rules
+│   ├── data/
+│   │   ├── storage.js        ← window.storage seam + DEFAULT_SETTINGS
+│   │   └── seed.js           ← seedState + ensureShape
+│   ├── domain/               ← pure, React-free, directly unit-testable
+│   │   ├── constants.js      ← DAYS / MONTHS / uid / byId
+│   │   ├── datetime.js       ← Monday-first weeks, 24h times
+│   │   ├── geo.js            ← coordinates, haversine, deadhead matrix
+│   │   ├── logic.js          ← plates, occurrences, ride windows, conflicts
+│   │   └── optimizer.js      ← tasks, routing, chaining, assignment
+│   ├── ui/
+│   │   ├── styles.css        ← the app stylesheet (tokens alias theme.css)
+│   │   ├── base.jsx          ← Field, NumField, Modal, DangerBtn, …
+│   │   ├── OccCard.jsx       ← one training occurrence (week + ride picker)
+│   │   ├── MapPicker.jsx     ← Leaflet picker + offline SVG fallback
+│   │   └── format.js         ← Ft / hour formatters
+│   └── screens/              ← WeekScreen, TeamsScreen, MasterScreen,
+│                               RideScreen, ScheduleScreen, DriverScreen, DataScreen
+└── supabase/migrations/
+    ├── 0001_app_state.sql        ← the app_state table + RLS policies
+    ├── 0002_app_state_history.sql← snapshot history behind the restore panel
+    └── 0003_tighten_rls.sql      ← scoped writes, append-only history, server clock
 ```
+
+**Dependency direction.** `screens → ui → domain → data`, and inside `domain`
+it is `optimizer → logic → geo → datetime → constants`. Nothing points back.
+`geo.js` exists precisely to keep that true: `rideWindow` (logic) and
+`genDayTasks` (optimizer) both need `legMin`, so leaving it in either module
+would make the two circular.
 
 ### What each wrapper file does (short version)
 
@@ -135,8 +173,8 @@ No test framework is set up yet.
   where the whole app state is saved and loaded. Details in [§6](#6-persistence--how-data-is-saved).
 - **`src/AuthGate.jsx`** — shows the login screen when nobody is signed in;
   once signed in, checks the database is reachable, then renders the app. Also
-  shows warning banners (data changed elsewhere / save failed) and a sign-out
-  button.
+  shows the stale overlay (data changed elsewhere) and the save-failed toast, hosts
+  the restore panel, and wraps the app in an error boundary.
 
 ---
 
@@ -222,12 +260,12 @@ application state is one JSON object, turned into a string with `JSON.stringify`
 before `set`, and parsed with `JSON.parse` after `get`. In the app:
 
 ```js
+// Swallowing the error here would seed sample data over real data the app
+// merely failed to read, so loadState rethrows and the caller uses isNotFound
+// to tell "empty workspace" apart from "the read failed".
 async function loadState() {
-  try {
-    const r = await window.storage.get(STORAGE_KEY);
-    if (r && r.value) return JSON.parse(r.value);
-  } catch (e) { /* no saved data */ }
-  return null;                       // → App seeds sample data
+  const r = await window.storage.get(STORAGE_KEY);
+  return r && r.value ? JSON.parse(r.value) : null;
 }
 
 async function persistState(state) {
@@ -302,7 +340,7 @@ are `get` and `set`.
    - If the update touches a row, all good — we store the new `updated_at`.
    - If it touches **zero rows**, it means someone else saved since we loaded. We do
      **not** overwrite their change. Instead we fire a `fuvarterv:stale`
-     browser event (the UI shows an orange banner asking the user to reload), and we
+     browser event (the UI shows a blocking overlay asking the user to reload), and we
      keep failing future saves until they reload. This is the "single editor at a
      time" safety model.
 
@@ -313,9 +351,14 @@ are `get` and `set`.
 
 ### 6.4 How the UI reacts (`AuthGate.jsx`)
 
-`AuthGate` listens for those two events and renders banners:
+`AuthGate` listens for those two events. They are deliberately *asymmetric*, because
+the consequences are:
 
-- `fuvarterv:stale` → orange banner: "Az adatok időközben máshol módosultak…"
+- `fuvarterv:stale` → a **blocking overlay**. Once the row has moved on, no save can
+  succeed, so continuing to edit would silently lose work; the only safe action is a
+  reload. Before blocking, `doSet` re-reads the row: if the server already holds what
+  we last tried to write, that was our own committed write with a lost response, so it
+  adopts the new timestamp and retries instead of blocking.
   ("The data changed elsewhere") with a **Reload** button.
 - `fuvarterv:saveerror` → red banner: "A mentés nem sikerült…" ("Save failed"),
   dismissible. Only one banner shows at a time (stale takes priority).
@@ -337,7 +380,8 @@ Edit in UI
   → queued behind any in-flight save
   → INSERT (first time) or guarded UPDATE on updated_at
       → success: remember new updated_at
-      → 0 rows: fire "fuvarterv:stale"  → orange banner
+      → 0 rows: re-read; if unchanged from our last attempt, adopt + retry,
+                otherwise fire "fuvarterv:stale" → blocking overlay
       → db error: fire "fuvarterv:saveerror" → red banner
 ```
 
@@ -740,32 +784,49 @@ Two UI actions trigger this (both in the Schedule screen):
 
 ### 12.1 Structure
 
-All UI is in `fuvarterv.jsx`, organized as:
+The UI lives in `src/ui` (building blocks) and `src/screens` (one file per screen):
 
-- **`App`** — top-level component. Holds the entire state in one `useState`, handles
-  loading/seeding, the 300 ms debounced save, tab navigation, and renders the current
-  screen. State updates go through a single helper: `update(fn)` = `setState(s => fn(s))`.
-- **UI base components** — small building blocks: `Modal`, `Field`, `Chip`,
-  `PlateChip`, `DangerBtn` (two-step delete), `EmptyState`, `TeamDot`, etc.
-- **Six screens** (selected by the bottom tab bar):
+- **`src/App.jsx`** — top-level component. Holds the entire state in one `useState`,
+  handles loading/seeding, the 300 ms debounced save, tab navigation, and renders the
+  current screen. State updates go through a single helper:
+  `update(fn)` = `setState(s => fn(s))`.
+- **`src/ui/base.jsx`** — small building blocks: `Modal`, `Field`, `NumField`,
+  `PlateChip`, `DangerBtn` (two-step delete), `EmptyState`, `TeamDot`, `InfoDot`.
+
+**Four tabs** in the bottom bar. Teams and master data were merged under **Adatok**,
+which switches between five categories with a chip row:
 
 | Tab (Hungarian) | Component | What it does |
 |---|---|---|
 | **Hét** (Week) | `WeekScreen` / `OccCard` | All trainings this week, color-coded, with each assigned bus (plate chip, driver, time), and conflict/"no ride" badges. |
 | **Beosztás** (Schedule) | `ScheduleScreen` / `ChainCard` | Per-weekday task chains, the optimizer, before/after comparison, task lock/move, ride generation, and the ⚙ settings panel. |
-| **Csapatok** (Teams) | `TeamsScreen` | Team details, station/venue assignment, per-stop headcounts, route mode + anchor, and training CRUD. |
-| **Törzsadatok** (Master data) | `MasterScreen` / `MasterForm` | CRUD for stations, venues, vehicles (plate normalization + uniqueness), and drivers (wage, min shift, availability, preferred vehicle). |
-| **Fuvar** (Ride editor) | `RideScreen` | Per-occurrence ride editing: multiple parallel rides, drag-and-drop stop ordering, automatic time/stop-order calculation. |
-| **Sofőr** (Driver view) | `DriverScreen` | Mobile-friendly, large-type daily route list per driver with a "NEXT stop" highlight. |
+| **Adatok** (Data) | `DataScreen` → `TeamsScreen` / `MasterScreen` | Csapatok, Állomások, Helyszínek, Járművek, Sofőrök. Team details, station/venue assignment, per-stop headcounts, route mode; CRUD for the master entities. Also holds the one "restore sample data" button. |
+| **Sofőr** (Driver view) | `DriverScreen` | Mobile-friendly, large-type daily route list per driver with a "NEXT stop" highlight, refreshed every minute. |
+
+The **Fuvar** (ride editor, `RideScreen`) is not a tab — it opens from a week-view
+card. It edits one occurrence's rides: direction (ODA/VISSZA), vehicle, driver, and
+ordered, timed stops.
 
 ### 12.2 Styling
 
-Styling is **not** mostly Tailwind. There is a large CSS string (the `CSS` constant)
-injected via a `<style>{CSS}</style>` element at the top of `App`. It defines CSS
-variables (`--ink`, `--acc`, `--danger`, …) and component classes (`.card`, `.btn`,
-`.plate`, `.chip`, `.pill`, `.rail`, …). Tailwind utility classes are used for quick
-layout (`flex`, `gap-2`, `mt-2`, etc.), but the visual identity comes from the CSS
-string. When changing appearance, look there first.
+Styling is **not** mostly Tailwind. The visual identity lives in
+**`src/ui/styles.css`** — component classes (`.card`, `.btn`, `.plate`, `.chip`,
+`.pill`, `.rail`, …) built on CSS variables. Tailwind utility classes are used for
+quick layout (`flex`, `gap-2`, `mt-2`, etc.). When changing appearance, look in
+`styles.css` first.
+
+**One palette.** `src/theme.css` owns the `--v-*` design tokens *and the dark mode*;
+`styles.css` defines the app's own names as aliases onto them
+(`--ink: var(--v-ink)`, `--acc: var(--v-acc)`, …). That is why every rule can stay
+written in the short names while the whole app still follows the OS colour scheme.
+Change a colour in `theme.css`, not in `styles.css`.
+
+**The one trap.** A few surfaces are *deliberately* dark — the header, the tab bar,
+the driver-view card headers, the active chip. They must use `--surface-inv` with
+`--on-inv` for their text, **never** `--ink` as a background: in dark mode `--v-ink`
+is near-white, so `background: var(--ink); color: #fff` renders white on white. The
+licence plate is the same idea in reverse: it keeps `--plate-bg` / `--plate-ink` so
+it stays a real-world white plate with dark lettering in both themes.
 
 > Real example of why this matters: the plate number element (`.plate b`) originally
 > had no explicit color, so it *inherited* the surrounding text color. Inside the
@@ -818,8 +879,8 @@ one of them has a fallback.
 | `departAfterMin` | Minutes after training end the return bus leaves the gym. | 10 |
 | `calloutFee` | Fixed cost (Ft) of putting one driver on the road once. | 1500 |
 | `dwellMin` | Pause (minutes) at each stop for boarding/alighting. | 2 |
-| `estSpeedKmh` | Assumed speed for straight-line travel-time estimates. | 30 (seed: 50) |
-| `fallbackLegMin` | Travel time used when there's no matrix and no coordinates. | 10 (seed: 12) |
+| `estSpeedKmh` | Assumed speed for straight-line travel-time estimates. | 50 |
+| `fallbackLegMin` | Travel time used when there's no matrix and no coordinates. | 12 |
 | `preferredBias` | Extra cost (Ft) charged when a driver is put on a bus other than their preferred one. 0 disables the preference. | 1000 |
 
 ---
@@ -926,16 +987,51 @@ the four methods in **`src/supabaseStorage.js`** (or point `window.storage` at a
 different implementation in `AuthGate.jsx`). As long as `get`/`set` honor the
 contract in [§6.1](#61-the-windowstorage-contract), the app doesn't care.
 
-### Split the one big file into modules
+### Where to put new code
 
-The layers are already marked with banner comments (data → domain → optimizer → UI
-base → screens → App). The dependencies flow one way (UI uses domain uses data), so
-the split is mechanical: move each layer into its own module and add imports. Keep
-`window.storage` as the persistence seam.
+The split is done — see the tree in [§3](#3-repository-layout--every-file). Put new
+code in the module that owns the concern, not in `fuvarterv.jsx` (that is only a
+barrel now, kept so existing imports and tests keep working).
+
+- Pure rule, no React → `src/domain/*`. It becomes directly unit-testable.
+- A new reusable control → `src/ui/base.jsx`.
+- A new screen → `src/screens/`, then add it to `TABS` in `src/App.jsx`.
+- A different backend → reimplement the four methods in `src/supabaseStorage.js`.
+
+Keep the dependency direction (`screens → ui → domain → data`). If a domain module
+starts needing something from a module above it, that is the signal to pull the
+shared piece down into a leaf — which is exactly why `src/domain/geo.js` exists.
 
 ---
 
-## 19. Glossary (Hungarian ↔ English)
+## 19. Tests
+
+`npm test` runs vitest in jsdom; `npm run lint` runs ESLint.
+
+| File | Covers |
+|---|---|
+| `test/domain.test.js` | plate normalisation, time conversion, weekday maths, `bestStationOrder` (brute-force verified up to n=7), capacity splitting, ride windows and conflicts |
+| `test/optimizer.test.js` | property tests: 100 seeded random states through `optimizeDay`, asserting conservation of tasks, capacity, availability, resource feasibility, and that local improvement never raises the objective |
+| `test/fixes.test.js` | regressions for the defects fixed on this branch — each test says which wrong behaviour it locks out |
+| `test/smoke.test.jsx` | mounts `<App/>` against a fake `window.storage`, walks every tab and data category, and pins the "loading must not write back" rule |
+| `test/load-error.test.js` | `NOT_FOUND` vs. a real read failure (never seed over unread data) |
+| `test/settings.test.js` | `DEFAULT_SETTINGS` stays the single source for `seedState` and `ensureShape` |
+
+Two things worth knowing before you change them:
+
+- **Invariant (2) in `optimizer.test.js` is load-bearing.** It used to assert only
+  that two chains sharing a driver or bus do not *overlap in time*, which is weaker
+  than reality and therefore accepted a roster where the same bus finishes in one
+  village and starts in another the same minute. It now also requires room for the
+  deadhead. Do not weaken it back.
+- **`smoke.test.jsx` is what catches a missing import after a refactor.** A Vite
+  build succeeds even when a screen references an identifier that no longer exists;
+  only rendering the component finds it. `npm run lint` (`no-undef`) is the other
+  half of that net.
+
+---
+
+## 20. Glossary (Hungarian ↔ English)
 
 | Hungarian | English | Notes |
 |---|---|---|

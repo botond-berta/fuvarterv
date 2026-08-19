@@ -2,18 +2,19 @@
 
 A training-transport planner for a handball club. A rural Hungarian club shuttles several youth teams to practice by minibus from the surrounding villages — this app manages the whole logistics: weekly training schedule, pickup stops, vehicles, drivers, shuttle runs, and a cost-based **schedule optimizer** that chains transport tasks together using min-cost flow.
 
-The app is a single React file (`fuvarterv.jsx`), originally built as a Claude artifact. The code is written in clearly marked layers so it can be split into real modules mechanically later. **The UI language is Hungarian** (it's built for the club's staff and drivers).
+The app started life as a single React file (`fuvarterv.jsx`) built as a Claude artifact; it is now split into modules under `src/` (see [Architecture](#architecture)). **The UI language is Hungarian** (it's built for the club's staff and drivers).
 
 > **⚠️ Privacy:** the built-in sample data (`seedState`) contains a real club's driver names and license plates. **Anonymize the seed before making this repo public**, or keep the repo private.
 
 ## Screens
 
+Four tabs, plus the ride editor which opens from a week-view card.
+
 - **Hét (Week)** — all trainings of the week, color-coded by team; every assigned bus per training (license-plate chip, driver, departure time), a yellow badge when no ride is assigned, red when there's a conflict.
 - **Beosztás (Schedule)** — daily view of transport tasks (outbound/return): chains per driver, link explanations ("X min deadhead: from → to"), task locking, manual reassignment, and an optimize button with a before/after comparison.
-- **Csapatok (Teams)** — team details, station and venue assignment, per-stop headcounts, route mode (auto-ordered / manual, with an optional pinned first stop), training CRUD.
-- **Törzsadatok (Master data)** — stations, venues (with map-based coordinate picking), vehicles (plate normalization + uniqueness check), drivers (hourly wage, minimum shift, availability windows).
-- **Fuvar (Ride editor)** — per-occurrence ride editing with multiple parallel rides, drag & drop stop ordering, automatic time and stop-order calculation.
-- **Sofőr (Driver view)** — mobile-optimized, large-type daily route list with a "NEXT stop" highlight.
+- **Adatok (Data)** — five categories in one tab. **Csapatok:** team details, station and venue assignment, per-stop headcounts, route mode (auto-ordered / manual, with an optional pinned first stop), training CRUD. **Állomások / Helyszínek:** with map-based coordinate picking. **Járművek:** plate normalization + uniqueness check. **Sofőrök:** hourly wage, minimum shift, availability windows, preferred vehicle.
+- **Sofőr (Driver view)** — mobile-optimized, large-type daily route list with a "NEXT stop" highlight that advances every minute.
+- **Fuvar (Ride editor)** — per-occurrence ride editing: direction (outbound/return), multiple parallel rides, drag & drop stop ordering, automatic time and stop-order calculation.
 
 ## Key features
 
@@ -57,17 +58,26 @@ When deployed, the full OSM map, the Nominatim search and the OSRM matrix all wo
 
 ## Architecture
 
-One file, but with marked layers (the file header documents the same split plan):
+Real modules, with the dependencies flowing one way (`screens → ui → domain → data`).
+`fuvarterv.jsx` is now just a barrel re-exporting `src/App.jsx` plus the pure
+functions the tests import.
 
-| Layer | Contents |
+| Module | Contents |
 |---|---|
-| `data/storage` | persistence (`window.storage`), sample data, migration (`ensureShape`) |
-| `domain/logic` | date/time handling (Monday-first weeks, 24h), plate normalization, occurrences, conflicts |
-| `domain/optimizer` | task generation, deadhead matrix, Held–Karp, min-cost flow, assignment, diagnostics |
-| `ui/base` | Modal, Field, Chip, PlateChip, DangerBtn (two-step delete) … |
-| `ui/mapPicker` | Leaflet picker + offline SVG fallback |
-| `screens/*` | the six screens |
-| `App` | navigation, state, saving |
+| `src/data/storage.js` | persistence seam (`window.storage`) + `DEFAULT_SETTINGS` |
+| `src/data/seed.js` | sample data + `ensureShape` (shape migration) |
+| `src/domain/constants.js` | days, months, `uid`, `byId` |
+| `src/domain/datetime.js` | Monday-first weeks, 24h times |
+| `src/domain/geo.js` | coordinates, haversine, deadhead matrix |
+| `src/domain/logic.js` | plate normalization, occurrences, ride windows, conflicts, delete guards |
+| `src/domain/optimizer.js` | task generation, Held–Karp, min-cost flow, assignment, diagnostics |
+| `src/ui/` | `styles.css`, `base.jsx`, `OccCard.jsx`, `MapPicker.jsx`, `format.js` |
+| `src/screens/` | Week, Schedule, Data (Teams + master data), Ride editor, Driver |
+| `src/App.jsx` | navigation, state, debounced saving |
+
+`src/domain/geo.js` is a leaf on purpose: both `logic` (`rideWindow`) and
+`optimizer` (`genDayTasks`) need `legMin`, so keeping it in either would make the
+two modules circular.
 
 ### Data model (sketch)
 
