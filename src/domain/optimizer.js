@@ -278,10 +278,12 @@ export function minCostChains(n, edges) {
   return chains;
 }
 
-/* Egy lánc két végpontja: honnan indul az első feladat, hová ér az utolsó. */
+/* Egy lánc két végpontja: honnan indul az első feladat, hová ér az utolsó.
+   (A foglaltság-bejegyzés neve szándékosan NEM use*, mert az React hook-nak
+   olvasódik — a linter is annak veszi.) */
 export const chainFrom = (c) => c.tasks[0].from;
 export const chainTo = (c) => c.tasks[c.tasks.length - 1].to;
-export const useOf = (c, driverId, vehicleId) => ({ driverId, vehicleId, start: c.start, end: c.end, from: chainFrom(c), to: chainTo(c) });
+export const chainUse = (c, driverId, vehicleId) => ({ driverId, vehicleId, start: c.start, end: c.end, from: chainFrom(c), to: chainTo(c) });
 
 /* Ütközik-e két, UGYANAZT az erőforrást használó lánc? Nem elég, hogy időben ne
    fedjék egymást: a busznak át is kell érnie. Enélkül ugyanaz a sofőr+busz
@@ -325,7 +327,7 @@ export function assignResources(state, weekday, freeChains, fixedUse) {
     }
     opts.sort((x, y) => x.cost - y.cost || x.v.seats - y.v.seats);
     for (const o of opts) {
-      used.push(useOf(c, o.d.id, o.v.id));
+      used.push(chainUse(c, o.d.id, o.v.id));
       acc.push({ chain: c, driverId: o.d.id, vehicleId: o.v.id });
       rec(i + 1, used, acc, cost + o.cost);
       acc.pop(); used.pop();
@@ -537,7 +539,7 @@ export function optimizeDay(state, weekday, weekMon) {
     const offPreferred = d?.preferredVehicleId && c.vehicleId !== d.preferredVehicleId;
     return base + (offPreferred ? (state.settings.preferredBias || 0) : 0);
   };
-  const fixedUseOf = (sk) => sk.map((c) => useOf(c, c.driverId, c.vehicleId));
+  const fixedUseOf = (sk) => sk.map((c) => chainUse(c, c.driverId, c.vehicleId));
   let anyCapped = false;
   const evalPlan = (skl, fre) => {
     const asg = assignResources(state, weekday, fre, fixedUseOf(skl));

@@ -7,3 +7,6 @@ dist
 
 # Legacy local dev scaffold (superseded by the committed root project)
 .devserver
+
+# Helyi vizuális ellenőrző harness (szükség esetén újra létrehozható)
+.preview
