@@ -59,10 +59,20 @@ async function persistState(state) {
 }
 
 /* Régebbi mentett állapotok felokosítása az új mezőkkel */
+/* Régebbi mentett állapotok felokosítása az új mezőkkel. MINDEN felső szintű
+   gyűjteményt normalizál: a hiányzó tömbök különben `TypeError`-t dobnak render
+   közben (team.stationIds.filter, ride.stops.some, …), error boundary nélkül,
+   fehér képernyővel. A `seats` coercion azért fontos, mert az `undefined < pax`
+   hamis — egy férőhely nélküli jármű korlátlan kapacitásúnak látszana. */
 export function ensureShape(s) {
   s.settings = { ...DEFAULT_SETTINGS, ...(s.settings || {}) };
+  s.stations = (s.stations || []).map((x) => ({ ...x, lat: x.lat ?? null, lon: x.lon ?? null }));
+  s.venues = (s.venues || []).map((x) => ({ ...x, lat: x.lat ?? null, lon: x.lon ?? null }));
+  s.vehicles = (s.vehicles || []).map((v) => ({ ...v, seats: Number(v.seats) || 0, plate: v.plate || "" }));
   s.drivers = (s.drivers || []).map((d) => ({ ...d, wage: d.wage ?? 3000, minShiftMin: d.minShiftMin ?? 120, availability: d.availability || [], preferredVehicleId: d.preferredVehicleId ?? null }));
-  s.teams = (s.teams || []).map((t) => ({ ...t, passengerCount: t.passengerCount ?? null, stationCounts: t.stationCounts || {}, routeMode: t.routeMode || "auto", routeAnchorId: t.routeAnchorId ?? null }));
+  s.teams = (s.teams || []).map((t) => ({ ...t, stationIds: t.stationIds || [], venueIds: t.venueIds || [], passengerCount: t.passengerCount ?? null, stationCounts: t.stationCounts || {}, routeMode: t.routeMode || "auto", routeAnchorId: t.routeAnchorId ?? null }));
+  s.trainings = (s.trainings || []).map((t) => ({ ...t, type: t.type || "weekly", days: t.days || [], date: t.date ?? null }));
+  s.rides = (s.rides || []).map((r) => ({ ...r, dir: r.dir || "oda", stops: r.stops || [] }));
   s.matrix = s.matrix || null;
   s.assignments = s.assignments || {};
   return s;
@@ -349,20 +359,41 @@ function findConflicts(state, cand) {
 const seatSum = (stops) => stops.reduce((a, s) => a + (Number(s.count) > 0 ? Number(s.count) : 0), 0);
 
 /* Törlésvédelem a törzsadatokhoz */
+/* Hány mentett beosztás-lánc hivatkozik erre a sofőrre / járműre. A fuvarok
+   önmagukban nem elegendők: egy lánc a beosztásban élhet anélkül is, hogy már
+   fuvarrá lett volna generálva, és a törlése után a resolveDay csendben
+   `undefined` sofőrt/járművet ad — a lánc hibajelzés nélkül, 0 Ft bérrel jelenik meg. */
+function chainRefs(state, field, id) {
+  let c = 0;
+  for (const day of Object.values(state.assignments || {}))
+    for (const ch of day?.chains || []) if (ch[field] === id) c++;
+  return c;
+}
+
 function deleteGuard(state, kind, id) {
   const n = (c, w) => (c > 0 ? `Használatban: ${c} ${w}.` : null);
   if (kind === "stations") {
-    const c = state.teams.filter((t) => t.stationIds.includes(id)).length
-      + state.rides.filter((r) => r.stops.some((s) => s.stationId === id)).length;
+    const c = state.teams.filter((t) => (t.stationIds || []).includes(id)).length
+      + state.rides.filter((r) => (r.stops || []).some((s) => s.stationId === id)).length;
     return n(c, "csapat/fuvar");
   }
   if (kind === "venues") {
-    const c = state.teams.filter((t) => t.venueIds.includes(id)).length
+    const c = state.teams.filter((t) => (t.venueIds || []).includes(id)).length
       + state.trainings.filter((t) => t.venueId === id).length;
     return n(c, "csapat/edzés");
   }
-  if (kind === "vehicles") return n(state.rides.filter((r) => r.vehicleId === id).length, "fuvar");
-  if (kind === "drivers") return n(state.rides.filter((r) => r.driverId === id).length, "fuvar");
+  if (kind === "vehicles") {
+    const c = state.rides.filter((r) => r.vehicleId === id).length
+      + chainRefs(state, "vehicleId", id)
+      // Egy törölt preferált jármű tartósan bünteti a sofőrt: az offPreferred
+      // minden járműre igaz marad, így a preferredBias végleg elrejti őt.
+      + state.drivers.filter((d) => d.preferredVehicleId === id).length;
+    return n(c, "fuvar/beosztás/sofőr");
+  }
+  if (kind === "drivers") {
+    const c = state.rides.filter((r) => r.driverId === id).length + chainRefs(state, "driverId", id);
+    return n(c, "fuvar/beosztás");
+  }
   return null;
 }
 
@@ -389,7 +420,10 @@ function legMin(state, aId, bId) {
   const m = state.matrix?.durations?.[`${aId}|${bId}`];
   if (m != null) return m;
   const A = locOf(state, aId), B = locOf(state, bId);
-  if (A && B && A.lat != null && B.lat != null)
+  // Mindkét koordináta kell. Csak a lat-ot ellenőrizve a haversine NaN-t ad, és a
+  // Math.max(1, NaN) is NaN — az végigfut a menetrenden, minden összehasonlítást
+  // hamissá tesz (nem épül él, nem látszik ütközés), és "NaN:NaN" időket ír ki.
+  if (A && B && A.lat != null && A.lon != null && B.lat != null && B.lon != null)
     return Math.max(1, Math.round((haversineKm(A, B) / (state.settings.estSpeedKmh || 30)) * 60) + 2);
   return state.settings.fallbackLegMin ?? 10;
 }
@@ -584,11 +618,15 @@ function genDayTasks(state, weekday, weekMon) {
   return { tasks, skipped };
 }
 
-/* Csapat szállítandó létszáma: a megállónkénti bontás összege, különben az összlétszám */
+/* Csapat szállítandó létszáma: a megállónkénti bontás összege és a megadott
+   összlétszám közül a NAGYOBB. Korábban a részleges bontás felülírta az
+   összlétszámot: egy 12 fős csapatnál, ahol az edző még csak két megállóhoz írt
+   létszámot, ez 5 főt adott — nem indult kapacitás szerinti felosztás, és 12
+   gyerek elé állt be egy 6 személyes busz, figyelmeztetés nélkül. */
 function teamPax(team) {
   const sc = team.stationCounts || {};
   const sum = (team.stationIds || []).reduce((a, id) => a + (Number(sc[id]) || 0), 0);
-  return sum > 0 ? sum : (Number(team.passengerCount) || 0);
+  return Math.max(sum, Number(team.passengerCount) || 0);
 }
 
 function driverAvailableFor(driver, weekday, startMin, endMin) {
@@ -656,9 +694,26 @@ function minCostChains(n, edges) {
   return chains;
 }
 
+/* Egy lánc két végpontja: honnan indul az első feladat, hová ér az utolsó. */
+const chainFrom = (c) => c.tasks[0].from;
+const chainTo = (c) => c.tasks[c.tasks.length - 1].to;
+const useOf = (c, driverId, vehicleId) => ({ driverId, vehicleId, start: c.start, end: c.end, from: chainFrom(c), to: chainTo(c) });
+
+/* Ütközik-e két, UGYANAZT az erőforrást használó lánc? Nem elég, hogy időben ne
+   fedjék egymást: a busznak át is kell érnie. Enélkül ugyanaz a sofőr+busz
+   megkaphatott egy 15:50-kor Kisteleken végződő és egy 15:50-kor Szegeden induló
+   láncot — fizikailag lehetetlen beosztás, figyelmeztetés nélkül. */
+function resourceClash(state, u, c) {
+  // A lánc objektum nem hordoz from/to mezőt — a végpontokat a feladataiból
+  // kell kiolvasni. (c.from/c.to undefined lenne, amitől a legMin 0-t adna, és
+  // az ellenőrzés csendben minden üresjáratot megengedne.)
+  if (u.start < c.end && c.start < u.end) return true;                             // időbeli átfedés
+  if (u.end <= c.start) return u.end + legMin(state, u.to, chainFrom(c)) > c.start; // u, majd c
+  return c.end + legMin(state, chainTo(c), u.from) > u.start;                       // c, majd u
+}
+
 /* Egzakt (sofőr, jármű) → lánc hozzárendelés visszalépéses kereséssel, költségkorlátos vágással */
 function assignResources(state, weekday, freeChains, fixedUse) {
-  const overlaps = (x, y) => x.start < y.end && y.start < x.end;
   const chains = [...freeChains].sort((a, b) => a.start - b.start);
   let best = null, iter = 0, capped = false;
   const rec = (i, used, acc, cost) => {
@@ -669,10 +724,10 @@ function assignResources(state, weekday, freeChains, fixedUse) {
     const opts = [];
     for (const d of state.drivers) {
       if (!driverAvailableFor(d, weekday, c.start, c.end)) continue;
-      if (used.some((u) => u.driverId === d.id && overlaps(u, c))) continue;
+      if (used.some((u) => u.driverId === d.id && resourceClash(state, u, c))) continue;
       for (const v of state.vehicles) {
         if (v.seats < c.maxPax) continue;
-        if (used.some((u) => u.vehicleId === v.id && overlaps(u, c))) continue;
+        if (used.some((u) => u.vehicleId === v.id && resourceClash(state, u, c))) continue;
         const paid = Math.max(c.end - c.start, d.minShiftMin || 0);
         const base = (state.settings.calloutFee || 0) + (paid / 60) * (d.wage || 0);
         // Soft preferred-vehicle bias: penalize putting a driver on any bus
@@ -686,7 +741,7 @@ function assignResources(state, weekday, freeChains, fixedUse) {
     }
     opts.sort((x, y) => x.cost - y.cost || x.v.seats - y.v.seats);
     for (const o of opts) {
-      used.push({ driverId: o.d.id, vehicleId: o.v.id, start: c.start, end: c.end });
+      used.push(useOf(c, o.d.id, o.v.id));
       acc.push({ chain: c, driverId: o.d.id, vehicleId: o.v.id });
       rec(i + 1, used, acc, cost + o.cost);
       acc.pop(); used.pop();
@@ -741,6 +796,22 @@ function resolveDay(state, weekday, weekMon) {
         const m = `Járműütközés: ${A.vehicle?.plate || "?"} egyszerre két láncban van.`;
         A.issues.push(m); B.issues.push(m);
       }
+    }
+  /* Ugyanaz az erőforrás két, időben NEM fedő láncban is lehetetlen, ha nincs idő
+     az üresjáratra közöttük — ezt eddig semmi nem jelezte. */
+  for (let i = 0; i < chains.length; i++)
+    for (let j = 0; j < chains.length; j++) {
+      if (i === j) continue;
+      const A = chains[i], B = chains[j];
+      if (A.end > B.start) continue;                       // csak A → B sorrendre
+      if (!((A.driverId && A.driverId === B.driverId) || (A.vehicleId && A.vehicleId === B.vehicleId))) continue;
+      const dead = legMin(state, chainTo(A), chainFrom(B));
+      if (A.end + dead <= B.start) continue;
+      const who = A.driverId === B.driverId ? (A.driver?.name || "A sofőr") : (A.vehicle?.plate || "A jármű");
+      const m = `Nem érhető át: ${who} ${minToTime(A.end)}-kor végez itt: ${locName(state, chainTo(A))}, `
+        + `de ${minToTime(B.start)}-kor már itt kellene lennie: ${locName(state, chainFrom(B))} `
+        + `(${dead} p üresjárat, ${B.start - A.end} p áll rendelkezésre).`;
+      A.issues.push(m); B.issues.push(m);
     }
   chains.sort((a, b) => a.start - b.start);
   return { tasks, chains, unassigned: tasks.filter((t) => !assigned.has(t.id)), skipped };
@@ -858,12 +929,19 @@ function optimizeDay(state, weekday, weekMon) {
   // 2. fázis: valódi költségű hozzárendelés + lokális javítás (összevonások).
   // A folyam a rés×átlagbér − kiszállás költséget látja; a min. műszak és az
   // eltérő órabérek hatását itt, a tényleges költségfüggvényen javítjuk.
+  /* A csontváz-láncok ára ugyanazon a képleten, amit az assignResources használ —
+     a preferált-jármű büntetést is beleértve. Enélkül a javítóciklus torzított
+     (biased) és torzítatlan költséget vetett össze, így az alapértelmezett
+     preferredBias mellett egy valójában drágább összevonást is "javulásnak" látott,
+     és az optimalizálás UTÁN nőtt a kijelzett napi költség. */
   const skelCost = (c) => {
     const d = byId(state.drivers, c.driverId);
     const paid = Math.max(c.end - c.start, d?.minShiftMin || 0);
-    return (state.settings.calloutFee || 0) + (paid / 60) * (d?.wage || 0);
+    const base = (state.settings.calloutFee || 0) + (paid / 60) * (d?.wage || 0);
+    const offPreferred = d?.preferredVehicleId && c.vehicleId !== d.preferredVehicleId;
+    return base + (offPreferred ? (state.settings.preferredBias || 0) : 0);
   };
-  const fixedUseOf = (sk) => sk.map((c) => ({ driverId: c.driverId, vehicleId: c.vehicleId, start: c.start, end: c.end }));
+  const fixedUseOf = (sk) => sk.map((c) => useOf(c, c.driverId, c.vehicleId));
   let anyCapped = false;
   const evalPlan = (skl, fre) => {
     const asg = assignResources(state, weekday, fre, fixedUseOf(skl));
@@ -2152,7 +2230,12 @@ function RideForm({ state, update, training, dayIdx, dateISO, existing, onBack }
 
   const [draft, setDraft] = useState(() => existing
     ? { ...existing, stops: existing.stops.map((s) => ({ ...s })) }
-    : { id: "__uj", trainingId: training.id, day: training.type === "weekly" ? dayIdx : null, date: training.type === "once" ? training.date : null, vehicleId: "", driverId: "", stops: [] });
+    : { id: "__uj", trainingId: training.id, day: training.type === "weekly" ? dayIdx : null, date: training.type === "once" ? training.date : null, vehicleId: "", driverId: "", dir: "oda", stops: [] });
+
+  /* Irány. A régebbi, irány nélkül mentett fuvarok ODA-ként viselkednek — ezt a
+     rideWindow is így értelmezi (`ride.dir || "oda"`), tehát a kettő nem csúszhat szét. */
+  const dir = draft.dir || "oda";
+  const isBack = dir === "vissza";
 
   const vehicle = byId(state.vehicles, draft.vehicleId);
   const conflicts = useMemo(() => findConflicts(state, draft), [state, draft]);
@@ -2165,9 +2248,12 @@ function RideForm({ state, update, training, dayIdx, dateISO, existing, onBack }
   const freeStations = teamStations.filter((s) => !draft.stops.some((x) => x.stationId === s.id));
 
   const addStop = (stationId) => {
+    /* ODA: az edzés kezdete előtt gyűjtünk be; VISSZA: a helyszíni indulás után
+       tesszük le a gyerekeket — a kiinduló idő tehát a két irányban más. */
+    const first = isBack ? venueDepartMin(state, training) + 10 : (timeToMin(training.start) ?? 0) - 40;
     const base = draft.stops.length
-      ? (timeToMin(draft.stops[draft.stops.length - 1].time) ?? timeToMin(training.start) - 40) + 10
-      : timeToMin(training.start) - 40;
+      ? (timeToMin(draft.stops[draft.stops.length - 1].time) ?? first) + 10
+      : first;
     setDraft({ ...draft, stops: [...draft.stops, { id: uid(), stationId, time: minToTime(base), count: team?.stationCounts?.[stationId] || "" }] });
   };
   const setStop = (i, patch) => setDraft({ ...draft, stops: draft.stops.map((s, j) => j === i ? { ...s, ...patch } : s) });
@@ -2180,19 +2266,31 @@ function RideForm({ state, update, training, dayIdx, dateISO, existing, onBack }
     setDraft({ ...draft, stops: arr });
   };
 
-  /* Menetrend a jelenlegi sorrendre, visszafelé az edzéskezdéstől */
-  const arriveBy = timeToMin(training.start) - (state.settings.arriveEarlyMin ?? 10);
+  /* Menetrend. ODA: visszafelé számolva az edzéskezdéstől, cél az időben odaérés.
+     VISSZA: előrefelé a helyszíni indulástól. A két irány két külön tervezőt hív —
+     korábban mindkettő planOda-t futtatott, ami a VISSZA fuvarok megállóidejét
+     órákkal elrontotta, és ezt látták a sofőrök. */
+  const arriveBy = (timeToMin(training.start) ?? 0) - (state.settings.arriveEarlyMin ?? 10);
+  const departAt = venueDepartMin(state, training);
+  const dwell = state.settings.dwellMin ?? 2;
+
+  const planFor = (order) => isBack
+    ? planVissza(state, order, training.venueId, departAt, dwell)
+    : planOda(state, order, training.venueId, arriveBy, dwell);
+
   const fillTimes = () => {
     if (!draft.stops.length) return;
-    const p = planOda(state, draft.stops.map((s) => s.stationId), training.venueId, arriveBy, state.settings.dwellMin ?? 2);
+    const p = planFor(draft.stops.map((s) => s.stationId));
     setDraft({ ...draft, stops: draft.stops.map((s, i) => ({ ...s, time: minToTime(p.stops[i].arr) })) });
   };
-  /* Sorrend optimalizálása (Held–Karp) + idők kitöltése */
+  /* Sorrend optimalizálása (Held–Karp) + idők kitöltése. VISSZA-nál a helyszín az
+     útvonal ELEJE (pre), nem a vége (post). */
   const optimizeStopOrder = () => {
     if (!draft.stops.length) return;
-    const order = bestStationOrder(state, draft.stops.map((s) => s.stationId), { post: training.venueId });
+    const ids = draft.stops.map((s) => s.stationId);
+    const order = bestStationOrder(state, ids, isBack ? { pre: training.venueId } : { post: training.venueId });
     const byStation = Object.fromEntries(draft.stops.map((s) => [s.stationId, s]));
-    const p = planOda(state, order, training.venueId, arriveBy, state.settings.dwellMin ?? 2);
+    const p = planFor(order);
     setDraft({ ...draft, stops: order.map((sid, i) => ({ ...byStation[sid], time: minToTime(p.stops[i].arr) })) });
   };
 
@@ -2229,7 +2327,7 @@ function RideForm({ state, update, training, dayIdx, dateISO, existing, onBack }
         <div style={{ width: 6, background: team?.color || "#999", borderRadius: 3, flexShrink: 0 }} aria-hidden />
         <div className="min-w-0">
           <div className="font-semibold flex items-center gap-2">
-            {draft.dir && <span className={`dirpill ${draft.dir === "vissza" ? "v" : ""}`}>{draft.dir === "oda" ? "ODA" : "VISSZA"}</span>}
+            <span className={`dirpill ${isBack ? "v" : ""}`}>{isBack ? "VISSZA" : "ODA"}</span>
             {team?.name}
           </div>
           <div className="tnum text-lg">{DAYS[dayIdx]} · {training.start}–{training.end}</div>
@@ -2239,6 +2337,13 @@ function RideForm({ state, update, training, dayIdx, dateISO, existing, onBack }
           {draft.source === "schedule" && <div className="text-xs mt-1" style={{ color: "var(--ink2)" }}>Beosztásból generált fuvar — kézi módosítás után az újragenerálás felülírja.</div>}
         </div>
       </div>
+
+      <Field label="Irány" hint="ODA: a falvakból a helyszínre. VISSZA: a helyszínről haza.">
+        <div className="seg">
+          <button className={!isBack ? "on" : ""} onClick={() => setDraft({ ...draft, dir: "oda" })}>ODA</button>
+          <button className={isBack ? "on" : ""} onClick={() => setDraft({ ...draft, dir: "vissza" })}>VISSZA</button>
+        </div>
+      </Field>
 
       <Field label="Jármű *">
         <select className="inp" value={draft.vehicleId} onChange={(e) => setDraft({ ...draft, vehicleId: e.target.value })}>
@@ -2271,10 +2376,20 @@ function RideForm({ state, update, training, dayIdx, dateISO, existing, onBack }
       <div className="flex gap-2 mb-2 flex-wrap items-center">
         <button className="btn btn-ghost" onClick={fillTimes} disabled={!draft.stops.length}><Clock size={15} /> Idők számítása</button>
         <button className="btn btn-ghost" onClick={optimizeStopOrder} disabled={draft.stops.length < 2}><Zap size={15} /> Sorrend + idők</button>
-        <span className="text-xs" style={{ color: "var(--ink2)" }}>Cél: érkezés {minToTime(arriveBy)}-ig.</span>
+        <span className="text-xs" style={{ color: "var(--ink2)" }}>
+          {isBack ? `Indulás a helyszínről ${minToTime(departAt)}-kor.` : `Cél: érkezés ${minToTime(arriveBy)}-ig.`}
+        </span>
       </div>
 
       <div className="rail flex flex-col gap-2 mb-2">
+        {isBack && (
+          <div className="rail-row">
+            <span className="rail-dot dest" aria-hidden />
+            <div className="p-2 flex items-center gap-2 text-sm font-semibold">
+              <Flag size={15} style={{ color: "var(--ok)" }} /> {venue?.name} · indulás <span className="tnum text-base">{minToTime(departAt)}</span>
+            </div>
+          </div>
+        )}
         {draft.stops.map((s, i) => {
           const st = byId(state.stations, s.stationId);
           return (
@@ -2293,9 +2408,9 @@ function RideForm({ state, update, training, dayIdx, dateISO, existing, onBack }
                   <div className="font-semibold text-sm truncate">{st?.name || "?"}</div>
                   <div className="flex gap-2 mt-1">
                     <input type="time" className="inp" style={{ minHeight: 38, padding: "6px 8px", width: 110 }} value={s.time}
-                      onChange={(e) => setStop(i, { time: e.target.value })} aria-label="Indulási idő" />
+                      onChange={(e) => setStop(i, { time: e.target.value })} aria-label={`${isBack ? "Érkezési" : "Indulási"} idő: ${st?.name || "megálló"}`} />
                     <input type="number" min="0" className="inp" style={{ minHeight: 38, padding: "6px 8px", width: 74 }} value={s.count}
-                      onChange={(e) => setStop(i, { count: e.target.value })} placeholder="fő" aria-label="Létszám" />
+                      onChange={(e) => setStop(i, { count: e.target.value })} placeholder="fő" aria-label={`Létszám: ${st?.name || "megálló"}`} />
                   </div>
                 </div>
                 <div className="flex flex-col gap-1">
@@ -2307,12 +2422,14 @@ function RideForm({ state, update, training, dayIdx, dateISO, existing, onBack }
             </div>
           );
         })}
-        <div className="rail-row">
-          <span className="rail-dot dest" aria-hidden />
-          <div className="p-2 flex items-center gap-2 text-sm font-semibold">
-            <Flag size={15} style={{ color: "var(--ok)" }} /> {venue?.name} · érkezés legkésőbb <span className="tnum text-base">{training.start}</span>
+        {!isBack && (
+          <div className="rail-row">
+            <span className="rail-dot dest" aria-hidden />
+            <div className="p-2 flex items-center gap-2 text-sm font-semibold">
+              <Flag size={15} style={{ color: "var(--ok)" }} /> {venue?.name} · érkezés legkésőbb <span className="tnum text-base">{training.start}</span>
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       {freeStations.length > 0 ? (
@@ -3055,6 +3172,7 @@ export {
   normalizePlate, plateExists,
   timeToMin, minToTime, weekdayIdx, mondayOf, toISO, addDays,
   legMin, bestStationOrder, teamRouteOrder, splitStationsByCapacity,
-  rideWindow, findConflicts, teamPax,
+  rideWindow, findConflicts, teamPax, deleteGuard,
+  planOda, planVissza, venueDepartMin,
   genDayTasks, resolveDay, mkChain, dayStats, driverAvailableFor, optimizeDay,
 };
