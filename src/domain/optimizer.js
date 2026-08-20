@@ -4,7 +4,7 @@
 import { DAYS, byId, uid } from "./constants.js";
 import { timeToMin, minToTime } from "./datetime.js";
 import { legMin, locName } from "./geo.js";
-import { weekOccurrences } from "./logic.js";
+import { weekOccurrences, teamLeg } from "./logic.js";
 
 /* Held–Karp: az összes állomást érintő legrövidebb út sorrendje.
    pre/post: a lánc elé/mögé kötött pont (pl. helyszín); fixedFirst/fixedLast:
@@ -76,9 +76,16 @@ export function planVissza(state, order, venueId, departAt, dwell) {
    egy megálló-részhalmaz is átadható; a rögzített kezdő megálló csak akkor
    érvényes, ha benne van a részhalmazban. */
 export function teamRouteOrder(state, team, venueId, dir, stationIds) {
-  const ids = (stationIds || team.stationIds || []).filter((id) => byId(state.stations, id));
-  if (ids.length <= 1 || team.routeMode === "manual") return dir === "oda" ? ids : [...ids].reverse();
-  const anchor = team.routeAnchorId && ids.includes(team.routeAnchorId) ? team.routeAnchorId : null;
+  const leg = teamLeg(team, dir);
+  const ids = (stationIds || leg.stationIds || []).filter((id) => byId(state.stations, id));
+  if (ids.length <= 1 || team.routeMode === "manual") {
+    /* Kézi módban a tárolt sorrend a szándékolt sorrend. Megfordítani csak akkor
+       helyes, ha a visszaút az ODAÚT listáját tükrözi; ha saját listája van, azt
+       a felhasználó már hazafelé menő sorrendben állította össze. */
+    if (dir === "oda" || leg.isOverride) return ids;
+    return [...ids].reverse();
+  }
+  const anchor = leg.routeAnchorId && ids.includes(leg.routeAnchorId) ? leg.routeAnchorId : null;
   if (dir === "oda") return bestStationOrder(state, ids, { post: venueId, fixedFirst: anchor });
   return bestStationOrder(state, ids, { pre: venueId, fixedLast: anchor });
 }
@@ -112,53 +119,65 @@ export function genDayTasks(state, weekday, weekMon) {
   for (const o of occs) {
     const t = o.training, team = byId(state.teams, t.teamId);
     if (!team) continue;
-    const st = team.stationIds.filter((id) => byId(state.stations, id));
-    if (!st.length) { skipped.push(`${team.name}: nincs állomás a csapathoz rendelve, ezért nem készült feladat.`); continue; }
-    const pax = teamPax(team);
-    if (!pax) skipped.push(`${team.name}: nincs megadva létszám (se megállónként, se összesen) — 0 főnek számol.`);
-    const sc = team.stationCounts || {};
-    const cnt = (sid) => Number(sc[sid]) || 0;
     const suffix = t.type === "weekly" ? weekday : "x";
 
-    /* Egy irány (oda/vissza) feladata egy megálló-részhalmazra. idx=null: teljes
-       csapat egy buszon; idx>=1: a `count` buszra bontott feladat idx-edik része. */
-    const mkTask = (dir, subset, idx, count) => {
-      const order = teamRouteOrder(state, team, t.venueId, dir, subset);
-      const split = idx != null;
-      const tag = split ? `#${idx}` : "";
-      const name = `${team.name} · ${dir === "oda" ? "ODA" : "VISSZA"}${split ? ` (${idx}/${count})` : ""}`;
-      const base = {
-        id: `${t.id}:${suffix}:${dir}${tag}`, dir, teamId: team.id, trainingId: t.id,
-        pax: split ? order.reduce((a, s) => a + cnt(s), 0) : pax, label: name,
-        breakdown: order.map((sid) => ({ stationId: sid, count: cnt(sid) })).filter((x) => x.count > 0),
-      };
-      if (dir === "oda") {
-        const op = planOda(state, order, t.venueId, timeToMin(t.start) - N, dwell);
-        return { ...base, from: order[0], to: t.venueId, start: op.start, end: op.end,
-          plan: op.stops.map((s) => ({ ...s, count: cnt(s.stationId) })), venueTime: op.venueArr };
-      }
-      const vp = planVissza(state, order, t.venueId, timeToMin(t.end) + M, dwell);
-      return { ...base, from: t.venueId, to: order[order.length - 1], start: vp.start, end: vp.end,
-        plan: vp.stops.map((s) => ({ ...s, count: cnt(s.stationId) })), venueTime: vp.venueDep };
-    };
+    /* Irányonként külön kör: a visszaútnak saját megállói és saját létszámai
+       lehetnek, ezért a megállóhalmazt, a létszámokat, a pax-ot ÉS a buszokra
+       bontást is irányonként kell számolni. A két irány így eltérő számú buszra
+       is bomolhat — ezt semmi nem tiltja: a feladatok innentől függetlenek, a
+       láncolás időre és üresjáratra megy, az #1/#2 párosítás sehol nincs
+       kikényszerítve. */
+    for (const dir of ["oda", "vissza"]) {
+      const leg = teamLeg(team, dir);
+      const dirLabel = dir === "oda" ? "ODA" : "VISSZA";
+      const who = leg.isOverride ? `${team.name} · ${dirLabel}` : team.name;
 
-    const bins = maxSeats > 0 && pax > maxSeats ? splitStationsByCapacity(st, cnt, maxSeats) : null;
-    if (bins && bins.length > 1) {
-      skipped.push(`${team.name}: a ${pax} fős létszám meghaladja a legnagyobb jármű férőhelyét (${maxSeats} fő), ezért ${bins.length} buszra bontva, megállónként.`);
-      bins.forEach((subset, k) => {
-        tasks.push(mkTask("oda", subset, k + 1, bins.length));
-        tasks.push(mkTask("vissza", subset, k + 1, bins.length));
-      });
-    } else {
-      if (maxSeats > 0 && pax > maxSeats) {
-        const big = st.filter((sid) => cnt(sid) > maxSeats);
-        if (big.length)
-          skipped.push(`${team.name}: megállónként sem osztható — ${big.map((sid) => `${locName(state, sid)} (${cnt(sid)} fő)`).join(", ")} önmagában több, mint a legnagyobb jármű (${maxSeats} fő).`);
-        else if (!st.some((sid) => cnt(sid) > 0))
-          skipped.push(`${team.name}: a ${pax} fő meghaladja a legnagyobb jármű férőhelyét (${maxSeats} fő), de nincs megállónkénti létszámbontás, ezért nem osztható buszokra — add meg a megállónkénti létszámokat a felosztáshoz.`);
+      const st = (leg.stationIds || []).filter((id) => byId(state.stations, id));
+      if (!st.length) {
+        skipped.push(`${who}: nincs állomás rendelve, ezért nem készült ${dirLabel} feladat.`);
+        continue;
       }
-      tasks.push(mkTask("oda", st, null));
-      tasks.push(mkTask("vissza", st, null));
+      const pax = teamPax(team, dir);
+      if (!pax) skipped.push(`${who}: nincs megadva létszám (se megállónként, se összesen) — 0 főnek számol.`);
+      const sc = leg.stationCounts || {};
+      const cnt = (sid) => Number(sc[sid]) || 0;
+
+      /* Egy irány feladata egy megálló-részhalmazra. idx=null: teljes csapat egy
+         buszon; idx>=1: a `count` buszra bontott feladat idx-edik része. */
+      const mkTask = (subset, idx, count) => {
+        const order = teamRouteOrder(state, team, t.venueId, dir, subset);
+        const split = idx != null;
+        const tag = split ? `#${idx}` : "";
+        const name = `${team.name} · ${dirLabel}${split ? ` (${idx}/${count})` : ""}`;
+        const base = {
+          id: `${t.id}:${suffix}:${dir}${tag}`, dir, teamId: team.id, trainingId: t.id,
+          pax: split ? order.reduce((a, sid) => a + cnt(sid), 0) : pax, label: name,
+          breakdown: order.map((sid) => ({ stationId: sid, count: cnt(sid) })).filter((x) => x.count > 0),
+        };
+        if (dir === "oda") {
+          const op = planOda(state, order, t.venueId, timeToMin(t.start) - N, dwell);
+          return { ...base, from: order[0], to: t.venueId, start: op.start, end: op.end,
+            plan: op.stops.map((x) => ({ ...x, count: cnt(x.stationId) })), venueTime: op.venueArr };
+        }
+        const vp = planVissza(state, order, t.venueId, timeToMin(t.end) + M, dwell);
+        return { ...base, from: t.venueId, to: order[order.length - 1], start: vp.start, end: vp.end,
+          plan: vp.stops.map((x) => ({ ...x, count: cnt(x.stationId) })), venueTime: vp.venueDep };
+      };
+
+      const bins = maxSeats > 0 && pax > maxSeats ? splitStationsByCapacity(st, cnt, maxSeats) : null;
+      if (bins && bins.length > 1) {
+        skipped.push(`${who}: a ${pax} fős létszám meghaladja a legnagyobb jármű férőhelyét (${maxSeats} fő), ezért ${bins.length} buszra bontva, megállónként.`);
+        bins.forEach((subset, k) => tasks.push(mkTask(subset, k + 1, bins.length)));
+      } else {
+        if (maxSeats > 0 && pax > maxSeats) {
+          const big = st.filter((sid) => cnt(sid) > maxSeats);
+          if (big.length)
+            skipped.push(`${who}: megállónként sem osztható — ${big.map((sid) => `${locName(state, sid)} (${cnt(sid)} fő)`).join(", ")} önmagában több, mint a legnagyobb jármű (${maxSeats} fő).`);
+          else if (!st.some((sid) => cnt(sid) > 0))
+            skipped.push(`${who}: a ${pax} fő meghaladja a legnagyobb jármű férőhelyét (${maxSeats} fő), de nincs megállónkénti létszámbontás, ezért nem osztható buszokra — add meg a megállónkénti létszámokat a felosztáshoz.`);
+        }
+        tasks.push(mkTask(st, null));
+      }
     }
   }
   tasks.sort((a, b) => a.start - b.start || a.end - b.end);
@@ -170,9 +189,13 @@ export function genDayTasks(state, weekday, weekMon) {
    összlétszámot: egy 12 fős csapatnál, ahol az edző még csak két megállóhoz írt
    létszámot, ez 5 főt adott — nem indult kapacitás szerinti felosztás, és 12
    gyerek elé állt be egy 6 személyes busz, figyelmeztetés nélkül. */
-export function teamPax(team) {
-  const sc = team.stationCounts || {};
-  const sum = (team.stationIds || []).reduce((a, id) => a + (Number(sc[id]) || 0), 0);
+export function teamPax(team, dir = "oda") {
+  const leg = teamLeg(team, dir);
+  const sc = leg.stationCounts;
+  const sum = (leg.stationIds || []).reduce((a, id) => a + (Number(sc[id]) || 0), 0);
+  /* Az összlétszám tartalék érték: csak akkor számít, ha a megállónkénti bontás
+     kisebb nála. Saját visszaút-listánál is ugyanez a szabály — ugyanazok a
+     gyerekek utaznak, csak máshol szállnak le. */
   return Math.max(sum, Number(team.passengerCount) || 0);
 }
 
@@ -354,9 +377,15 @@ export function resolveDay(state, weekday, weekMon) {
   const tmap = Object.fromEntries(tasks.map((t) => [t.id, t]));
   const assigned = new Set();
   const chains = [];
+  let droppedChains = 0;
   for (const ch of (state.assignments?.[weekday]?.chains || [])) {
     const ts = ch.taskIds.filter((x) => tmap[x.id]).map((x) => ({ ...tmap[x.id], locked: !!x.locked }));
-    if (!ts.length) continue;
+    /* Egy lánc feladatazonosítói elavulhatnak: az azonosító tartalmazza a
+       felosztási indexet, így pl. a megállók vagy a létszámok módosítása után
+       a `…:vissza` azonosítóból `…:vissza#1/#2` lehet. Ilyenkor a lánc a benne
+       tárolt sofőrrel, járművel és zárolással együtt eltűnne — némán. Számoljuk,
+       és a hívó jelezze, különben az felhasználói szemmel "eltűnt a beosztásom". */
+    if (!ts.length) { droppedChains++; continue; }
     ts.forEach((t) => assigned.add(t.id));
     const c = mkChain(state, ts, { id: ch.id, driverId: ch.driverId, vehicleId: ch.vehicleId });
     c.driver = byId(state.drivers, ch.driverId);
@@ -400,7 +429,10 @@ export function resolveDay(state, weekday, weekMon) {
       A.issues.push(m); B.issues.push(m);
     }
   chains.sort((a, b) => a.start - b.start);
-  return { tasks, chains, unassigned: tasks.filter((t) => !assigned.has(t.id)), skipped };
+  const notes = droppedChains
+    ? [...skipped, `${droppedChains} korábban mentett lánc feladatai már nem léteznek ebben a formában (valószínűleg megváltoztak a megállók vagy a létszámok), ezért kikerültek a beosztásból. Futtasd újra az optimalizálást.`]
+    : skipped;
+  return { tasks, chains, unassigned: tasks.filter((t) => !assigned.has(t.id)), skipped: notes };
 }
 
 export function dayStats(state, chains) {

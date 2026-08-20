@@ -25,21 +25,75 @@ function AppIcon() {
   );
 }
 
+/* A Supabase pontosan megmondja, miért nem sikerült a belépés — a felület viszont
+   korábban minden esetre ugyanazt a "Hibás e-mail vagy jelszó" mondatot írta ki, és
+   az információ elveszett. A klub személyzete fogja ezt használni, nem fejlesztők:
+   ha nem az appból derül ki, mi a teendő, akkor sehonnan.
+
+   Amit NEM bontunk szét: azt, hogy létezik-e egyáltalán ez az e-mail-cím. A rossz
+   jelszó és a nem létező fiók továbbra is közös üzenetet kap, különben a belépő
+   képernyő felhasználólistát szivárogtatna. Csak a SZERVER állapotáról szóló
+   eseteket különböztetjük meg — azok nem mondanak semmit egyetlen fiókról sem. */
+export function loginErrorMessage(error) {
+  const code = error?.code || error?.error_code || "";
+  const status = error?.status;
+  const raw = `${code} ${error?.message || ""}`.toLowerCase();
+
+  if (code === "email_not_confirmed" || raw.includes("email not confirmed"))
+    return "Ez a fiók még nincs megerősítve. A Supabase-ben az Authentication → Users alatt erősítsd meg az e-mail-címet (vagy hozd létre újra a felhasználót az „Auto Confirm User” bepipálásával).";
+
+  if (code === "invalid_credentials" || raw.includes("invalid login credentials"))
+    return "Hibás e‑mail vagy jelszó.";
+
+  if (code === "email_provider_disabled" || code === "signup_disabled" || raw.includes("logins are disabled") || raw.includes("not allowed for this instance"))
+    return "Az e‑mailes bejelentkezés ki van kapcsolva a szerveren. A Supabase-ben az Authentication → Providers → Email alatt kapcsold be (az „Enable sign-ups” kikapcsolva maradhat).";
+
+  if (code === "over_request_rate_limit" || status === 429)
+    return "Túl sok próbálkozás egymás után. Várj egy percet, és próbáld újra.";
+
+  if (status === 401 || raw.includes("invalid api key"))
+    return "A szerver beállítása hibás (érvénytelen API kulcs) — ez nem rajtad múlik. A Vercelen a VITE_SUPABASE_ANON_KEY értékét kell javítani, majd újradeployolni.";
+
+  // Hálózat / CSP: a kérés el sem jutott a szerverig.
+  if (error?.name === "AuthRetryableFetchError" || raw.includes("failed to fetch") || raw.includes("networkerror"))
+    return "Nem sikerült elérni a szervert. Ellenőrizd az internetkapcsolatot, és próbáld újra.";
+
+  /* Ismeretlen eset. Szándékosan kiírjuk a szerver saját szövegét és kódját: egy
+     nyers azonosító, amit tovább lehet adni, sokkal többet ér, mint egy újabb
+     "valami hiba történt". Pontosan ez hiányzott, amikor egy 422-es válasz okát
+     a böngésző Network fülén kellett keresni. */
+  const detail = [status, code, error?.message].filter(Boolean).join(" · ");
+  return `Nem sikerült a belépés.${detail ? ` (${detail})` : ""}`;
+}
+
 function LoginScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [status, setStatus] = useState("idle"); // idle | signing | error
+  const [errorMsg, setErrorMsg] = useState("");
 
   const submit = async (e) => {
     e.preventDefault();
     if (!email.trim() || !password) return;
     setStatus("signing");
-    const { error } = await supabase.auth.signInWithPassword({
-      email: email.trim(),
-      password,
-    });
-    if (error) setStatus("error");
-    // On success onAuthStateChange updates the session and the app renders.
+    setErrorMsg("");
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      });
+      if (error) {
+        setErrorMsg(loginErrorMessage(error));
+        setStatus("error");
+      }
+      // On success onAuthStateChange updates the session and the app renders.
+    } catch (err) {
+      /* A try/catch nélkül egy DOBOTT hiba (hálózat, CSP) sosem érte el a
+         setStatus-t, így a gomb véglegesen a „Belépés…” feliraton ragadt,
+         üzenet nélkül — a felhasználó számára néma megállás. */
+      setErrorMsg(loginErrorMessage(err));
+      setStatus("error");
+    }
   };
 
   return (
@@ -83,7 +137,7 @@ function LoginScreen() {
         <button type="submit" className="v-btn v-btn-primary v-btn-block" disabled={status === "signing"}>
           {status === "signing" ? "Belépés…" : "Bejelentkezés"}
         </button>
-        {status === "error" && <p className="v-error">Hibás e‑mail vagy jelszó.</p>}
+        {status === "error" && <p className="v-error" role="alert">{errorMsg}</p>}
       </form>
     </div>
   );

@@ -30,7 +30,7 @@ export {
 } from "./src/domain/datetime.js";
 export { legMin, matrixKey, computeMatrix } from "./src/domain/geo.js";
 export {
-  normalizePlate, plateExists, rideWindow, findConflicts, venueDepartMin, deleteGuard,
+  normalizePlate, plateExists, rideWindow, findConflicts, venueDepartMin, deleteGuard, teamLeg,
 } from "./src/domain/logic.js";
 export {
   bestStationOrder, teamRouteOrder, splitStationsByCapacity, planOda, planVissza,

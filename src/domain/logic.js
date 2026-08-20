@@ -105,10 +105,42 @@ export function chainRefs(state, field, id) {
   return c;
 }
 
+/* Egy csapat adott irányhoz tartozó "lába": mely megállókat érinti, mennyi
+   emberrel, és melyik megálló van rögzítve a sor végére.
+
+   Ez az EGYETLEN hely, ahol eldől, hogy a visszaút saját listát használ-e vagy
+   tükrözi az odautat. Ha nincs `returnStationIds`, mindkét irány az odaút
+   mezőit kapja — vagyis a korábbi viselkedés változatlan, és a meglévő
+   csapatoknál semmit nem kell átállítani.
+
+   `isOverride` azért kell, mert a rendezés máshogy viselkedik: egy tükrözött
+   visszautat meg kell fordítani, egy kézzel összeállított visszaút-listát
+   viszont NEM — annak a sorrendje már a szándékolt sorrend. */
+export function teamLeg(team, dir) {
+  const own = dir === "vissza" && Array.isArray(team?.returnStationIds);
+  if (!own) {
+    return {
+      stationIds: team?.stationIds || [],
+      stationCounts: team?.stationCounts || {},
+      routeAnchorId: team?.routeAnchorId ?? null,
+      isOverride: false,
+    };
+  }
+  return {
+    stationIds: team.returnStationIds,
+    stationCounts: team.returnStationCounts || {},
+    routeAnchorId: team.returnRouteAnchorId ?? null,
+    isOverride: true,
+  };
+}
+
 export function deleteGuard(state, kind, id) {
   const n = (c, w) => (c > 0 ? `Használatban: ${c} ${w}.` : null);
   if (kind === "stations") {
-    const c = state.teams.filter((t) => (t.stationIds || []).includes(id)).length
+    // A visszaút saját listáját is számolni kell: egy csak hazafelé használt
+    // állomás egyébként hivatkozatlannak látszana, törölhetővé válna, és utána
+    // a teamRouteOrder szűrője némán kihagyná — a gyerekeket nem vinné haza senki.
+    const c = state.teams.filter((t) => (t.stationIds || []).includes(id) || (t.returnStationIds || []).includes(id)).length
       + state.rides.filter((r) => (r.stops || []).some((s) => s.stationId === id)).length;
     return n(c, "csapat/fuvar");
   }

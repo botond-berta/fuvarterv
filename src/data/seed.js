@@ -14,7 +14,11 @@ export function ensureShape(s) {
   s.venues = (s.venues || []).map((x) => ({ ...x, lat: x.lat ?? null, lon: x.lon ?? null }));
   s.vehicles = (s.vehicles || []).map((v) => ({ ...v, seats: Number(v.seats) || 0, plate: v.plate || "" }));
   s.drivers = (s.drivers || []).map((d) => ({ ...d, wage: d.wage ?? 3000, minShiftMin: d.minShiftMin ?? 120, availability: d.availability || [], preferredVehicleId: d.preferredVehicleId ?? null }));
-  s.teams = (s.teams || []).map((t) => ({ ...t, stationIds: t.stationIds || [], venueIds: t.venueIds || [], passengerCount: t.passengerCount ?? null, stationCounts: t.stationCounts || {}, routeMode: t.routeMode || "auto", routeAnchorId: t.routeAnchorId ?? null }));
+  /* returnStationIds === null azt jelenti: a visszaút tükrözze az odautat (ez a
+     korábbi, egyetlen listás viselkedés). Tömb esetén a visszaútnak saját
+     megállói vannak. A mezők szándékosan laposak, nem egy beágyazott objektumban:
+     a csapat-felület tömbkapcsoló segédfüggvénye felső szintű mezőnévvel dolgozik. */
+  s.teams = (s.teams || []).map((t) => ({ ...t, stationIds: t.stationIds || [], venueIds: t.venueIds || [], passengerCount: t.passengerCount ?? null, stationCounts: t.stationCounts || {}, routeMode: t.routeMode || "auto", routeAnchorId: t.routeAnchorId ?? null, returnStationIds: t.returnStationIds ?? null, returnStationCounts: t.returnStationCounts || {}, returnRouteAnchorId: t.returnRouteAnchorId ?? null }));
   s.trainings = (s.trainings || []).map((t) => ({ ...t, type: t.type || "weekly", days: t.days || [], date: t.date ?? null }));
   s.rides = (s.rides || []).map((r) => ({ ...r, dir: r.dir || "oda", stops: r.stops || [] }));
   s.matrix = s.matrix || null;
