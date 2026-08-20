@@ -16,6 +16,12 @@ create index if not exists app_state_history_ws_saved_idx
 
 alter table public.app_state_history enable row level security;
 
+-- Every create policy is preceded by a drop, so this file can be re-run safely.
+-- (create policy has no IF NOT EXISTS; without the drop a re-run fails with 42710
+-- and, since the SQL editor is not one transaction, can stop half-way.)
+drop policy if exists "authenticated read history"  on public.app_state_history;
+drop policy if exists "authenticated write history" on public.app_state_history;
+
 create policy "authenticated read history" on public.app_state_history
   for select to authenticated using (true);
 create policy "authenticated write history" on public.app_state_history

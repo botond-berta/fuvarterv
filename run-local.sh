@@ -3,7 +3,8 @@
 # run-local.sh — set up and run Fuvarterv on http://localhost:5173/
 #
 # Does everything needed, without root:
-#   1. Installs Node.js 22 LTS into ~/.local (only if a suitable node is missing).
+#   1. Installs Node.js 22 LTS into ~/.local (only if node >= 20 is missing —
+#      the same floor as "engines" in package.json, which Vercel also reads).
 #   2. npm install + starts the Vite dev server for the committed root project.
 #
 # The project is now a normal committed Vite app (package.json, src/, index.html);
@@ -27,7 +28,7 @@ log() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
 need_node=1
 if command -v node >/dev/null 2>&1; then
   cur="$(node -v | sed 's/^v//;s/\..*//')"
-  if [[ "$cur" -ge 18 ]]; then need_node=0; fi
+  if [[ "$cur" -ge 20 ]]; then need_node=0; fi
 fi
 
 if [[ "$need_node" -eq 1 ]]; then
