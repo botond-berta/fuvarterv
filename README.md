@@ -42,7 +42,7 @@ The project is a normal committed Vite app; the app source is `fuvarterv.jsx` at
 ```bash
 cp .env.example .env      # then fill in VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY
 ./run-local.sh            # bootstraps Node if needed, npm install, npm run dev
-# or, if you already have Node 18+:
+# or, if you already have Node 20+:
 npm install && npm run dev
 ```
 
@@ -50,11 +50,41 @@ Open http://localhost:5173, sign in with a user you created in step 3 above, and
 
 ## Deploy (Vercel)
 
-1. Import the repo into Vercel — the **Vite** preset is auto-detected (build `npm run build`, output `dist`).
-2. Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` under **Settings → Environment Variables** (Production **and** Preview). Both are browser-safe; RLS protects the data.
-3. `vercel.json` already adds the SPA catch-all rewrite so deep links / refreshes resolve to the app.
+Before the first deploy, make sure the database is ready: run **all three** migrations in
+order and turn off public sign-up (see [Supabase setup](#supabase-setup-one-time) and
+[`supabase/migrations/README.md`](supabase/migrations/README.md), which includes a
+read-only query telling you which migrations are still outstanding).
 
-When deployed, the full OSM map, the Nominatim search and the OSRM matrix all work — inside the artifact preview these are restricted by CSP, which is what the fallbacks are for.
+1. Import the repo into Vercel — the **Vite** preset is auto-detected (build `npm run build`, output `dist`). Node comes from `engines` in `package.json`.
+2. Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` under **Settings → Environment Variables**, ticking **Production *and* Preview**. Both are browser-safe; RLS protects the data.
+
+   > Vite inlines these **at build time**. If you add them after a deployment has already
+   > been built, that build will not pick them up — redeploy. A build without them still
+   > succeeds; the app just shows the "missing configuration" screen.
+3. Push a branch for a preview deployment, verify it, then merge to `main` for production.
+
+`vercel.json` adds the SPA catch-all rewrite (so deep links and refreshes resolve to the
+app) and a set of security headers.
+
+### About the Content-Security-Policy
+
+The policy in `vercel.json` allows exactly the origins this app actually uses — Supabase,
+the OSRM matrix, Nominatim, OSM tiles, Leaflet from cdnjs, and Google Fonts. If you add a
+new external service, it needs a matching directive or the browser will silently block it.
+
+It deliberately has **no `'unsafe-inline'`**: the production `index.html` contains no
+inline script or style, and React and Leaflet set styles through the CSSOM, which CSP does
+not govern. This was verified by serving the built app with these exact headers and
+clicking through every screen — zero violations.
+
+One caveat worth knowing when you check a preview deployment: that verification ran in a
+sandbox where `cdnjs.cloudflare.com` and `tile.openstreetmap.org` were unreachable, so the
+Leaflet path fell back to the built-in offline map and was never exercised under the
+policy. **Open the map picker on the preview and check the browser console.** If Leaflet
+turns out to need it, adding `'unsafe-inline'` back to `style-src` is a one-line fix.
+
+When deployed, the full OSM map, the Nominatim search and the OSRM matrix all work — inside
+the artifact preview these are restricted by CSP, which is what the fallbacks are for.
 
 ## Architecture
 

@@ -11,18 +11,25 @@
 -- Without that step anyone who reads the anon key out of the JS bundle can
 -- register and then read, overwrite and delete everything below.
 
+-- Re-runnable: every create policy is preceded by a drop. Run the migrations in
+-- order — 0003 references public.app_state_history, which 0002 creates, and
+-- "drop policy if exists" still requires the table to exist.
+--
 -- 1. app_state: keep read/insert/update for authenticated users, but stop the
 --    table being used as scratch space for arbitrary keys, and stop deletes.
 --    The app only ever touches the one workspace row.
 drop policy if exists "authenticated read"  on public.app_state;
 drop policy if exists "authenticated write" on public.app_state;
 
+drop policy if exists "app_state select" on public.app_state;
 create policy "app_state select" on public.app_state
   for select to authenticated using (true);
 
+drop policy if exists "app_state insert" on public.app_state;
 create policy "app_state insert" on public.app_state
   for insert to authenticated with check (id = 'fuvarterv:v1');
 
+drop policy if exists "app_state update" on public.app_state;
 create policy "app_state update" on public.app_state
   for update to authenticated using (id = 'fuvarterv:v1') with check (id = 'fuvarterv:v1');
 
@@ -34,14 +41,17 @@ create policy "app_state update" on public.app_state
 drop policy if exists "authenticated read history"  on public.app_state_history;
 drop policy if exists "authenticated write history" on public.app_state_history;
 
+drop policy if exists "history select" on public.app_state_history;
 create policy "history select" on public.app_state_history
   for select to authenticated using (true);
 
+drop policy if exists "history insert" on public.app_state_history;
 create policy "history insert" on public.app_state_history
   for insert to authenticated with check (workspace_id = 'fuvarterv:v1');
 
 -- The client prunes to the last 20 snapshots, which needs delete. Restrict it to
 -- the workspace so a client cannot clear another key's history.
+drop policy if exists "history prune" on public.app_state_history;
 create policy "history prune" on public.app_state_history
   for delete to authenticated using (workspace_id = 'fuvarterv:v1');
 
