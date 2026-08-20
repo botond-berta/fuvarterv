@@ -1,6 +1,6 @@
 import { describe, test, expect } from "vitest";
 import {
-  optimizeDay, genDayTasks, mondayOf, minToTime, driverAvailableFor,
+  optimizeDay, genDayTasks, mondayOf, minToTime, driverAvailableFor, legMin,
 } from "../fuvarterv.jsx";
 
 /*
@@ -94,13 +94,19 @@ describe("optimizeDay invariants (property test over generated states)", () => {
         expect(drv).toBeTruthy();
         expect(driverAvailableFor(drv, WEEKDAY, c.start, c.end)).toBe(true);
 
-        // (2) No driver/vehicle double-booked across overlapping chains.
+        // (2) A shared driver/vehicle must be physically able to do both chains:
+        // no time overlap AND enough room for the deadhead between them. Checking
+        // only the overlap (as this invariant used to) accepts a roster where the
+        // same bus finishes in one village and starts in another at the same
+        // minute — which is exactly the bug this now guards against.
         for (let j = i + 1; j < out.chains.length; j++) {
           const o = out.chains[j];
-          if (overlaps(c, o)) {
-            expect(c.driverId).not.toBe(o.driverId);
-            expect(c.vehicleId).not.toBe(o.vehicleId);
-          }
+          const shared = c.driverId === o.driverId || c.vehicleId === o.vehicleId;
+          if (!shared) continue;
+          expect(overlaps(c, o)).toBe(false);
+          const [first, second] = c.start <= o.start ? [c, o] : [o, c];
+          const dead = legMin(state, first.tasks[first.tasks.length - 1].to, second.tasks[0].from);
+          expect(first.end + dead).toBeLessThanOrEqual(second.start);
         }
       }
 

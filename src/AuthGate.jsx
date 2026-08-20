@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { supabase, isConfigured, WORKSPACE_ID } from "./supabaseClient.js";
 import { supabaseStorage } from "./supabaseStorage.js";
 import RestorePanel from "./RestorePanel.jsx";
+import ErrorBoundary from "./ErrorBoundary.jsx";
 import "./theme.css";
 
 // Install the Supabase-backed KV store the app expects. Assigned at import time
@@ -157,10 +158,13 @@ export default function AuthGate({ children }) {
       setLoading(false);
       return;
     }
-    supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session);
-      setLoading(false);
-    });
+    // A .catch nélkül egy elutasított token-frissítés örökre a "Betöltés…"
+    // képernyőn hagyná a felhasználót, retry lehetőség nélkül.
+    supabase.auth
+      .getSession()
+      .then(({ data }) => setSession(data?.session ?? null))
+      .catch(() => setSession(null))
+      .finally(() => setLoading(false));
     const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => {
       setSession(s);
     });
@@ -173,7 +177,10 @@ export default function AuthGate({ children }) {
     // The app's header buttons live in fuvarterv.jsx (which never imports auth);
     // they signal the shell through the same event seam as stale/saveerror.
     const onRestore = () => setShowRestore(true);
-    const onSignout = () => supabase.auth.signOut();
+    const onSignout = async () => {
+      await supabase.auth.signOut();
+      supabaseStorage.reset();
+    };
     window.addEventListener("fuvarterv:stale", onStale);
     window.addEventListener("fuvarterv:saveerror", onSaveError);
     window.addEventListener("fuvarterv:restore", onRestore);
@@ -190,8 +197,15 @@ export default function AuthGate({ children }) {
   // reachable before mounting <App/>. An empty result (no row yet) is fine —
   // only a real error blocks. This runs before loadState() inside the app, so
   // by the time App mounts the read path is known-good.
+  // A felhasználó azonosítója — NEM a session objektum. Az onAuthStateChange a
+  // TOKEN_REFRESHED eseményre is tüzel (nagyjából óránként), minden alkalommal új
+  // objektummal; ha a preflight arra volna kötve, visszaesne "checking" állapotba,
+  // ami korai visszatéréssel unmountolná az <App/>-ot — elveszítve minden nyitott
+  // űrlapot és piszkozatot. Az azonosító csak valódi felhasználóváltáskor változik.
+  const userId = session?.user?.id ?? null;
+
   useEffect(() => {
-    if (!isConfigured || !session) return;
+    if (!isConfigured || !userId) return;
     let cancelled = false;
     setPreflight("checking");
     supabase
@@ -202,11 +216,23 @@ export default function AuthGate({ children }) {
       .then(({ error }) => {
         if (cancelled) return;
         setPreflight(error ? "error" : "ready");
+      })
+      .catch(() => {
+        if (!cancelled) setPreflight("error");
       });
     return () => {
       cancelled = true;
     };
-  }, [session, retryTick]);
+  }, [userId, retryTick]);
+
+  // Felhasználóváltáskor (ki-, majd bejelentkezés ugyanazon a gépen) a korábbi
+  // munkamenet blokkoló állapota nem öröklődhet át: a stale overlay egyébként a
+  // következő felhasználót is kizárná egy őt nem érintő ütközés miatt.
+  useEffect(() => {
+    setStale(false);
+    setSaveError(false);
+    setShowRestore(false);
+  }, [userId]);
 
   if (!isConfigured) {
     return (
@@ -243,7 +269,9 @@ export default function AuthGate({ children }) {
       {stale && <StaleOverlay onReload={() => window.location.reload()} />}
       {saveError && !stale && <SaveErrorToast onDismiss={() => setSaveError(false)} />}
       {showRestore && <RestorePanel onClose={() => setShowRestore(false)} />}
-      {children}
+      {/* A határ a shellen BELÜL van, hogy egy képernyő-hiba után a korábbi
+          mentések és a kijelentkezés még elérhető maradjon. */}
+      <ErrorBoundary>{children}</ErrorBoundary>
     </>
   );
 }
