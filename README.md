@@ -111,7 +111,7 @@ two modules circular.
 
 ### Data model (sketch)
 
-- **Team** — name, age group, gender, color, station and venue assignments, per-stop headcounts, route mode.
+- **Team** — name, age group, gender, color, station and venue assignments, per-stop headcounts, route mode. The **return leg can have its own stop list and headcounts** (`returnStationIds`); left unset, it mirrors the outbound in reverse, as before.
 - **Station / Venue** — name, address, note, coordinates.
 - **Vehicle** — name, unique normalized license plate, seat count (excluding driver).
 - **Driver** — name, phone, hourly wage, minimum shift, availability windows.

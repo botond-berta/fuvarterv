@@ -420,10 +420,22 @@ characters); seed data uses readable IDs like `jPAK543` (vehicle) or `dSIP`
   venueIds:   [id, ...],                 // which gyms this team can train at
   passengerCount: number|null,           // total headcount (fallback)
   stationCounts: { stationId: number },  // per-stop headcount (preferred)
-  routeMode: "auto" | "manual",          // how stop order is decided
-  routeAnchorId: id|null,                // optional forced first stop (auto mode)
+  routeMode: "auto" | "manual",          // how stop order is decided (both directions)
+  routeAnchorId: id|null,                // optional forced first stop, outbound (auto mode)
+
+  // The return leg may drop children somewhere other than where it collected them.
+  returnStationIds: [id, ...] | null,    // null = mirror the outbound (the default)
+  returnStationCounts: { stationId: number },
+  returnRouteAnchorId: id|null,          // optional forced LAST stop, return (auto mode)
 }
 ```
+
+`returnStationIds === null` is the pre-feature behaviour and the default: the return
+visits the outbound stops in reverse. An array — including an empty one — means the
+return has a list of its own. **Never read these fields directly**: use
+`teamLeg(team, dir)` from `src/domain/logic.js`, which is the single place that
+decides between the two and returns `{ stationIds, stationCounts, routeAnchorId,
+isOverride }` for the direction you ask for.
 
 **Station** (`stations[]`) — a pickup point.
 ```js
@@ -632,6 +644,21 @@ task carries:
 from "arrive at the gym `arriveEarlyMin` before training starts". Return is
 calculated *forwards* from "leave the gym `departAfterMin` after training ends".
 
+**The two directions are generated independently.** `genDayTasks` loops over
+`["oda", "vissza"]` and resolves the stop list, the per-stop counts, the `pax` **and
+the capacity split** separately for each, via `teamLeg(team, dir)`. A team whose
+return has its own stops can therefore need a different number of buses each way —
+nothing requires `…:oda#1` and `…:vissza#1` to pair up. After `genDayTasks` returns,
+tasks are flat and independent; chaining is decided purely by time and deadhead.
+
+> **Task ids embed the split index** (`trainingId:weekday:dir` plus `#1`, `#2`, …).
+> Changing a team's stops or headcounts can therefore change how many buses a
+> direction needs, which renames its tasks — and `resolveDay` cannot match a saved
+> chain against ids that no longer exist. It drops such chains (with their driver,
+> vehicle and lock flags) and reports how many, so the Schedule screen can tell the
+> user to re-run the optimiser rather than leave them wondering where the roster
+> went. Outbound ids are unaffected by adding a return list.
+
 **Capacity splitting.** Real teams (10–14 kids) can be bigger than the biggest bus
 (8 seats). If a team's headcount exceeds the largest vehicle, `genDayTasks` tries to
 **split the task across several buses by stop**, using
@@ -663,9 +690,12 @@ expensive). It supports:
 - `pre` / `post` — a point glued before/after the route (e.g. the gym),
 - `fixedFirst` / `fixedLast` — a forced first/last stop (the team's "anchor" stop).
 
-`teamRouteOrder(...)` wraps this: in **manual** route mode it uses the team's stored
-order (reversed for return); in **auto** mode it calls Held–Karp with the venue as
-the end (oda) or start (vissza) and the optional anchor.
+`teamRouteOrder(...)` wraps this and resolves the direction's stop list through
+`teamLeg`. In **manual** route mode it uses the stored order; that order is reversed
+for the return **only when the return mirrors the outbound** — a hand-authored return
+list is already in the intended order, so reversing it would undo the user's
+arrangement. In **auto** mode it calls Held–Karp with the venue as the end (oda) or
+start (vissza) and the direction's own anchor.
 
 `planOda` / `planVissza` then turn an order into a **timetable** (arrival + departure
 minute per stop), counting a `dwellMin` pause at each stop.

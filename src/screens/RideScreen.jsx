@@ -5,7 +5,7 @@ import { useState, useMemo, useRef } from "react";
 import { ChevronLeft, ChevronRight, GripVertical, ArrowUp, ArrowDown, AlertTriangle, MapPin, Clock, X, Flag, Zap } from "lucide-react";
 import { DAYS, uid, byId } from "../domain/constants.js";
 import { mondayOf, toISO, addDays, timeToMin, minToTime, fmtDate, fmtDateFull, fmtWeekRange } from "../domain/datetime.js";
-import { weekOccurrences, findRides, findConflicts, rideWindow, seatSum, venueDepartMin } from "../domain/logic.js";
+import { weekOccurrences, findRides, findConflicts, rideWindow, seatSum, venueDepartMin, teamLeg } from "../domain/logic.js";
 import { planOda, planVissza, bestStationOrder } from "../domain/optimizer.js";
 import { Field, DangerBtn, EmptyState, InfoDot } from "../ui/base.jsx";
 import { OccCard } from "../ui/OccCard.jsx";
@@ -92,8 +92,14 @@ export function RideForm({ state, update, training, dayIdx, dateISO, existing, o
   const pax = seatSum(draft.stops);
   const over = vehicle && pax > vehicle.seats;
 
-  const teamStations = state.stations.filter((s) => team?.stationIds.includes(s.id));
-  const freeStations = teamStations.filter((s) => !draft.stops.some((x) => x.stationId === s.id));
+  /* Az irány saját megállói kerülnek előre — de bármelyik állomás választható,
+     mert egy konkrét fuvar eltérhet a csapat állandó listájától (pl. egyszeri
+     kitérő). Korábban a lista iránytól függetlenül az ODAÚT megállóira szorult. */
+  const leg = teamLeg(team, dir);
+  const used = (id) => draft.stops.some((x) => x.stationId === id);
+  const legStations = state.stations.filter((s) => leg.stationIds.includes(s.id) && !used(s.id));
+  const otherStations = state.stations.filter((s) => !leg.stationIds.includes(s.id) && !used(s.id));
+  const freeStations = [...legStations, ...otherStations];
 
   const addStop = (stationId) => {
     /* ODA: az edzés kezdete előtt gyűjtünk be; VISSZA: a helyszíni indulás után
@@ -102,7 +108,7 @@ export function RideForm({ state, update, training, dayIdx, dateISO, existing, o
     const base = draft.stops.length
       ? (timeToMin(draft.stops[draft.stops.length - 1].time) ?? first) + 10
       : first;
-    setDraft({ ...draft, stops: [...draft.stops, { id: uid(), stationId, time: minToTime(base), count: team?.stationCounts?.[stationId] || "" }] });
+    setDraft({ ...draft, stops: [...draft.stops, { id: uid(), stationId, time: minToTime(base), count: leg.stationCounts?.[stationId] || "" }] });
   };
   const setStop = (i, patch) => setDraft({ ...draft, stops: draft.stops.map((s, j) => j === i ? { ...s, ...patch } : s) });
   const delStop = (i) => setDraft({ ...draft, stops: draft.stops.filter((_, j) => j !== i) });
@@ -281,14 +287,24 @@ export function RideForm({ state, update, training, dayIdx, dateISO, existing, o
       </div>
 
       {freeStations.length > 0 ? (
-        <select className="inp mb-4" value="" onChange={(e) => e.target.value && addStop(e.target.value)}>
+        <select className="inp mb-4" value="" onChange={(e) => e.target.value && addStop(e.target.value)}
+          aria-label="Megálló hozzáadása az útvonalhoz">
           <option value="">＋ Megálló hozzáadása…</option>
-          {freeStations.map((s) => <option key={s.id} value={s.id}>{s.name}{s.address ? ` – ${s.address}` : ""}</option>)}
+          {legStations.length > 0 && (
+            <optgroup label={`A csapat megállói (${isBack ? "VISSZA" : "ODA"})`}>
+              {legStations.map((s) => <option key={s.id} value={s.id}>{s.name}{s.address ? ` – ${s.address}` : ""}</option>)}
+            </optgroup>
+          )}
+          {otherStations.length > 0 && (
+            <optgroup label="Egyéb állomások">
+              {otherStations.map((s) => <option key={s.id} value={s.id}>{s.name}{s.address ? ` – ${s.address}` : ""}</option>)}
+            </optgroup>
+          )}
         </select>
-      ) : teamStations.length === 0 ? (
-        <div className="banner banner-warn mb-4"><AlertTriangle size={18} />A csapathoz még nincs állomás rendelve. A Csapatok fülön kapcsolhatsz be állomásokat.</div>
+      ) : state.stations.length === 0 ? (
+        <div className="banner banner-warn mb-4"><AlertTriangle size={18} />Még nincs felvett állomás. Az Adatok fülön vehetsz fel újat.</div>
       ) : (
-        <p className="text-sm mb-4 px-1" style={{ color: "var(--ink2)" }}>A csapat összes állomása szerepel az útvonalban.</p>
+        <p className="text-sm mb-4 px-1" style={{ color: "var(--ink2)" }}>Minden állomás szerepel már az útvonalban.</p>
       )}
 
       <div className="flex gap-2">

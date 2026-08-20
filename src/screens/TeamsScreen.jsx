@@ -98,6 +98,13 @@ export function TeamDetail({ state, update, team, onBack, notice }) {
     }),
   }));
 
+  const setReturnCount = (sid, val) => update((s) => ({
+    ...s,
+    teams: s.teams.map((t) => t.id !== team.id ? t : {
+      ...t, returnStationCounts: { ...(t.returnStationCounts || {}), [sid]: val === "" ? "" : Math.max(0, Number(val) || 0) },
+    }),
+  }));
+
   const setCount = (sid, val) => update((s) => ({
     ...s,
     teams: s.teams.map((t) => t.id !== team.id ? t : {
@@ -108,6 +115,13 @@ export function TeamDetail({ state, update, team, onBack, notice }) {
   const setTeamField = (patch) => update((s) => ({
     ...s, teams: s.teams.map((x) => (x.id === team.id ? { ...x, ...patch } : x)),
   }));
+
+  /* A visszaút saját listája: null = tükrözze az odautat (a korábbi viselkedés).
+     Bekapcsoláskor az odaút megállóival indulunk, hogy legyen mit szerkeszteni,
+     kikapcsoláskor null-ra állunk vissza. */
+  const setReturnOwn = (own) => setTeamField(own
+    ? { returnStationIds: [...team.stationIds], returnStationCounts: { ...(team.stationCounts || {}) } }
+    : { returnStationIds: null, returnRouteAnchorId: null });
 
   const deleteTeam = () => {
     update((s) => {
@@ -180,7 +194,7 @@ export function TeamDetail({ state, update, team, onBack, notice }) {
           </div>
           {(team.routeMode || "auto") === "auto" ? (
             <>
-              <Field label="Kezdő megálló" hint="ODÁ-nál első, VISSZÁ-nál utolsó megállóként rögzítjük; üresen a leggyorsabb sorrend nyer.">
+              <Field label="Kezdő megálló" hint="Az odaút első megállójaként rögzítjük; üresen a leggyorsabb sorrend nyer.">
                 <select className="inp" value={team.routeAnchorId || ""} onChange={(e) => setTeamField({ routeAnchorId: e.target.value || null })}>
                   <option value="">— szabad (leggyorsabb) —</option>
                   {team.stationIds.map((sid) => <option key={sid} value={sid}>{byId(state.stations, sid)?.name || "?"}</option>)}
@@ -198,9 +212,78 @@ export function TeamDetail({ state, update, team, onBack, notice }) {
               })()}
             </>
           ) : (
-            <p className="text-xs" style={{ color: "var(--ink2)" }}>A megállók bekapcsolási sorrendje a felszállási sorrend; a VISSZA irány ennek fordítottja.</p>
+            <p className="text-xs" style={{ color: "var(--ink2)" }}>
+              A megállók bekapcsolási sorrendje a felszállási sorrend
+              {team.returnStationIds ? "; a visszaútnak saját sorrendje van (lentebb)." : "; a VISSZA irány ennek fordítottja."}
+            </p>
           )}
         </div>
+      )}
+
+      <h3 className="disp text-base mb-2">Visszaút (leszállóhelyek)</h3>
+      <div className="seg mb-2">
+        <button className={!team.returnStationIds ? "on" : ""} onClick={() => setReturnOwn(false)}>Megegyezik az odaúttal</button>
+        <button className={team.returnStationIds ? "on" : ""} onClick={() => setReturnOwn(true)}>Külön lista</button>
+      </div>
+
+      {!team.returnStationIds ? (
+        <p className="text-xs mb-4 px-1" style={{ color: "var(--ink2)" }}>
+          A busz hazafelé ugyanazokat a megállókat érinti, fordított sorrendben. Válaszd a <b>Külön lista</b> opciót, ha a gyerekek máshol szállnak le, mint ahol felszálltak.
+        </p>
+      ) : (
+        <>
+          <div className="flex gap-2 flex-wrap mb-1">
+            {state.stations.map((s2) => (
+              <button key={s2.id} className={`chip ${team.returnStationIds.includes(s2.id) ? "on" : ""}`}
+                onClick={() => toggle("returnStationIds", s2.id)}>{s2.name}</button>
+            ))}
+          </div>
+          <p className="text-xs mb-2 px-1" style={{ color: "var(--ink2)" }}>
+            Ezek teljesen függetlenek az odaút megállóitól — lehet kevesebb, több vagy egészen más.
+          </p>
+
+          {team.returnStationIds.length > 0 && (
+            <div className="card p-3 mb-4">
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="disp text-sm">Létszám megállónként (vissza)</h4>
+                <span className="text-sm font-semibold tnum">Σ {teamPax(team, "vissza")} fő</span>
+              </div>
+              <div className="flex flex-col gap-2">
+                {team.returnStationIds.map((sid) => {
+                  const st = byId(state.stations, sid);
+                  return (
+                    <div key={sid} className="flex items-center gap-2">
+                      <span className="flex-1 text-sm truncate">{st?.name || "?"}</span>
+                      <input type="number" min="0" className="inp" style={{ width: 84, minHeight: 38, padding: "6px 8px" }}
+                        value={team.returnStationCounts?.[sid] ?? ""} placeholder="fő" aria-label={`Létszám hazafelé: ${st?.name || ""}`}
+                        onChange={(e) => setReturnCount(sid, e.target.value)} />
+                    </div>
+                  );
+                })}
+              </div>
+              <p className="text-xs mt-2" style={{ color: "var(--ink2)" }}>
+                A visszaút kapacitását és buszokra bontását ez határozza meg — az odaúttól függetlenül.
+              </p>
+            </div>
+          )}
+
+          {team.returnStationIds.length > 1 && (team.routeMode || "auto") === "auto" && (
+            <div className="card p-3 mb-4">
+              <Field label="Utolsó megálló (vissza)" hint="A hazaút végére rögzítjük; üresen a leggyorsabb sorrend nyer.">
+                <select className="inp" value={team.returnRouteAnchorId || ""} onChange={(e) => setTeamField({ returnRouteAnchorId: e.target.value || null })}>
+                  <option value="">— szabad (leggyorsabb) —</option>
+                  {team.returnStationIds.map((sid) => <option key={sid} value={sid}>{byId(state.stations, sid)?.name || "?"}</option>)}
+                </select>
+              </Field>
+              {team.venueIds[0] && (
+                <p className="text-xs" style={{ color: "var(--ink2)" }}>
+                  Számított sorrend ({byId(state.venues, team.venueIds[0])?.name || "1. helyszín"} felől):{" "}
+                  <b>{teamRouteOrder(state, team, team.venueIds[0], "vissza").map((id) => byId(state.stations, id)?.name || "?").join(" → ")}</b>
+                </p>
+              )}
+            </div>
+          )}
+        </>
       )}
 
       <h3 className="disp text-base mb-2">Helyszínek</h3>

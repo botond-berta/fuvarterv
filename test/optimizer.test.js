@@ -43,8 +43,18 @@ function genState(rng) {
     const stationCounts = {};
     for (const sid of subset) stationCounts[sid] = ri(1, 4);
     const venueId = pick(venues).id;
+    /* Egyes csapatok saját visszaút-listát kapnak, hogy az invariánsok az
+       irányonként eltérő megállókra és az irányonként eltérő buszfelosztásra is
+       fussanak — nem csak a tükrözött esetre. */
+    let returnStationIds = null, returnStationCounts = {};
+    if (rng() < 0.35) {
+      const rk = ri(1, nS);
+      returnStationIds = [...stations].sort(() => rng() - 0.5).slice(0, rk).map((s) => s.id);
+      for (const sid of returnStationIds) returnStationCounts[sid] = ri(1, 4);
+    }
     teams.push({ id: `tm${i}`, name: `tm${i}`, age: "U12", gender: "vegyes", color: "#000",
-      stationIds: subset, venueIds: [venueId], passengerCount: null, stationCounts, routeMode: "auto", routeAnchorId: null });
+      stationIds: subset, venueIds: [venueId], passengerCount: null, stationCounts, routeMode: "auto", routeAnchorId: null,
+      returnStationIds, returnStationCounts, returnRouteAnchorId: null });
     const startMin = ri(15, 18) * 60;
     const endMin = startMin + pick([60, 90, 120]);
     trainings.push({ id: `tr${i}`, teamId: `tm${i}`, venueId, type: "weekly", days: [WEEKDAY], date: null, start: minToTime(startMin), end: minToTime(endMin) });
