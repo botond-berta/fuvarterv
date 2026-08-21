@@ -24,16 +24,25 @@ Four tabs, plus the ride editor which opens from a week-view card.
 - **Conflict handling:** vehicle and driver conflicts are detected from occupancy windows (a bus is free after its last stop plus the leg to the venue — so one driver can run several waves to the same training without false alarms).
 - **Map:** Leaflet + OpenStreetMap, lazy-loaded; Nominatim address search; if the environment blocks tile loading, it switches to a built-in offline SVG map showing your existing points; coordinates can also be pasted manually (Google Maps format, decimal commas accepted).
 - **Persistence:** all data is saved to a **Supabase** table as a single JSON blob, behind an email + password login. In the Claude artifact preview the app still uses the sandbox's `window.storage`; the committed Vite project swaps in a Supabase-backed implementation of the same key-value contract (`src/supabaseStorage.js`).
+- **Roles:** two kinds of user — **admin** (full access) and **driver** (sees only the read-only Sofőr tab, opened on their own day plan via the e-mail set on their driver entry). Roles are assigned by e-mail under **Adatok → Felhasználók**; the restriction is enforced server-side by RLS (`0004_user_roles.sql`), not just hidden in the UI. A user with no role row is a driver.
 
 ## Supabase setup (one time)
 
 1. Create a Supabase project; from **Settings → API** copy the **Project URL** and the **publishable** (anon) key.
-2. In the **SQL editor**, run **all three** migrations in order:
+2. In the **SQL editor**, run **all four** migrations in order:
    - [`0001_app_state.sql`](supabase/migrations/0001_app_state.sql) — the `app_state` table and its RLS policies.
    - [`0002_app_state_history.sql`](supabase/migrations/0002_app_state_history.sql) — the snapshot history behind the **Korábbi mentések** panel. **Skipping this leaves the restore feature silently non-functional:** the button is still there, the panel still opens, and it will always say there are no snapshots. History writes fail quietly by design (they must never fail a save), so nothing else tells you.
    - [`0003_tighten_rls.sql`](supabase/migrations/0003_tighten_rls.sql) — restricts writes to the one workspace row, makes the history append-only, and moves `updated_at` onto the server clock.
-3. **Turn off public sign-up — this is the security boundary, not an optional hardening step.** Under **Authentication → Providers → Email**, switch **Enable sign-ups** OFF. The anon key is public by design (it ships in the JS bundle) and every policy grants access to any *authenticated* user, so while sign-ups are open anyone who reads the key out of the bundle can register and then read, overwrite and delete all of your data.
-4. **Create your login(s):** add each staff member under **Authentication → Users → Add user**, set a password, and enable **Auto Confirm User**. No emails are sent.
+   - [`0004_user_roles.sql`](supabase/migrations/0004_user_roles.sql) — admin/driver roles. From here on only **admins** can change data; everyone else is a **driver** who sees the Sofőr tab read-only.
+3. **Make yourself the first admin** — run this once in the SQL editor with your own address (details in [`supabase/migrations/README.md`](supabase/migrations/README.md)):
+   ```sql
+   insert into public.user_roles (email, role)
+   values (lower('you@example.com'), 'admin')
+   on conflict (email) do update set role = 'admin';
+   ```
+   Further roles are managed inside the app under **Adatok → Felhasználók**.
+4. **Turn off public sign-up — this is the security boundary, not an optional hardening step.** Under **Authentication → Providers → Email**, switch **Enable sign-ups** OFF. The anon key is public by design (it ships in the JS bundle) and every policy grants read access to any *authenticated* user, so while sign-ups are open anyone who reads the key out of the bundle can register and read your data.
+5. **Create your login(s):** add each staff member under **Authentication → Users → Add user**, set a password, and enable **Auto Confirm User**. No emails are sent. Give each person a role under **Adatok → Felhasználók** (no row = driver); for drivers, also set the same e-mail on their entry under **Adatok → Sofőrök** so the Sofőr tab opens on their own day plan.
 
 ## Running locally
 
@@ -46,11 +55,11 @@ cp .env.example .env      # then fill in VITE_SUPABASE_URL and VITE_SUPABASE_ANO
 npm install && npm run dev
 ```
 
-Open http://localhost:5173, sign in with a user you created in step 3 above, and you're in. The first save seeds the shared workspace from `seedState()`.
+Open http://localhost:5173, sign in with a user you created in step 5 above, and you're in. The first save seeds the shared workspace from `seedState()`.
 
 ## Deploy (Vercel)
 
-Before the first deploy, make sure the database is ready: run **all three** migrations in
+Before the first deploy, make sure the database is ready: run **all four** migrations in
 order and turn off public sign-up (see [Supabase setup](#supabase-setup-one-time) and
 [`supabase/migrations/README.md`](supabase/migrations/README.md), which includes a
 read-only query telling you which migrations are still outstanding).

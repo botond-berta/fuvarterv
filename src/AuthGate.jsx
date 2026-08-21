@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { supabase, isConfigured, WORKSPACE_ID } from "./supabaseClient.js";
 import { supabaseStorage } from "./supabaseStorage.js";
+import { RoleContext } from "./roleContext.js";
 import RestorePanel from "./RestorePanel.jsx";
 import ErrorBoundary from "./ErrorBoundary.jsx";
 import "./theme.css";
@@ -64,6 +65,33 @@ export function loginErrorMessage(error) {
      a böngésző Network fülén kellett keresni. */
   const detail = [status, code, error?.message].filter(Boolean).join(" · ");
   return `Nem sikerült a belépés.${detail ? ` (${detail})` : ""}`;
+}
+
+/* A belépett felhasználó szerepköre a user_roles táblából, e-mail alapján.
+   Nincs sor → sofőr: pontosan az, amit a szerver-oldali szabályok is mondanak
+   (akit nem vettek fel adminnak, az nem írhat semmit). Egy kivétel van, és az
+   szándékos: ha maga a user_roles TÁBLA hiányzik — vagyis a 0004-es migráció
+   még nem futott le —, mindenki admin. Ilyenkor a szerver sem korlátoz semmit,
+   tehát a fülek elrejtése csak színház volna, egy frissen deployolt kliens
+   viszont e nélkül olvasásra némítaná a régi adatbázis minden felhasználóját. */
+export async function fetchRole(email) {
+  try {
+    const { data, error } = await supabase
+      .from("user_roles")
+      .select("role")
+      .eq("email", (email || "").toLowerCase())
+      .maybeSingle();
+    if (error) {
+      const raw = `${error.code || ""} ${error.message || ""}`;
+      // 42P01: Postgres "relation does not exist"; PGRST205: a PostgREST
+      // séma-gyorsítótára nem ismeri a táblát. Mindkettő = nincs 0004.
+      if (raw.includes("42P01") || raw.includes("PGRST205")) return { role: "admin", error: null };
+      return { role: null, error };
+    }
+    return { role: data?.role === "admin" ? "admin" : "sofor", error: null };
+  } catch (e) {
+    return { role: null, error: e };
+  }
 }
 
 function LoginScreen() {
@@ -257,19 +285,27 @@ export default function AuthGate({ children }) {
   // ami korai visszatéréssel unmountolná az <App/>-ot — elveszítve minden nyitott
   // űrlapot és piszkozatot. Az azonosító csak valódi felhasználóváltáskor változik.
   const userId = session?.user?.id ?? null;
+  const userEmail = session?.user?.email ?? null;
+  // A szerepkör a preflighttal együtt dől el; amíg nincs meg, az App nem mountol.
+  const [role, setRole] = useState(null);
 
   useEffect(() => {
     if (!isConfigured || !userId) return;
     let cancelled = false;
     setPreflight("checking");
-    supabase
-      .from("app_state")
-      .select("id")
-      .eq("id", WORKSPACE_ID)
-      .maybeSingle()
-      .then(({ error }) => {
+    setRole(null);
+    Promise.all([
+      supabase.from("app_state").select("id").eq("id", WORKSPACE_ID).maybeSingle(),
+      fetchRole(userEmail),
+    ])
+      .then(([ws, r]) => {
         if (cancelled) return;
-        setPreflight(error ? "error" : "ready");
+        if (ws.error || r.error) {
+          setPreflight("error");
+          return;
+        }
+        setRole(r.role);
+        setPreflight("ready");
       })
       .catch(() => {
         if (!cancelled) setPreflight("error");
@@ -277,7 +313,7 @@ export default function AuthGate({ children }) {
     return () => {
       cancelled = true;
     };
-  }, [userId, retryTick]);
+  }, [userId, userEmail, retryTick]);
 
   // Felhasználóváltáskor (ki-, majd bejelentkezés ugyanazon a gépen) a korábbi
   // munkamenet blokkoló állapota nem öröklődhet át: a stale overlay egyébként a
@@ -319,13 +355,13 @@ export default function AuthGate({ children }) {
   }
 
   return (
-    <>
+    <RoleContext.Provider value={{ role: role || "sofor", email: userEmail }}>
       {stale && <StaleOverlay onReload={() => window.location.reload()} />}
       {saveError && !stale && <SaveErrorToast onDismiss={() => setSaveError(false)} />}
       {showRestore && <RestorePanel onClose={() => setShowRestore(false)} />}
       {/* A határ a shellen BELÜL van, hogy egy képernyő-hiba után a korábbi
           mentések és a kijelentkezés még elérhető maradjon. */}
       <ErrorBoundary>{children}</ErrorBoundary>
-    </>
+    </RoleContext.Provider>
   );
 }

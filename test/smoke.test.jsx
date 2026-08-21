@@ -81,7 +81,7 @@ describe("App renders end to end", () => {
       .find((b) => b.textContent.includes("Adatok"));
     await act(async () => { dataTab.click(); });
     const cats = [...container.querySelectorAll(".data-cats button")];
-    expect(cats.length).toBe(5);
+    expect(cats.length).toBe(6);
     for (const c of cats) {
       await act(async () => { c.click(); });
       expect(container.textContent.length).toBeGreaterThan(0);

@@ -1,6 +1,6 @@
 # Database migrations
 
-Run these in the Supabase **SQL editor**, in numerical order. All three are
+Run these in the Supabase **SQL editor**, in numerical order. All four are
 **re-runnable** — every `create policy` is preceded by a `drop policy if exists`, and
 tables, indexes and triggers are guarded — so if you are unsure what has already been
 applied, running them all in order is safe.
@@ -10,11 +10,28 @@ applied, running them all in order is safe.
 | `0001_app_state.sql` | The `app_state` table (one shared workspace row) + RLS. |
 | `0002_app_state_history.sql` | `app_state_history` — the snapshot list behind the **Korábbi mentések** panel. |
 | `0003_tighten_rls.sql` | Scopes writes to the workspace row, makes history append-only, moves `updated_at` onto the server clock. |
+| `0004_user_roles.sql` | Admin/driver roles: the `user_roles` table + `is_admin()`, and writes become admin-only. |
 
-**Order matters.** `0003` references `public.app_state_history`, which `0002` creates.
+**Order matters.** `0003` and `0004` reference tables the earlier files create.
 `drop policy if exists` tolerates a missing *policy*, but not a missing *table*, so
 running `0003` before `0002` fails with `relation "public.app_state_history" does not
 exist`.
+
+## After 0004: create the first admin
+
+`0004` makes every write admin-only, and a user with no `user_roles` row is a driver
+(read-only) — **including you**, until you run this once with your own address:
+
+```sql
+insert into public.user_roles (email, role)
+values (lower('you@example.com'), 'admin')
+on conflict (email) do update set role = 'admin';
+```
+
+From then on roles are managed inside the app (Adatok → Felhasználók). The SQL editor
+runs as `postgres` and bypasses row level security, so this same line is also the
+recovery path if the admins ever lock themselves out. Role changes take effect the
+next time the affected user logs in or reloads the app.
 
 > **`0003` is only half of the security model.** The other half is a console setting:
 > **Authentication → Providers → Email → turn off "Enable sign-ups"**. Every policy
@@ -38,7 +55,13 @@ with expected(step, kind, name) as (
          ('0003',       'policy',       'history select'),
          ('0003',       'policy',       'history insert'),
          ('0003',       'policy',       'history prune'),
-         ('0003',       'trigger',      'app_state_touch')
+         ('0003',       'trigger',      'app_state_touch'),
+         ('0004',       'table',        'user_roles'),
+         ('0004',       'function',     'is_admin'),
+         ('0004',       'policy',       'roles select'),
+         ('0004',       'policy',       'roles insert'),
+         ('0004',       'policy',       'roles update'),
+         ('0004',       'policy',       'roles delete')
 ),
 superseded(kind, name) as (
   values ('policy'::text, 'authenticated read'::text),
@@ -49,11 +72,18 @@ superseded(kind, name) as (
 present as (
   select 'table'::text as kind, tablename::text as name
     from pg_tables
-   where schemaname = 'public' and tablename in ('app_state', 'app_state_history')
+   where schemaname = 'public'
+     and tablename in ('app_state', 'app_state_history', 'user_roles')
   union all
   select 'policy', policyname::text
     from pg_policies
-   where schemaname = 'public' and tablename in ('app_state', 'app_state_history')
+   where schemaname = 'public'
+     and tablename in ('app_state', 'app_state_history', 'user_roles')
+  union all
+  select 'function', p.proname::text
+    from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+   where n.nspname = 'public' and p.proname = 'is_admin'
   union all
   select 'trigger', t.tgname::text
     from pg_trigger t
@@ -75,19 +105,27 @@ select '0003', s.kind, s.name,
 order by 1, 2, 3;
 ```
 
-When everything is applied, the nine `expected` rows all read `OK` and the four
-`superseded` rows all read `not present (fine)`.
+When everything is applied, the fifteen `expected` rows all read `OK` and the four
+`superseded` rows all read `not present (fine)`. (The query checks object *names*, so
+the write policies show `OK` from `0003` onwards even before `0004` re-created them
+with the admin condition — the six `0004` rows are what tell you whether `0004` ran.)
 
 ## What the end state should look like
 
-- **Tables:** `app_state`, `app_state_history`, both with RLS enabled.
-- **Policies on `app_state`:** `app_state select` (read all), `app_state insert` and
-  `app_state update` (both scoped to `id = 'fuvarterv:v1'`). Deliberately **no delete
-  policy** — nothing in the app deletes the workspace row, and losing it would drop the
-  entire dataset in one request.
-- **Policies on `app_state_history`:** `history select`, `history insert`, and
-  `history prune` (delete, scoped to the workspace). Append-only apart from the client's
-  20-snapshot pruning; an audit trail every client can rewrite is not an audit trail.
+- **Tables:** `app_state`, `app_state_history`, `user_roles`, all with RLS enabled.
+- **Function:** `is_admin()` — true when the caller's JWT e-mail has an `admin` row in
+  `user_roles`. `security definer`, so the roles table's own policies cannot recurse.
+- **Policies on `app_state`:** `app_state select` (read for every authenticated user),
+  `app_state insert` and `app_state update` (scoped to `id = 'fuvarterv:v1'` **and
+  admin-only**). Deliberately **no delete policy** — nothing in the app deletes the
+  workspace row, and losing it would drop the entire dataset in one request.
+- **Policies on `app_state_history`:** `history select` (every authenticated user),
+  `history insert` and `history prune` (admin-only, scoped to the workspace).
+  Append-only apart from the client's 20-snapshot pruning; an audit trail every client
+  can rewrite is not an audit trail.
+- **Policies on `user_roles`:** `roles select` (own row, or everything for admins),
+  `roles insert` / `roles update` / `roles delete` (admin-only). A user with no row is
+  a driver — fail-closed.
 - **Trigger:** `app_state_touch` sets `updated_at := now()` on update, so the optimistic
   concurrency timestamp comes from the server rather than the browser clock.
 
