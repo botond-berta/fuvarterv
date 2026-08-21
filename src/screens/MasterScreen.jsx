@@ -49,7 +49,7 @@ export function MasterScreen({ tab, state, update, notice, setNotice }) {
               </div>
               <div className="text-sm" style={{ color: "var(--ink2)" }}>
                 {tab === "vehicles" && `${it.seats} férőhely (sofőr nélkül)`}
-                {tab === "drivers" && (it.phone ? <a href={`tel:${it.phone.replace(/\s/g, "")}`} className="underline">{it.phone}</a> : "nincs telefonszám")}
+                {tab === "drivers" && <>{it.phone ? <a href={`tel:${it.phone.replace(/\s/g, "")}`} className="underline">{it.phone}</a> : "nincs telefonszám"}{it.email ? ` · ${it.email}` : ""}</>}
                 {(tab === "stations" || tab === "venues") && (it.address || "nincs cím")}
                 {it.note ? ` · ${it.note}` : ""}
               </div>
@@ -75,7 +75,7 @@ export function MasterForm({ kind, state, entity, onSave, onCancel }) {
     stations: { name: "", address: "", note: "", lat: null, lon: null },
     venues: { name: "", address: "", note: "", lat: null, lon: null },
     vehicles: { name: "", plate: "", seats: 8, note: "" },
-    drivers: { name: "", phone: "", note: "", wage: 3000, minShiftMin: 120, availability: [] },
+    drivers: { name: "", phone: "", email: "", note: "", wage: 3000, minShiftMin: 120, availability: [] },
   }[kind];
   const [f, setF] = useState(entity || blank);
   const [plateErr, setPlateErr] = useState("");
@@ -94,6 +94,7 @@ export function MasterForm({ kind, state, entity, onSave, onCancel }) {
     if (kind === "drivers") {
       onSave({
         ...f,
+        email: (f.email || "").trim().toLowerCase(),
         wage: Math.max(0, Number(f.wage) || 0),
         minShiftMin: Math.max(0, Number(f.minShiftMin) || 0),
         availability: (f.availability || []).filter((w) => (w.days || []).length && w.start && w.end),
@@ -142,6 +143,9 @@ export function MasterForm({ kind, state, entity, onSave, onCancel }) {
       {kind === "drivers" && (
         <>
           <Field label="Telefonszám"><input type="tel" className="inp" value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} placeholder="+36 30 …" /></Field>
+          <Field label="E-mail (belépéshez)" hint="Ha a sofőr ezzel a címmel lép be az appba, alapból a saját napiterve nyílik meg a Sofőr fülön.">
+            <input type="email" className="inp" value={f.email || ""} onChange={(e) => setF({ ...f, email: e.target.value })} placeholder="sofor@klub.hu" />
+          </Field>
           <Field label="Preferált jármű" hint="Ha megadod, az optimalizáló ehhez a sofőrhöz ezt a járművet részesíti előnyben (nem kötelező érvényű).">
             <select className="inp" value={f.preferredVehicleId || ""} onChange={(e) => setF({ ...f, preferredVehicleId: e.target.value || null })}>
               <option value="">— nincs —</option>

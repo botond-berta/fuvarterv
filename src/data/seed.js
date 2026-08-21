@@ -13,7 +13,9 @@ export function ensureShape(s) {
   s.stations = (s.stations || []).map((x) => ({ ...x, lat: x.lat ?? null, lon: x.lon ?? null }));
   s.venues = (s.venues || []).map((x) => ({ ...x, lat: x.lat ?? null, lon: x.lon ?? null }));
   s.vehicles = (s.vehicles || []).map((v) => ({ ...v, seats: Number(v.seats) || 0, plate: v.plate || "" }));
-  s.drivers = (s.drivers || []).map((d) => ({ ...d, wage: d.wage ?? 3000, minShiftMin: d.minShiftMin ?? 120, availability: d.availability || [], preferredVehicleId: d.preferredVehicleId ?? null }));
+  /* email: a sofőr belépési e-mail-címe (kisbetűsen) — sofőr-szerepkörű
+     felhasználónál ez alapján nyílik alapból a saját napiterve. */
+  s.drivers = (s.drivers || []).map((d) => ({ ...d, wage: d.wage ?? 3000, minShiftMin: d.minShiftMin ?? 120, availability: d.availability || [], preferredVehicleId: d.preferredVehicleId ?? null, email: d.email || "" }));
   /* returnStationIds === null azt jelenti: a visszaút tükrözze az odautat (ez a
      korábbi, egyetlen listás viselkedés). Tömb esetén a visszaútnak saját
      megállói vannak. A mezők szándékosan laposak, nem egy beágyazott objektumban:

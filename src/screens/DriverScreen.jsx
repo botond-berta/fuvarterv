@@ -11,8 +11,18 @@ import { parseISO } from "../domain/datetime.js";
 import { rideWindow } from "../domain/logic.js";
 
 /* ---------- 4.5 SOFŐR NÉZET ---------- */
-export function DriverScreen({ state }) {
-  const [selDriverId, setDriverId] = useState(state.drivers[0]?.id || "");
+
+/* A belépett felhasználóhoz tartozó sofőr: az Adatok fülön a sofőrhöz megadott
+   e-mail-cím köti össze a fiókkal. Egyezés híján az első sofőr — így a nézet
+   e-mail nélkül (adminként böngészve, tesztben) pontosan úgy indul, mint eddig. */
+export function defaultDriverId(drivers, myEmail) {
+  const em = (myEmail || "").trim().toLowerCase();
+  const mine = em && drivers.find((d) => (d.email || "").trim().toLowerCase() === em);
+  return (mine || drivers[0])?.id || "";
+}
+
+export function DriverScreen({ state, myEmail }) {
+  const [selDriverId, setDriverId] = useState(() => defaultDriverId(state.drivers, myEmail));
   const driverId = byId(state.drivers, selDriverId) ? selDriverId : (state.drivers[0]?.id || "");
   const [dateISO, setDateISO] = useState(() => toISO(new Date()));
   const todayISO = toISO(new Date());
