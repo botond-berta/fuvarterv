@@ -2,7 +2,7 @@ import { describe, test, expect } from "vitest";
 import {
   teamLeg, teamPax, teamRouteOrder, genDayTasks, deleteGuard, ensureShape,
   mondayOf, minToTime,
-} from "../fuvarterv.jsx";
+} from "../vector.jsx";
 
 /*
  * The return leg may have a stop list of its own, independent of the outbound.

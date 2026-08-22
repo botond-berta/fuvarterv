@@ -1,5 +1,5 @@
 /* Vector — Csapatok — állomások, létszámok, útvonal, edzések
-   Kiemelve a fuvarterv.jsx-ből; a viselkedés változatlan. */
+   Kiemelve a vector.jsx-ből; a viselkedés változatlan. */
 
 import { useState } from "react";
 import { Plus, Pencil, ChevronLeft, AlertTriangle, MapPin, ChevronsRight } from "lucide-react";

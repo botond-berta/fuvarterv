@@ -1,5 +1,5 @@
 /* Vector — Törzsadatok — állomások, helyszínek, járművek, sofőrök
-   Kiemelve a fuvarterv.jsx-ből; a viselkedés változatlan. */
+   Kiemelve a vector.jsx-ből; a viselkedés változatlan. */
 
 import { useState } from "react";
 import { Plus, Pencil, AlertTriangle, MapPin, X } from "lucide-react";

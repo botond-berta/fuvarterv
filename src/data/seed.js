@@ -1,5 +1,5 @@
 /* Vector — mintaadatok és a mentett állapot alakjának normalizálása
-   Kiemelve a fuvarterv.jsx monolitból; a viselkedés változatlan. */
+   Kiemelve a vector.jsx monolitból; a viselkedés változatlan. */
 
 import { DEFAULT_SETTINGS } from "./storage.js";
 

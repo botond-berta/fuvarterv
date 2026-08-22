@@ -1,6 +1,6 @@
-# Fuvarterv — Developer Documentation
+# Vector — Developer Documentation
 
-This is a deep, plain-language guide to how the **Fuvarterv** app is built, for anyone
+This is a deep, plain-language guide to how the **Vector** app is built, for anyone
 who needs to read, change, or extend the code. It assumes you know JavaScript and
 React, but it does **not** assume you know anything about this project.
 
@@ -44,7 +44,7 @@ bus and which driver does which run, at what time, for the lowest cost.
 
 The app has an unusual shape you must understand before anything else:
 
-**Almost the entire application lives in one file: `fuvarterv.jsx`** (about 2,800
+**Almost the entire application lives in one file: `vector.jsx`** (about 2,800
 lines). It was originally built as a "Claude artifact" — a self-contained React
 component that runs in a sandbox. The file is deliberately kept as a single,
 portable unit. It is organized into clearly labelled layers (data, domain logic,
@@ -54,14 +54,14 @@ but today it is one file.
 Around that one file sits a small **committed Vite project** (in `src/`, plus
 config files at the repo root). This wrapper does three jobs:
 
-1. It builds and serves `fuvarterv.jsx` for local development and for production.
+1. It builds and serves `vector.jsx` for local development and for production.
 2. It adds a **login screen** in front of the app.
 3. It swaps the app's storage from a browser sandbox store to a **Supabase**
    database, so data is durable and shared across devices.
 
 The key design rule:
 
-> **`fuvarterv.jsx` never imports Supabase, auth, or anything about hosting.**
+> **`vector.jsx` never imports Supabase, auth, or anything about hosting.**
 > It only ever talks to a global object called `window.storage`. The wrapper
 > installs a Supabase-backed `window.storage` before the app mounts. This keeps
 > the big file portable — you could drop it back into the artifact sandbox and it
@@ -71,7 +71,7 @@ So there are two "sides":
 
 | Side | Files | Knows about |
 |------|-------|-------------|
-| **The app** | `fuvarterv.jsx` | Teams, buses, drivers, routes, the optimizer, the UI. Talks only to `window.storage`. |
+| **The app** | `vector.jsx` | Teams, buses, drivers, routes, the optimizer, the UI. Talks only to `window.storage`. |
 | **The wrapper** | `src/*`, config files | Supabase, login, build, deploy. Provides `window.storage`. |
 
 ---
@@ -82,7 +82,7 @@ So there are two "sides":
   `useEffect`, `useMemo`, `useRef`). No Redux, no router library.
 - **Vite 6** — dev server and production bundler.
 - **Tailwind CSS v4** (via the `@tailwindcss/vite` plugin) — used lightly. Most
-  styling is a hand-written CSS string embedded inside `fuvarterv.jsx` (see
+  styling is a hand-written CSS string embedded inside `vector.jsx` (see
   [§12](#12-the-user-interface)).
 - **lucide-react** — icon set.
 - **@supabase/supabase-js v2** — client for the Supabase backend (database + auth).
@@ -99,7 +99,7 @@ flat config (`npm run lint`). See [§19](#19-tests).
 
 ```
 .
-├── fuvarterv.jsx             ← barrel only (~40 lines): re-exports src/App.jsx
+├── vector.jsx                ← barrel only (~40 lines): re-exports src/App.jsx
 │                               and the pure functions the tests import
 ├── index.html                ← HTML entry; loads /src/main.jsx + the Nunito font
 ├── package.json              ← deps + scripts (dev / build / preview / test / lint)
@@ -149,7 +149,10 @@ flat config (`npm run lint`). See [§19](#19-tests).
 └── supabase/migrations/
     ├── 0001_app_state.sql        ← the app_state table + RLS policies
     ├── 0002_app_state_history.sql← snapshot history behind the restore panel
-    └── 0003_tighten_rls.sql      ← scoped writes, append-only history, server clock
+    ├── 0003_tighten_rls.sql      ← scoped writes, append-only history, server clock
+    ├── 0004_user_roles.sql       ← admin/driver roles; writes become admin-only
+    └── 0005_rename_workspace_key.sql
+                                  ← 'fuvarterv:v1' → 'vector:v1' after the rename
 ```
 
 **Dependency direction.** `screens → ui → domain → data`, and inside `domain`
@@ -162,12 +165,12 @@ would make the two circular.
 
 - **`index.html`** — `lang="hu"`, a `<div id="root">`, and a script tag for
   `/src/main.jsx`. Nothing else.
-- **`src/main.jsx`** — imports `App` from `../fuvarterv.jsx` (Vite can import a file
+- **`src/main.jsx`** — imports `App` from `../vector.jsx` (Vite can import a file
   from outside `src/`), wraps it in `AuthGate`, and renders it into `#root`.
 - **`src/supabaseClient.js`** — reads the two `VITE_SUPABASE_*` env vars, and
   exports a Supabase client (or `null` if the vars are missing, so the app can show
   a helpful message instead of a blank screen). Also exports
-  `WORKSPACE_ID = "fuvarterv:v1"` — the single database row everyone shares.
+  `WORKSPACE_ID = "vector:v1"` — the single database row everyone shares.
 - **`src/supabaseStorage.js`** — the bridge. Implements the `window.storage`
   contract (`get` / `set` / `delete` / `list`) using the Supabase database. This is
   where the whole app state is saved and loaded. Details in [§6](#6-persistence--how-data-is-saved).
@@ -196,7 +199,7 @@ Follow the chain of events from page load to a working app:
    - Once logged in, it does a **pre-flight read** of the database. If that read
      fails (network/permissions) → a retry screen. If it succeeds → it renders the
      app (`children`).
-5. **`App` (inside `fuvarterv.jsx`) mounts.** Its first `useEffect` calls
+5. **`App` (inside `vector.jsx`) mounts.** Its first `useEffect` calls
    `loadState()`, which reads the saved blob through `window.storage.get(...)`. If
    there is saved data, it loads it; if not, it seeds sample data. From here the app
    is running normally.
@@ -245,7 +248,7 @@ This is the heart of the wrapper. Read it carefully.
 
 ### 6.1 The `window.storage` contract
 
-`fuvarterv.jsx` treats persistence as a tiny key-value store on `window.storage`
+`vector.jsx` treats persistence as a tiny key-value store on `window.storage`
 with four async methods:
 
 ```js
@@ -255,7 +258,10 @@ window.storage.delete(key)       // → { key, deleted: true }
 window.storage.list(prefix)      // → { keys: [...] }
 ```
 
-The app uses only **one key**: `STORAGE_KEY = "fuvarterv:v1"`. The *entire*
+The app uses only **one key**: `STORAGE_KEY = "vector:v1"`. (It was
+`"fuvarterv:v1"` before the app was renamed to Vector;
+`supabase/migrations/0005_rename_workspace_key.sql` moves an existing install's
+rows and RLS policies onto the new key.) The *entire*
 application state is one JSON object, turned into a string with `JSON.stringify`
 before `set`, and parsed with `JSON.parse` after `get`. In the app:
 
@@ -283,7 +289,7 @@ The whole state is stored as **one row** in one table (`supabase/migrations/0001
 
 ```sql
 create table public.app_state (
-  id         text primary key,   -- the workspace key, e.g. 'fuvarterv:v1'
+  id         text primary key,   -- the workspace key, e.g. 'vector:v1'
   data       jsonb not null,     -- the entire app state as JSON
   updated_at timestamptz not null default now()
 );
@@ -339,13 +345,13 @@ are `get` and `set`.
    ```
    - If the update touches a row, all good — we store the new `updated_at`.
    - If it touches **zero rows**, it means someone else saved since we loaded. We do
-     **not** overwrite their change. Instead we fire a `fuvarterv:stale`
+     **not** overwrite their change. Instead we fire a `vector:stale`
      browser event (the UI shows a blocking overlay asking the user to reload), and we
      keep failing future saves until they reload. This is the "single editor at a
      time" safety model.
 
 4. **Reporting real failures.** If the database returns a genuine error (network
-   down, permission denied), `set` fires a `fuvarterv:saveerror` event so the UI can
+   down, permission denied), `set` fires a `vector:saveerror` event so the UI can
    show a red "save failed" banner. Stale conflicts and real failures are kept
    distinct — a stale conflict is *not* reported as a save error.
 
@@ -354,13 +360,13 @@ are `get` and `set`.
 `AuthGate` listens for those two events. They are deliberately *asymmetric*, because
 the consequences are:
 
-- `fuvarterv:stale` → a **blocking overlay**. Once the row has moved on, no save can
+- `vector:stale` → a **blocking overlay**. Once the row has moved on, no save can
   succeed, so continuing to edit would silently lose work; the only safe action is a
   reload. Before blocking, `doSet` re-reads the row: if the server already holds what
   we last tried to write, that was our own committed write with a lost response, so it
   adopts the new timestamp and retries instead of blocking.
   ("The data changed elsewhere") with a **Reload** button.
-- `fuvarterv:saveerror` → red banner: "A mentés nem sikerült…" ("Save failed"),
+- `vector:saveerror` → red banner: "A mentés nem sikerült…" ("Save failed"),
   dismissible. Only one banner shows at a time (stale takes priority).
 
 It also does the **pre-flight read** described in [§4](#4-how-the-app-starts-up-boot-sequence):
@@ -373,7 +379,7 @@ user's real data — very alarming even though the real data is safe on the serv
 
 ```
 Edit in UI
-  → setState(...)                       (fuvarterv.jsx)
+  → setState(...)                       (vector.jsx)
   → 300 ms debounce
   → persistState(state)
   → window.storage.set(KEY, JSON)       (== supabaseStorage.set)
@@ -381,8 +387,8 @@ Edit in UI
   → INSERT (first time) or guarded UPDATE on updated_at
       → success: remember new updated_at
       → 0 rows: re-read; if unchanged from our last attempt, adopt + retry,
-                otherwise fire "fuvarterv:stale" → blocking overlay
-      → db error: fire "fuvarterv:saveerror" → red banner
+                otherwise fire "vector:stale" → blocking overlay
+      → db error: fire "vector:saveerror" → red banner
 ```
 
 ---
@@ -557,7 +563,7 @@ safely.
 ## 9. Domain logic — dates, times, plates, conflicts
 
 All of this is pure, framework-free JavaScript in the "domain" layer of
-`fuvarterv.jsx`. No React, no I/O.
+`vector.jsx`. No React, no I/O.
 
 ### 9.1 Dates and weeks
 
@@ -1012,7 +1018,7 @@ Add a component, add an entry to the `TABS` array (label + icon), and render it 
 
 ### Change how data is stored
 
-You almost never need to touch `fuvarterv.jsx`. To change the backend, reimplement
+You almost never need to touch `vector.jsx`. To change the backend, reimplement
 the four methods in **`src/supabaseStorage.js`** (or point `window.storage` at a
 different implementation in `AuthGate.jsx`). As long as `get`/`set` honor the
 contract in [§6.1](#61-the-windowstorage-contract), the app doesn't care.
@@ -1020,7 +1026,7 @@ contract in [§6.1](#61-the-windowstorage-contract), the app doesn't care.
 ### Where to put new code
 
 The split is done — see the tree in [§3](#3-repository-layout--every-file). Put new
-code in the module that owns the concern, not in `fuvarterv.jsx` (that is only a
+code in the module that owns the concern, not in `vector.jsx` (that is only a
 barrel now, kept so existing imports and tests keep working).
 
 - Pure rule, no React → `src/domain/*`. It becomes directly unit-testable.
@@ -1066,7 +1072,6 @@ Two things worth knowing before you change them:
 | Hungarian | English | Notes |
 |---|---|---|
 | fuvar | ride / run | one bus trip |
-| fuvarterv | transport plan | the app's name |
 | beosztás | schedule / roster | the `assignments` |
 | csapat | team | |
 | állomás / megálló | station / stop | pickup point |

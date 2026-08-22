@@ -1,5 +1,5 @@
 /* Vector — az alkalmazás héja: navigáció, állapot, mentés.
-   Kiemelve a fuvarterv.jsx-ből; a viselkedés változatlan. */
+   Kiemelve a vector.jsx-ből; a viselkedés változatlan. */
 
 import { useState, useEffect, useRef, useContext } from "react";
 import { CalendarDays, Boxes, Car, Workflow, HelpCircle, RotateCcw, LogOut } from "lucide-react";
@@ -152,7 +152,7 @@ export default function App() {
             Kérd meg az adminisztrátort, hogy töltse fel a fuvarokat, aztán
             nyisd meg újra az alkalmazást.
           </p>
-          <button className="btn btn-pri w-full" onClick={() => { flush(); window.dispatchEvent(new CustomEvent("fuvarterv:signout")); }}>
+          <button className="btn btn-pri w-full" onClick={() => { flush(); window.dispatchEvent(new CustomEvent("vector:signout")); }}>
             Kijelentkezés
           </button>
         </div>
@@ -174,8 +174,8 @@ export default function App() {
         <span aria-hidden style={{ width: 10, height: 10, borderRadius: "50%", background: "var(--acc)" }} />
         <span className="disp text-xl" style={{ letterSpacing: ".12em" }}>Vector</span>
         <div className="ml-auto flex items-center gap-1">
-          {isAdmin && <button className="header-ic" onClick={() => window.dispatchEvent(new CustomEvent("fuvarterv:restore"))} aria-label="Korábbi mentések"><RotateCcw size={18} /></button>}
-          <button className="header-ic" onClick={() => { flush(); window.dispatchEvent(new CustomEvent("fuvarterv:signout")); }} aria-label="Kijelentkezés"><LogOut size={18} /></button>
+          {isAdmin && <button className="header-ic" onClick={() => window.dispatchEvent(new CustomEvent("vector:restore"))} aria-label="Korábbi mentések"><RotateCcw size={18} /></button>}
+          <button className="header-ic" onClick={() => { flush(); window.dispatchEvent(new CustomEvent("vector:signout")); }} aria-label="Kijelentkezés"><LogOut size={18} /></button>
           <button className="header-ic" onClick={() => setHelpOpen(true)} aria-label="Súgó — hogyan működik?"><HelpCircle size={20} /></button>
         </div>
       </header>

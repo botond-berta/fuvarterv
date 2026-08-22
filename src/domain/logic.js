@@ -1,5 +1,5 @@
 /* Vector — rendszám, előfordulások, fuvarablakok, ütközések, törlésvédelem
-   Kiemelve a fuvarterv.jsx monolitból; a viselkedés változatlan. */
+   Kiemelve a vector.jsx monolitból; a viselkedés változatlan. */
 
 import { byId } from "./constants.js";
 import { toISO, parseISO, weekdayIdx, addDays, timeToMin } from "./datetime.js";

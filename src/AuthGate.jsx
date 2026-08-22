@@ -256,22 +256,22 @@ export default function AuthGate({ children }) {
   useEffect(() => {
     const onStale = () => setStale(true);
     const onSaveError = () => setSaveError(true);
-    // The app's header buttons live in fuvarterv.jsx (which never imports auth);
+    // The app's header buttons live in vector.jsx (which never imports auth);
     // they signal the shell through the same event seam as stale/saveerror.
     const onRestore = () => setShowRestore(true);
     const onSignout = async () => {
       await supabase.auth.signOut();
       supabaseStorage.reset();
     };
-    window.addEventListener("fuvarterv:stale", onStale);
-    window.addEventListener("fuvarterv:saveerror", onSaveError);
-    window.addEventListener("fuvarterv:restore", onRestore);
-    window.addEventListener("fuvarterv:signout", onSignout);
+    window.addEventListener("vector:stale", onStale);
+    window.addEventListener("vector:saveerror", onSaveError);
+    window.addEventListener("vector:restore", onRestore);
+    window.addEventListener("vector:signout", onSignout);
     return () => {
-      window.removeEventListener("fuvarterv:stale", onStale);
-      window.removeEventListener("fuvarterv:saveerror", onSaveError);
-      window.removeEventListener("fuvarterv:restore", onRestore);
-      window.removeEventListener("fuvarterv:signout", onSignout);
+      window.removeEventListener("vector:stale", onStale);
+      window.removeEventListener("vector:saveerror", onSaveError);
+      window.removeEventListener("vector:restore", onRestore);
+      window.removeEventListener("vector:signout", onSignout);
     };
   }, []);
 

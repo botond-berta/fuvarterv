@@ -1,5 +1,5 @@
 /* Vector — koordináták, távolság és az üresjárati mátrix
-   Kiemelve a fuvarterv.jsx monolitból; a viselkedés változatlan. */
+   Kiemelve a vector.jsx monolitból; a viselkedés változatlan. */
 
 /* Ez a modul levél a domain gráfban: a logic (rideWindow) és az optimizer
    (genDayTasks) is a legMin-t használja, így ha bármelyikükben maradna, a

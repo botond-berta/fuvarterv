@@ -1,8 +1,8 @@
-# Fuvarterv
+# Vector
 
 A training-transport planner for a handball club. A rural Hungarian club shuttles several youth teams to practice by minibus from the surrounding villages — this app manages the whole logistics: weekly training schedule, pickup stops, vehicles, drivers, shuttle runs, and a cost-based **schedule optimizer** that chains transport tasks together using min-cost flow.
 
-The app started life as a single React file (`fuvarterv.jsx`) built as a Claude artifact; it is now split into modules under `src/` (see [Architecture](#architecture)). **The UI language is Hungarian** (it's built for the club's staff and drivers).
+The app started life as a single React file (`vector.jsx`) built as a Claude artifact; it is now split into modules under `src/` (see [Architecture](#architecture)). **The UI language is Hungarian** (it's built for the club's staff and drivers).
 
 > **⚠️ Privacy:** the built-in sample data (`seedState`) contains a real club's driver names and license plates. **Anonymize the seed before making this repo public**, or keep the repo private.
 
@@ -29,11 +29,12 @@ Four tabs, plus the ride editor which opens from a week-view card.
 ## Supabase setup (one time)
 
 1. Create a Supabase project; from **Settings → API** copy the **Project URL** and the **publishable** (anon) key.
-2. In the **SQL editor**, run **all four** migrations in order:
+2. In the **SQL editor**, run **all five** migrations in order:
    - [`0001_app_state.sql`](supabase/migrations/0001_app_state.sql) — the `app_state` table and its RLS policies.
    - [`0002_app_state_history.sql`](supabase/migrations/0002_app_state_history.sql) — the snapshot history behind the **Korábbi mentések** panel. **Skipping this leaves the restore feature silently non-functional:** the button is still there, the panel still opens, and it will always say there are no snapshots. History writes fail quietly by design (they must never fail a save), so nothing else tells you.
    - [`0003_tighten_rls.sql`](supabase/migrations/0003_tighten_rls.sql) — restricts writes to the one workspace row, makes the history append-only, and moves `updated_at` onto the server clock.
    - [`0004_user_roles.sql`](supabase/migrations/0004_user_roles.sql) — admin/driver roles. From here on only **admins** can change data; everyone else is a **driver** who sees the Sofőr tab read-only.
+   - [`0005_rename_workspace_key.sql`](supabase/migrations/0005_rename_workspace_key.sql) — renames the workspace key `fuvarterv:v1` → `vector:v1` after the rename to Vector. A no-op on a database you are creating now; **required** for one that ran the earlier migrations under the old name, otherwise the app loads an empty workspace and every save is refused.
 3. **Make yourself the first admin** — run this once in the SQL editor with your own address (details in [`supabase/migrations/README.md`](supabase/migrations/README.md)):
    ```sql
    insert into public.user_roles (email, role)
@@ -46,7 +47,7 @@ Four tabs, plus the ride editor which opens from a week-view card.
 
 ## Running locally
 
-The project is a normal committed Vite app; the app source is `fuvarterv.jsx` at the repo root (imported by `src/main.jsx`). `src/AuthGate.jsx` renders the login screen and installs the Supabase-backed `window.storage`.
+The project is a normal committed Vite app; the app source is `vector.jsx` at the repo root (imported by `src/main.jsx`). `src/AuthGate.jsx` renders the login screen and installs the Supabase-backed `window.storage`.
 
 ```bash
 cp .env.example .env      # then fill in VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY
@@ -59,7 +60,7 @@ Open http://localhost:5173, sign in with a user you created in step 5 above, and
 
 ## Deploy (Vercel)
 
-Before the first deploy, make sure the database is ready: run **all four** migrations in
+Before the first deploy, make sure the database is ready: run **all five** migrations in
 order and turn off public sign-up (see [Supabase setup](#supabase-setup-one-time) and
 [`supabase/migrations/README.md`](supabase/migrations/README.md), which includes a
 read-only query telling you which migrations are still outstanding).
@@ -98,7 +99,7 @@ the artifact preview these are restricted by CSP, which is what the fallbacks ar
 ## Architecture
 
 Real modules, with the dependencies flowing one way (`screens → ui → domain → data`).
-`fuvarterv.jsx` is now just a barrel re-exporting `src/App.jsx` plus the pure
+`vector.jsx` is now just a barrel re-exporting `src/App.jsx` plus the pure
 functions the tests import.
 
 | Module | Contents |
