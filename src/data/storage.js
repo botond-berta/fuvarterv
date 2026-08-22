@@ -1,7 +1,7 @@
 /* Vector — perzisztencia-varrat és a hangolható beállítások alapértékei
-   Kiemelve a fuvarterv.jsx monolitból; a viselkedés változatlan. */
+   Kiemelve a vector.jsx monolitból; a viselkedés változatlan. */
 
-export const STORAGE_KEY = "fuvarterv:v1";
+export const STORAGE_KEY = "vector:v1";
 
 /* Az összes hangolható beállítás alapértéke — EGY forrás, hogy a seedState() és az
    ensureShape() ne csúszhasson szét. Mindkettő innen dolgozik. */

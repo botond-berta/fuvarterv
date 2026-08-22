@@ -77,20 +77,20 @@ create policy "roles delete" on public.user_roles
 drop policy if exists "app_state insert" on public.app_state;
 create policy "app_state insert" on public.app_state
   for insert to authenticated
-  with check (id = 'fuvarterv:v1' and public.is_admin());
+  with check (id = 'vector:v1' and public.is_admin());
 
 drop policy if exists "app_state update" on public.app_state;
 create policy "app_state update" on public.app_state
   for update to authenticated
-  using (id = 'fuvarterv:v1' and public.is_admin())
-  with check (id = 'fuvarterv:v1' and public.is_admin());
+  using (id = 'vector:v1' and public.is_admin())
+  with check (id = 'vector:v1' and public.is_admin());
 
 drop policy if exists "history insert" on public.app_state_history;
 create policy "history insert" on public.app_state_history
   for insert to authenticated
-  with check (workspace_id = 'fuvarterv:v1' and public.is_admin());
+  with check (workspace_id = 'vector:v1' and public.is_admin());
 
 drop policy if exists "history prune" on public.app_state_history;
 create policy "history prune" on public.app_state_history
   for delete to authenticated
-  using (workspace_id = 'fuvarterv:v1' and public.is_admin());
+  using (workspace_id = 'vector:v1' and public.is_admin());

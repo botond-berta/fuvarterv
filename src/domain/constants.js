@@ -1,5 +1,5 @@
 /* Vector — mindenhol használt konstansok és apró segédek
-   Kiemelve a fuvarterv.jsx monolitból; a viselkedés változatlan. */
+   Kiemelve a vector.jsx monolitból; a viselkedés változatlan. */
 
 export const DAYS = ["Hétfő", "Kedd", "Szerda", "Csütörtök", "Péntek", "Szombat", "Vasárnap"];
 export const DAYS_SHORT = ["H", "K", "Sze", "Cs", "P", "Szo", "V"];

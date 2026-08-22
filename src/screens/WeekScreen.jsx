@@ -1,5 +1,5 @@
 /* Vector — Hét — a hét összes edzése, csapatszínekkel
-   Kiemelve a fuvarterv.jsx-ből; a viselkedés változatlan. */
+   Kiemelve a vector.jsx-ből; a viselkedés változatlan. */
 
 import { useState, useMemo } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";

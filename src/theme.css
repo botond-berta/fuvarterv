@@ -2,8 +2,8 @@
 /*
  * Vector dizájnrendszer — közös tokenek és alap-építőkockák a shellhez
  * (AuthGate, RestorePanel). Szándékosan `--v-*` névtérben, hogy ne ütközzön a
- * fuvarterv.jsx saját `:root` tokenjeivel (--ink/--acc/--paper), amíg az még a
- * régi arculatot futtatja. A későbbi lépés a fuvarterv.jsx-et is erre állítja.
+ * vector.jsx saját `:root` tokenjeivel (--ink/--acc/--paper), amíg az még a
+ * régi arculatot futtatja. A későbbi lépés a vector.jsx-et is erre állítja.
  *
  * Világos-first, tiszta „Wolt-stílus”: cián kiemelés, kerek Nunito, lágy
  * árnyékok, nagy lekerekítés. A sötét mód az OS beállítását követi, és egy

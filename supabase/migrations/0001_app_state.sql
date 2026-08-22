@@ -1,8 +1,8 @@
--- Fuvarterv persistence: one shared-workspace row holding the whole app state.
+-- Vector persistence: one shared-workspace row holding the whole app state.
 -- Run this in the Supabase SQL editor (or via the Supabase CLI).
 
 create table if not exists public.app_state (
-  id         text primary key,          -- workspace key, e.g. 'fuvarterv:v1'
+  id         text primary key,          -- workspace key, e.g. 'vector:v1'
   data       jsonb not null,
   updated_at timestamptz not null default now()
 );

@@ -1,5 +1,5 @@
 /* Vector — Beosztás — láncok, optimalizálás, fuvargenerálás
-   Kiemelve a fuvarterv.jsx-ből; a viselkedés változatlan. */
+   Kiemelve a vector.jsx-ből; a viselkedés változatlan. */
 
 import { useState, useMemo } from "react";
 import { Plus, AlertTriangle, X, ChevronsRight, Lock, Unlock, Zap, ArrowLeftRight, Settings2, Table, ClipboardCheck } from "lucide-react";

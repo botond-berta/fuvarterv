@@ -27,11 +27,11 @@ create policy "app_state select" on public.app_state
 
 drop policy if exists "app_state insert" on public.app_state;
 create policy "app_state insert" on public.app_state
-  for insert to authenticated with check (id = 'fuvarterv:v1');
+  for insert to authenticated with check (id = 'vector:v1');
 
 drop policy if exists "app_state update" on public.app_state;
 create policy "app_state update" on public.app_state
-  for update to authenticated using (id = 'fuvarterv:v1') with check (id = 'fuvarterv:v1');
+  for update to authenticated using (id = 'vector:v1') with check (id = 'vector:v1');
 
 -- Deliberately no delete policy: nothing in the app deletes the workspace row,
 -- and losing it would drop the whole dataset in one request.
@@ -47,13 +47,13 @@ create policy "history select" on public.app_state_history
 
 drop policy if exists "history insert" on public.app_state_history;
 create policy "history insert" on public.app_state_history
-  for insert to authenticated with check (workspace_id = 'fuvarterv:v1');
+  for insert to authenticated with check (workspace_id = 'vector:v1');
 
 -- The client prunes to the last 20 snapshots, which needs delete. Restrict it to
 -- the workspace so a client cannot clear another key's history.
 drop policy if exists "history prune" on public.app_state_history;
 create policy "history prune" on public.app_state_history
-  for delete to authenticated using (workspace_id = 'fuvarterv:v1');
+  for delete to authenticated using (workspace_id = 'vector:v1');
 
 -- 3. updated_at must come from the server, not the browser clock, so it stays a
 --    trustworthy "last modified" (and cannot be spoofed by a client).

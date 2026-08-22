@@ -1,5 +1,5 @@
 import { describe, test, expect, vi, beforeEach } from "vitest";
-import { isNotFound } from "../fuvarterv.jsx";
+import { isNotFound } from "../vector.jsx";
 
 /*
  * Proves task 1: a read failure that happens *after* the pre-flight read (i.e.
@@ -23,7 +23,7 @@ vi.mock("../src/supabaseClient.js", () => {
   return {
     supabase: { from: () => chain },
     isConfigured: true,
-    WORKSPACE_ID: "fuvarterv:v1",
+    WORKSPACE_ID: "vector:v1",
   };
 });
 
@@ -33,7 +33,7 @@ const { supabaseStorage } = await import("../src/supabaseStorage.js");
 // isNotFound(err) is true, otherwise it shows the retry screen.
 async function decideInitialLoad() {
   try {
-    await supabaseStorage.get("fuvarterv:v1");
+    await supabaseStorage.get("vector:v1");
     return "loaded";
   } catch (e) {
     return isNotFound(e) ? "seed" : "retry-screen";
@@ -45,13 +45,13 @@ beforeEach(() => { h.result = { data: null, error: null }; });
 describe("load-failure vs empty-workspace", () => {
   test("empty workspace (no row) → typed NOT_FOUND → app seeds", async () => {
     h.result = { data: null, error: null };
-    await expect(supabaseStorage.get("fuvarterv:v1")).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await expect(supabaseStorage.get("vector:v1")).rejects.toMatchObject({ code: "NOT_FOUND" });
     expect(await decideInitialLoad()).toBe("seed");
   });
 
   test("transient read failure → NOT flagged as not-found → retry screen, never seed", async () => {
     h.result = { data: null, error: { message: "network down", code: "ETIMEDOUT" } };
-    const err = await supabaseStorage.get("fuvarterv:v1").catch((e) => e);
+    const err = await supabaseStorage.get("vector:v1").catch((e) => e);
     expect(isNotFound(err)).toBe(false);
     expect(await decideInitialLoad()).toBe("retry-screen");
   });

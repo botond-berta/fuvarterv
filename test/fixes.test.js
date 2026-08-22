@@ -2,7 +2,7 @@ import { describe, test, expect } from "vitest";
 import {
   legMin, teamPax, deleteGuard, ensureShape,
   planOda, planVissza, venueDepartMin, timeToMin, minToTime, bestStationOrder,
-} from "../fuvarterv.jsx";
+} from "../vector.jsx";
 
 /*
  * Regression tests for the defects fixed in this branch. Each test states the

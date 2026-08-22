@@ -1,5 +1,5 @@
 /* Vector — alap építőkockák (Field, Modal, DangerBtn, …)
-   Kiemelve a fuvarterv.jsx-ből; a viselkedés változatlan. */
+   Kiemelve a vector.jsx-ből; a viselkedés változatlan. */
 
 import { useState, useEffect, useRef, useId } from "react";
 import { AlertTriangle, Boxes, CalendarDays, Car, HelpCircle, Trash2, Workflow, X } from "lucide-react";

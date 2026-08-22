@@ -1,7 +1,7 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import App, { seedState } from "../fuvarterv.jsx";
+import App, { seedState } from "../vector.jsx";
 
 /*
  * Integration smoke test: actually mounts <App/> against a fake window.storage
@@ -10,7 +10,7 @@ import App, { seedState } from "../fuvarterv.jsx";
  * modules) — only rendering catches that.
  */
 
-const KEY = "fuvarterv:v1";
+const KEY = "vector:v1";
 
 function fakeStorage(initial) {
   const rows = new Map();
