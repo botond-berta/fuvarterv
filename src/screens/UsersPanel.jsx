@@ -1,4 +1,4 @@
-/* Vector — Felhasználók — admin/sofőr szerepkörök kiosztása e-mail szerint.
+/* Fuvarterv — Felhasználók — admin/sofőr szerepkörök kiosztása e-mail szerint.
    A lista a Supabase user_roles tábláját mutatja (nem az app-állapot része,
    ezért nem a window.storage-on át jön). Csak admin éri el: sofőr az Adatok
    fülre el sem jut, és a tábla írását a szerver (RLS) is csak adminnak engedi. */

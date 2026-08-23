@@ -18,5 +18,5 @@ if (!isConfigured) {
 export const supabase = isConfigured ? createClient(url, anonKey) : null;
 
 // One shared workspace: every authenticated user reads/writes the same row.
-// Matches the STORAGE_KEY the app already uses in vector.jsx.
-export const WORKSPACE_ID = "vector:v1";
+// Matches the STORAGE_KEY the app already uses in fuvarterv.jsx.
+export const WORKSPACE_ID = "fuvarterv:v1";

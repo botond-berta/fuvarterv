@@ -1,5 +1,5 @@
-/* Vector — feladatok, útvonal, láncolás, erőforrás-hozzárendelés
-   Kiemelve a vector.jsx monolitból; a viselkedés változatlan. */
+/* Fuvarterv — feladatok, útvonal, láncolás, erőforrás-hozzárendelés
+   Kiemelve a fuvarterv.jsx monolitból; a viselkedés változatlan. */
 
 import { DAYS, byId, uid } from "./constants.js";
 import { timeToMin, minToTime } from "./datetime.js";

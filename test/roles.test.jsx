@@ -1,7 +1,7 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import App, { seedState, ensureShape } from "../vector.jsx";
+import App, { seedState, ensureShape } from "../fuvarterv.jsx";
 import { RoleContext } from "../src/roleContext.js";
 import { DriverScreen, defaultDriverId } from "../src/screens/DriverScreen.jsx";
 
@@ -12,7 +12,7 @@ import { DriverScreen, defaultDriverId } from "../src/screens/DriverScreen.jsx";
  * hívást sem adhat ki, különben minden megnyitás hibajelzést villogtatna.
  */
 
-const KEY = "vector:v1";
+const KEY = "fuvarterv:v1";
 
 function fakeStorage(initial) {
   const rows = new Map();

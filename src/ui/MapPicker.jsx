@@ -1,5 +1,5 @@
-/* Vector — Leaflet térképes koordináta-választó, offline SVG tartalékkal
-   Kiemelve a vector.jsx-ből; a viselkedés változatlan. */
+/* Fuvarterv — Leaflet térképes koordináta-választó, offline SVG tartalékkal
+   Kiemelve a fuvarterv.jsx-ből; a viselkedés változatlan. */
 
 import { useState, useEffect, useMemo, useRef } from "react";
 import { Plus, Minus, AlertTriangle, X, Search } from "lucide-react";

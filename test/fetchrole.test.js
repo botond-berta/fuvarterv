@@ -26,7 +26,7 @@ vi.mock("../src/supabaseClient.js", () => ({
     },
   },
   isConfigured: true,
-  WORKSPACE_ID: "vector:v1",
+  WORKSPACE_ID: "fuvarterv:v1",
 }));
 vi.mock("../src/supabaseStorage.js", () => ({ supabaseStorage: {} }));
 

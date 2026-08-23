@@ -2,19 +2,19 @@ import { supabase } from "./supabaseClient.js";
 
 /*
  * Supabase-backed implementation of the `window.storage` KV contract that
- * vector.jsx expects (get / set / delete / list). The whole app state is a
+ * fuvarterv.jsx expects (get / set / delete / list). The whole app state is a
  * single JSON blob stored in one `public.app_state` row:
  *
  *   id text (pk) | data jsonb | updated_at timestamptz
  *
  * The app only uses get(key) and set(key, value); delete/list are provided for
  * contract completeness. `value` on set is an already-stringified JSON string
- * (vector.jsx does JSON.stringify before calling set and JSON.parse after
+ * (fuvarterv.jsx does JSON.stringify before calling set and JSON.parse after
  * get), so we parse it into the jsonb column on write and stringify on read.
  *
  * Single-editor model with a stale-write guard: we remember the updated_at we
  * last read, and only overwrite the row if it still matches. If someone else
- * saved in the meantime, we refuse to clobber and fire a `vector:stale`
+ * saved in the meantime, we refuse to clobber and fire a `fuvarterv:stale`
  * event so the UI can prompt a reload.
  *
  * Writes are serialized (one in flight at a time). The app debounces saves but
@@ -54,13 +54,13 @@ let writeChain = Promise.resolve();
 
 function announceStale() {
   if (typeof window !== "undefined") {
-    window.dispatchEvent(new CustomEvent("vector:stale"));
+    window.dispatchEvent(new CustomEvent("fuvarterv:stale"));
   }
 }
 
 function announceSaveError(error) {
   if (typeof window !== "undefined") {
-    window.dispatchEvent(new CustomEvent("vector:saveerror", { detail: error }));
+    window.dispatchEvent(new CustomEvent("fuvarterv:saveerror", { detail: error }));
   }
 }
 

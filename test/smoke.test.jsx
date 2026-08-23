@@ -1,7 +1,7 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import App, { seedState } from "../vector.jsx";
+import App, { seedState } from "../fuvarterv.jsx";
 
 /*
  * Integration smoke test: actually mounts <App/> against a fake window.storage
@@ -10,7 +10,7 @@ import App, { seedState } from "../vector.jsx";
  * modules) — only rendering catches that.
  */
 
-const KEY = "vector:v1";
+const KEY = "fuvarterv:v1";
 
 function fakeStorage(initial) {
   const rows = new Map();
@@ -58,7 +58,7 @@ describe("App renders end to end", () => {
   test("seeds and renders the week view when the workspace is empty", async () => {
     window.storage = fakeStorage(null);
     await mount();
-    expect(container.textContent).toContain("Vector");
+    expect(container.textContent).toContain("Fuvarterv");
     // Seed data has teams with trainings, so the week view lists occurrences.
     expect(container.querySelector("nav.tabbar")).toBeTruthy();
   });

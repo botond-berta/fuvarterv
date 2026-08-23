@@ -1,5 +1,5 @@
-/* Vector — Fuvar szerkesztő — irány, jármű, sofőr, megállók
-   Kiemelve a vector.jsx-ből; a viselkedés változatlan. */
+/* Fuvarterv — Fuvar szerkesztő — irány, jármű, sofőr, megállók
+   Kiemelve a fuvarterv.jsx-ből; a viselkedés változatlan. */
 
 import { useState, useMemo, useRef } from "react";
 import { ChevronLeft, ChevronRight, GripVertical, ArrowUp, ArrowDown, AlertTriangle, MapPin, Clock, X, Flag, Zap } from "lucide-react";

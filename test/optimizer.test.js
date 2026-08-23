@@ -1,7 +1,7 @@
 import { describe, test, expect } from "vitest";
 import {
   optimizeDay, genDayTasks, mondayOf, minToTime, driverAvailableFor, legMin,
-} from "../vector.jsx";
+} from "../fuvarterv.jsx";
 
 /*
  * Property tests for optimizeDay over randomly generated states, checking the
