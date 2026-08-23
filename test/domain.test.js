@@ -2,7 +2,7 @@ import { describe, test, expect } from "vitest";
 import {
   normalizePlate, timeToMin, minToTime, weekdayIdx, mondayOf, addDays,
   legMin, bestStationOrder, splitStationsByCapacity, rideWindow, findConflicts,
-} from "../vector.jsx";
+} from "../fuvarterv.jsx";
 
 /* ------------------------------------------------------------------ */
 describe("normalizePlate", () => {

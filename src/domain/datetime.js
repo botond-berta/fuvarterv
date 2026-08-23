@@ -1,5 +1,5 @@
-/* Vector — dátum és idő — hétfővel kezdődő hetek, 24 órás idők
-   Kiemelve a vector.jsx monolitból; a viselkedés változatlan. */
+/* Fuvarterv — dátum és idő — hétfővel kezdődő hetek, 24 órás idők
+   Kiemelve a fuvarterv.jsx monolitból; a viselkedés változatlan. */
 
 import { MONTHS } from "./constants.js";
 

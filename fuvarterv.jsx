@@ -1,5 +1,5 @@
 /* =====================================================================
-   VECTOR — kézilabda klub fuvarszervező
+   FUVARTERV — kézilabda klub fuvarszervező
    ---------------------------------------------------------------------
    Ez a fájl ma már csak ÖSSZEFOGÓ (barrel): a tényleges kód modulokban él.
    Azért marad, mert a src/main.jsx és a test/ innen importál — így a

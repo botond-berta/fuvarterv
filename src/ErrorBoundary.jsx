@@ -43,7 +43,7 @@ export default class ErrorBoundary extends Component {
           </button>
           <button
             className="v-btn v-btn-ghost v-btn-block"
-            onClick={() => window.dispatchEvent(new CustomEvent("vector:restore"))}
+            onClick={() => window.dispatchEvent(new CustomEvent("fuvarterv:restore"))}
           >
             Korábbi mentések megnyitása
           </button>

@@ -1,4 +1,4 @@
-/* Vector — szerepkör-kezelés (user_roles tábla a Supabase-ben).
+/* Fuvarterv — szerepkör-kezelés (user_roles tábla a Supabase-ben).
    Csak admin hívhatja sikerrel: a tábla írás-szabályai (RLS, 0004-es migráció)
    mindenki mást elutasítanak. A supabase kliens itt közvetlen import — a
    window.storage varrat szándékosan csak a munkaterület-blobra vonatkozik, a

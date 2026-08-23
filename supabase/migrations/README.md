@@ -1,6 +1,6 @@
 # Database migrations
 
-Run these in the Supabase **SQL editor**, in numerical order. All five are
+Run these in the Supabase **SQL editor**, in numerical order. All six are
 **re-runnable** — every `create policy` is preceded by a `drop policy if exists`, and
 tables, indexes and triggers are guarded — so if you are unsure what has already been
 applied, running them all in order is safe.
@@ -11,23 +11,33 @@ applied, running them all in order is safe.
 | `0002_app_state_history.sql` | `app_state_history` — the snapshot list behind the **Korábbi mentések** panel. |
 | `0003_tighten_rls.sql` | Scopes writes to the workspace row, makes history append-only, moves `updated_at` onto the server clock. |
 | `0004_user_roles.sql` | Admin/driver roles: the `user_roles` table + `is_admin()`, and writes become admin-only. |
-| `0005_rename_workspace_key.sql` | Renames the workspace key `fuvarterv:v1` → `vector:v1` (rows + the policies that hard-code it). No-op on a fresh database. |
+| `0005_rename_workspace_key.sql` | Historical: renamed the workspace key `fuvarterv:v1` → `vector:v1` when the app was called Vector (rows + the policies that hard-code it). Superseded by `0006`. |
+| `0006_rename_workspace_key_back.sql` | Renames the workspace key back, `vector:v1` → `fuvarterv:v1`, after the app returned to the name Fuvarterv. Has the last word on the workspace-scoped policies. |
 
 **Order matters.** `0003` and `0004` reference tables the earlier files create.
 `drop policy if exists` tolerates a missing *policy*, but not a missing *table*, so
 running `0003` before `0002` fails with `relation "public.app_state_history" does not
 exist`.
 
-## 0005: only for databases created before the Vector rename
+## 0005 and 0006: the workspace key round trip
 
-The app used to be called Fuvarterv and sent `fuvarterv:v1` as its workspace key;
-it now sends `vector:v1`. `0005` moves the existing `app_state` row and its
-`app_state_history` snapshots over, and re-creates the four workspace-scoped
-policies with the new key. Skip it and the app loads an empty workspace and every
-save is rejected by RLS.
+The app was called Fuvarterv, was renamed to Vector, and has now been renamed back
+to Fuvarterv. The workspace key the client sends followed it each time, so there are
+two rename migrations: `0005` moved `fuvarterv:v1` → `vector:v1`, and `0006` moves it
+back, `vector:v1` → `fuvarterv:v1`. Each one moves the `app_state` row and its
+`app_state_history` snapshots, and re-creates the four workspace-scoped policies with
+the key of the day.
 
-On a database you are creating now there is nothing to move — `0003` and `0004`
-already write the policies with `vector:v1` — but running `0005` anyway is safe.
+**`0006` is the one that matters today** — it is what leaves the database on the key
+`src/data/storage.js` and `src/supabaseClient.js` actually send (`fuvarterv:v1`). Skip
+it and the app loads an empty workspace and every save is rejected by RLS.
+
+`0005` is kept as history rather than rewritten: it is what was really run against
+live databases during the Vector period, and `0001`–`0004` still spell the key
+`vector:v1` for the same reason. That costs nothing — on a database you are creating
+now `0005` has no data to move, and `0006` re-creates every policy it touched — but
+it does mean **`0006` is not optional on a fresh database either**: it is the only
+file that scopes the policies to the key the client sends.
 
 ## After 0004: create the first admin
 
@@ -128,7 +138,7 @@ with the admin condition — the six `0004` rows are what tell you whether `0004
 - **Function:** `is_admin()` — true when the caller's JWT e-mail has an `admin` row in
   `user_roles`. `security definer`, so the roles table's own policies cannot recurse.
 - **Policies on `app_state`:** `app_state select` (read for every authenticated user),
-  `app_state insert` and `app_state update` (scoped to `id = 'vector:v1'` **and
+  `app_state insert` and `app_state update` (scoped to `id = 'fuvarterv:v1'` **and
   admin-only**). Deliberately **no delete policy** — nothing in the app deletes the
   workspace row, and losing it would drop the entire dataset in one request.
 - **Policies on `app_state_history`:** `history select` (every authenticated user),

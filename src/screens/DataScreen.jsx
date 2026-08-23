@@ -1,5 +1,5 @@
-/* Vector — Adatok — csapatok és törzsadatok egy fül alatt
-   Kiemelve a vector.jsx-ből; a viselkedés változatlan. */
+/* Fuvarterv — Adatok — csapatok és törzsadatok egy fül alatt
+   Kiemelve a fuvarterv.jsx-ből; a viselkedés változatlan. */
 
 import { useState } from "react";
 import { DangerBtn } from "../ui/base.jsx";

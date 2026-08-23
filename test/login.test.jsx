@@ -16,7 +16,7 @@ vi.mock("../src/supabaseClient.js", () => ({
                       getSession: async () => ({ data: { session: null } }),
                       onAuthStateChange: () => ({ data: { subscription: { unsubscribe() {} } } }) } },
   isConfigured: true,
-  WORKSPACE_ID: "vector:v1",
+  WORKSPACE_ID: "fuvarterv:v1",
 }));
 vi.mock("../src/supabaseStorage.js", () => ({ supabaseStorage: {} }));
 

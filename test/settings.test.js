@@ -1,5 +1,5 @@
 import { describe, test, expect } from "vitest";
-import { DEFAULT_SETTINGS, seedState, ensureShape } from "../vector.jsx";
+import { DEFAULT_SETTINGS, seedState, ensureShape } from "../fuvarterv.jsx";
 
 /*
  * Guards against the two settings sources drifting apart. Before the

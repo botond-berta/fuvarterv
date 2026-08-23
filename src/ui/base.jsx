@@ -1,5 +1,5 @@
-/* Vector — alap építőkockák (Field, Modal, DangerBtn, …)
-   Kiemelve a vector.jsx-ből; a viselkedés változatlan. */
+/* Fuvarterv — alap építőkockák (Field, Modal, DangerBtn, …)
+   Kiemelve a fuvarterv.jsx-ből; a viselkedés változatlan. */
 
 import { useState, useEffect, useRef, useId } from "react";
 import { AlertTriangle, Boxes, CalendarDays, Car, HelpCircle, Trash2, Workflow, X } from "lucide-react";
@@ -130,7 +130,7 @@ export function HelpSheet({ onClose }) {
     <Modal title="Hogyan működik?" onClose={onClose}>
       <div className="flex flex-col gap-5">
         <p className="text-sm" style={{ color: "var(--ink2)", margin: 0 }}>
-          A Vector megtervezi, ki melyik járművel és mikor viszi a csapatokat az
+          A Fuvarterv megtervezi, ki melyik járművel és mikor viszi a csapatokat az
           edzésekre és haza. Így érdemes haladni:
         </p>
         <ol className="help-steps">

@@ -1,4 +1,4 @@
-/* Vector — szerepkör-kontextus: az AuthGate tölti fel, az App olvassa.
+/* Fuvarterv — szerepkör-kontextus: az AuthGate tölti fel, az App olvassa.
    Külön, apró modul: az App nem importálhat az AuthGate-ből (a varrat köztük
    eddig is eseményalapú volt), egy közös kontextus viszont mindkettőnek jár.
 

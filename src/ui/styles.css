@@ -1,6 +1,6 @@
-/* Vector — az alkalmazás felületének stílusai.
+/* Fuvarterv — az alkalmazás felületének stílusai.
  *
- * Korábban ez egy JS sablonsztring volt a vector.jsx-ben, amit az App három
+ * Korábban ez egy JS sablonsztring volt a fuvarterv.jsx-ben, amit az App három
  * külön ág <style> elemében renderelt. Valódi .css fájlként a Vite feldolgozza
  * (minify, prefix, gyorsítótárazható külön fájl), a szerkesztő kiemeli, és nem
  * a React renderelési sorrendje dönti el, hova kerül a kaszkádban.
