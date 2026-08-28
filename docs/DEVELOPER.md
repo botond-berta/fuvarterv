@@ -459,12 +459,19 @@ in the master list and must be given a coordinate the next time they are edited.
 Reading code must therefore keep its null checks (`legMin`, `computeMatrix`,
 `defaultMapCenter` all still guard).
 
-**Venue** (`venues[]`) — a training location. Same shape as a station.
+**Venue** (`venues[]`) — a training location. Same shape as a station, plus
+`needsVignette: boolean` — the venue is reached via the motorway, so only a vehicle
+with `hasVignette` may be scheduled there. The flag lives on **venues only**, never
+on stations: the destination is what forces the motorway, and one field is enough to
+keep up to date. `legMin`-style routing is unaffected; this is purely an assignment
+constraint (see [§10.5](#105-assign-real-drivers-and-buses--assignresources)).
 
 **Vehicle** (`vehicles[]`) — a minibus.
 ```js
-{ id, name, plate, seats, note }         // plate is normalized; seats excludes the driver
+{ id, name, plate, seats, note,
+  hasVignette: boolean }                 // national motorway vignette
 ```
+`plate` is normalized; `seats` excludes the driver.
 
 **Driver** (`drivers[]`)
 ```js
@@ -778,11 +785,22 @@ iterations, after which it keeps the best found and notes it was heuristic).
 
 For each chain it enumerates valid (driver, vehicle) options, requiring:
 - **Capacity:** `vehicle.seats >= chain.maxPax`.
+- **Motorway vignette:** if any task in the chain goes to a venue marked
+  `needsVignette`, the vehicle must have `hasVignette`. This is a hard constraint like
+  capacity, deliberately: an assignment the optimizer never proposes is one nobody has
+  to correct by hand afterwards. `optimizeDay` pre-checks it too, so a day with no
+  suitable bus yields an **uncovered** task naming the venue, rather than a silently
+  wrong bus; `resolveDay` raises the same thing as a live chain issue for schedules
+  saved before the venue was flagged (or assigned by hand).
 - **Driver availability:** `driverAvailableFor(driver, weekday, start, end)` — true
   if the driver has no availability windows, else a window on that weekday must fully
   contain the shift.
 - **No double-booking:** neither the driver nor the vehicle already overlaps another
   chain in time.
+
+A **locked** task still wins over all of this: its chain keeps the driver and vehicle
+the admin picked (§10.7), and the local-improvement step will not graft a
+vignette-requiring task onto a locked chain whose bus lacks one.
 
 The cost of an option is:
 ```

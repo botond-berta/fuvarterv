@@ -161,6 +161,23 @@ export function legFor(team, training, dir) {
    felülírás nélkül semmi nem változik. */
 export const teamLeg = (team, dir) => legFor(team, null, dir);
 
+/* Országos autópálya-matrica. A jelölés a HELYSZÍNEN van (`needsVignette`), a
+   járművön pedig a tény (`hasVignette`) — a feladat két végpontja közül az egyik
+   mindig a helyszín (ODA: `to`, VISSZA: `from`), ezért iránytól függetlenül
+   elég mindkettőt megnézni. A megállók szándékosan nem jelölhetők: a matricát a
+   célpont kényszeríti ki, és így egyetlen mezőt kell karbantartani. */
+export const venueNeedsVignette = (state, id) => !!byId(state.venues, id)?.needsVignette;
+export const taskNeedsVignette = (state, task) =>
+  venueNeedsVignette(state, task.from) || venueNeedsVignette(state, task.to);
+export const chainNeedsVignette = (state, chain) =>
+  (chain?.tasks || []).some((t) => taskNeedsVignette(state, t));
+/* Mely matricás helyszínekre megy a lánc — az indoklásokhoz, hogy ne csak azt
+   mondjuk meg, hogy baj van, hanem azt is, melyik helyszín miatt. */
+export const vignetteVenues = (state, chain) => [...new Set((chain?.tasks || [])
+  .flatMap((t) => [t.from, t.to])
+  .filter((id) => venueNeedsVignette(state, id))
+  .map((id) => byId(state.venues, id).name))];
+
 export function deleteGuard(state, kind, id) {
   const n = (c, w) => (c > 0 ? `Használatban: ${c} ${w}.` : null);
   if (kind === "stations") {

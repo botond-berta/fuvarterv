@@ -6,8 +6,9 @@ import { useState } from "react";
 import { Plus, Pencil, AlertTriangle, MapPin, X } from "lucide-react";
 import { DAYS_SHORT, uid, byId } from "../domain/constants.js";
 import { normalizePlate, plateExists, deleteGuard } from "../domain/logic.js";
-import { Field, Modal, DangerBtn, PlateChip, EmptyState } from "../ui/base.jsx";
+import { Field, Check, Modal, DangerBtn, PlateChip, EmptyState } from "../ui/base.jsx";
 import { MapPickerModal } from "../ui/MapPicker.jsx";
+import { VignettePill } from "../ui/VignettePill.jsx";
 
 /* ---------- 4.3 TÖRZSADATOK ---------- */
 export const MASTER_TABS = [
@@ -45,8 +46,8 @@ export function MasterScreen({ tab, state, update, notice, setNotice }) {
             <div className="flex-1 min-w-0">
               <div className="font-semibold flex items-center gap-2 flex-wrap">
                 {tab === "vehicles"
-                  ? <>{it.name} <PlateChip plate={it.plate} /></>
-                  : <>{it.name}{it.lat != null && it.lon != null
+                  ? <>{it.name} <PlateChip plate={it.plate} />{it.hasVignette && <VignettePill />}</>
+                  : <>{it.name}{tab === "venues" && it.needsVignette && <VignettePill need />}{it.lat != null && it.lon != null
                       ? <MapPin size={14} style={{ color: "var(--ok)" }} aria-label="Koordináta megadva" />
                       : <AlertTriangle size={14} style={{ color: "var(--warn)" }} aria-label="Hiányzó koordináta" />}</>}
               </div>
@@ -76,8 +77,8 @@ export function MasterScreen({ tab, state, update, notice, setNotice }) {
 export function MasterForm({ kind, state, entity, onSave, onCancel }) {
   const blank = {
     stations: { name: "", address: "", note: "", lat: null, lon: null },
-    venues: { name: "", address: "", note: "", lat: null, lon: null },
-    vehicles: { name: "", plate: "", seats: 8, note: "" },
+    venues: { name: "", address: "", note: "", lat: null, lon: null, needsVignette: false },
+    vehicles: { name: "", plate: "", seats: 8, note: "", hasVignette: false },
     drivers: { name: "", phone: "", email: "", note: "", wage: 3000, minShiftMin: 120, availability: [] },
   }[kind];
   const [f, setF] = useState(entity || blank);
@@ -99,7 +100,7 @@ export function MasterForm({ kind, state, entity, onSave, onCancel }) {
       const p = normalizePlate(f.plate);
       if (!p) { setPlateErr("A rendszám kötelező."); return; }
       if (plateExists(state, p, entity?.id)) { setPlateErr(`Ez a rendszám már létezik: ${p}`); return; }
-      onSave({ ...f, plate: p, seats: Math.max(1, Number(f.seats) || 1) });
+      onSave({ ...f, plate: p, seats: Math.max(1, Number(f.seats) || 1), hasVignette: !!f.hasVignette });
       return;
     }
     if (kind === "drivers") {
@@ -134,6 +135,11 @@ export function MasterForm({ kind, state, entity, onSave, onCancel }) {
           {!hasCoord && (
             <div className="banner banner-warn mb-3"><AlertTriangle size={18} />A koordináta kötelező — jelöld ki a térképen a mentéshez.</div>
           )}
+          {kind === "venues" && (
+            <Check label="Csak országos matricás autóval érhető el"
+              hint="Autópályán megközelíthető helyszín. A beosztás ide csak matricás járművet oszt be, és jelzi, ha nincs szabad."
+              checked={f.needsVignette} onChange={(b) => setF({ ...f, needsVignette: b })} />
+          )}
         </>
       )}
       {kind === "vehicles" && (
@@ -149,6 +155,9 @@ export function MasterForm({ kind, state, entity, onSave, onCancel }) {
           <Field label="Férőhelyek száma (sofőr nélkül) *">
             <input type="number" min="1" className="inp" value={f.seats} onChange={(e) => setF({ ...f, seats: e.target.value })} />
           </Field>
+          <Check label="Van országos autópálya-matricája"
+            hint="Matricás helyszínre a beosztás csak ilyen járművet oszt be."
+            checked={f.hasVignette} onChange={(b) => setF({ ...f, hasVignette: b })} />
         </>
       )}
       {kind === "drivers" && (

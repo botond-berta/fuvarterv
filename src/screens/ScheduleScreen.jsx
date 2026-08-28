@@ -9,6 +9,7 @@ import { locName, matrixKey, computeMatrix } from "../domain/geo.js";
 import { resolveDay, dayStats, optimizeDay, withGeneratedRides, driverAvailableFor } from "../domain/optimizer.js";
 import { fmtFt, fmtH } from "../ui/format.js";
 import { Field, NumField, Modal, PlateChip, TeamDot, EmptyState, InfoDot } from "../ui/base.jsx";
+import { VignettePill } from "../ui/VignettePill.jsx";
 
 /* ---------- 4.45 BEOSZTÁS — ütemezés-optimalizáló ---------- */
 
@@ -76,6 +77,7 @@ export function ChainCard({ state, chain: c, onLock, onMove }) {
       <div className="p-3 flex items-center gap-2 flex-wrap" style={{ background: "var(--surface-inv)", color: "var(--on-inv)" }}>
         <span className="disp text-base">{c.driver?.name || "— nincs sofőr —"}</span>
         {c.vehicle && <PlateChip plate={c.vehicle.plate} />}
+        {c.vehicle?.hasVignette && <VignettePill />}
         {c.vehicle && <span className="text-xs" style={{ color: "var(--on-inv)", opacity: .7 }}>{c.vehicle.seats} fh</span>}
         <span className="tnum ml-auto text-base">{minToTime(c.start)}–{minToTime(c.end)}</span>
       </div>
@@ -139,7 +141,7 @@ export function MoveModal({ state, task, chains, currentChainId, onClose, onToCh
         </Field>
         <Field label="Jármű">
           <select className="inp" value={nv} onChange={(e) => setNv(e.target.value)}>
-            {state.vehicles.map((v) => <option key={v.id} value={v.id}>{v.name} ({v.plate})</option>)}
+            {state.vehicles.map((v) => <option key={v.id} value={v.id}>{v.name} ({v.plate}){v.hasVignette ? " · matricás" : ""}</option>)}
           </select>
         </Field>
       </div>
@@ -191,7 +193,7 @@ function ProposalModal({ state, before, out, onApply, onClose }) {
           return (
             <div key={i} className="card p-2 text-sm">
               <div className="font-semibold flex items-center gap-2 flex-wrap">
-                {d?.name || "?"} {v && <PlateChip plate={v.plate} />}
+                {d?.name || "?"} {v && <PlateChip plate={v.plate} />}{v?.hasVignette && <VignettePill />}
                 <span className="tnum ml-auto">{minToTime(c.start)}–{minToTime(c.end)}</span>
               </div>
               {c.tasks.map((t, j) => (

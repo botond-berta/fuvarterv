@@ -4,7 +4,7 @@
 import { DAYS, byId, uid } from "./constants.js";
 import { timeToMin, minToTime } from "./datetime.js";
 import { legMin, locName } from "./geo.js";
-import { weekOccurrences, legFor, legSource } from "./logic.js";
+import { weekOccurrences, legFor, legSource, taskNeedsVignette, chainNeedsVignette, vignetteVenues } from "./logic.js";
 
 /* Held–Karp: az összes állomást érintő legrövidebb út sorrendje.
    pre/post: a lánc elé/mögé kötött pont (pl. helyszín); fixedFirst/fixedLast:
@@ -361,11 +361,16 @@ export function assignResources(state, weekday, freeChains, fixedUse) {
     if (i === chains.length) { best = { cost, picks: acc.map((x) => ({ ...x })) }; return; }
     const c = chains[i];
     const opts = [];
+    /* A matrica ugyanolyan kemény feltétel, mint a férőhely: matricás helyszínre
+       menő láncra matrica nélküli jármű nem is kerül szóba. Így az optimalizálás
+       eleve nem ad rossz javaslatot — nincs mit kézzel visszajavítani. */
+    const needsV = chainNeedsVignette(state, c);
     for (const d of state.drivers) {
       if (!driverAvailableFor(d, weekday, c.start, c.end)) continue;
       if (used.some((u) => u.driverId === d.id && resourceClash(state, u, c))) continue;
       for (const v of state.vehicles) {
         if (v.seats < c.maxPax) continue;
+        if (needsV && !v.hasVignette) continue;
         if (used.some((u) => u.vehicleId === v.id && resourceClash(state, u, c))) continue;
         const paid = Math.max(c.end - c.start, d.minShiftMin || 0);
         const base = (state.settings.calloutFee || 0) + (paid / 60) * (d.wage || 0);
@@ -397,8 +402,10 @@ export function assignResources(state, weekday, freeChains, fixedUse) {
 
 export function contentionReasons(state, weekday, t) {
   const av = state.drivers.filter((d) => driverAvailableFor(d, weekday, t.start, t.end));
-  const bigV = state.vehicles.filter((v) => v.seats >= t.pax);
-  return [`Erőforrás-ütközés: ${DAYS[weekday]} ${minToTime(t.start)}–${minToTime(t.end)} között minden alkalmas erőforrás foglalt (elérhető sofőr: ${av.length}, elegendő férőhelyű jármű: ${bigV.length}).`];
+  const needsV = taskNeedsVignette(state, t);
+  const bigV = state.vehicles.filter((v) => v.seats >= t.pax && (!needsV || v.hasVignette));
+  const what = needsV ? "elegendő férőhelyű, országos matricás jármű" : "elegendő férőhelyű jármű";
+  return [`Erőforrás-ütközés: ${DAYS[weekday]} ${minToTime(t.start)}–${minToTime(t.end)} között minden alkalmas erőforrás foglalt (elérhető sofőr: ${av.length}, ${what}: ${bigV.length}).`];
 }
 
 /* A mentett beosztás feloldása nézetmodellé + élő ütközésjelzés */
@@ -427,6 +434,11 @@ export function resolveDay(state, weekday, weekMon) {
       c.issues.push(`${c.driver.name} nem érhető el a teljes ${minToTime(c.start)}–${minToTime(c.end)} sávban.`);
     if (c.vehicle && c.maxPax > c.vehicle.seats)
       c.issues.push(`A létszám (${c.maxPax} fő) meghaladja a(z) ${c.vehicle.plate} férőhelyét (${c.vehicle.seats}).`);
+    /* Kézzel is beosztható matrica nélküli autó, és a régi, mentett beosztásokban
+       is maradhatott ilyen — az optimalizálás óta lett a helyszín matricás. Nem
+       javítjuk automatikusan, de megmondjuk. */
+    if (c.vehicle && !c.vehicle.hasVignette && chainNeedsVignette(state, c))
+      c.issues.push(`A(z) ${c.vehicle.plate} nincs országos matricával, de a lánc ide megy: ${vignetteVenues(state, c).join(", ")}.`);
     chains.push(c);
   }
   for (let i = 0; i < chains.length; i++)
@@ -563,6 +575,8 @@ export function optimizeDay(state, weekday, weekMon) {
     const reasons = [];
     if (t.pax > maxSeats)
       reasons.push(`Nincs jármű elegendő férőhellyel: ${t.pax} fő kellene, a legnagyobb jármű ${maxSeats} férőhelyes.`);
+    if (taskNeedsVignette(state, t) && !state.vehicles.some((v) => v.hasVignette && v.seats >= t.pax))
+      reasons.push(`Nincs országos matricás jármű ${t.pax} fővel: ${vignetteVenues(state, { tasks: [t] }).join(", ")} csak matricás autóval érhető el.`);
     if (!state.drivers.some((d) => driverAvailableFor(d, weekday, t.start, t.end)))
       reasons.push(`Egyik sofőr sem érhető el ${DAYS[weekday]} ${minToTime(t.start)}–${minToTime(t.end)} között.`);
     if (reasons.length) uncovered.push({ task: t, reasons });
@@ -638,6 +652,9 @@ export function optimizeDay(state, weekday, weekMon) {
           const before = F.end + legMin(state, F.tasks[F.tasks.length - 1].to, K.tasks[0].from) <= K.start;
           if ((!after && !before) || Math.max(F.maxPax, K.maxPax) > v.seats) continue;
           if (!driverAvailableFor(d, weekday, Math.min(K.start, F.start), Math.max(K.end, F.end))) continue;
+          /* A csontváz-lánc járműve rögzített, tehát nem tud matricássá válni:
+             matricás feladatot csak matricás autóra fűzhetünk rá. */
+          if (chainNeedsVignette(state, F) && !v.hasVignette) continue;
           const trialS = skl.map((c, x) => (x === k ? mkChain(state, [...c.tasks, ...F.tasks], c) : c));
           const trialF = fre.filter((_, x) => x !== i);
           const t = evalPlan(trialS, trialF);

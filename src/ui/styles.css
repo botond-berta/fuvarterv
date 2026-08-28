@@ -15,6 +15,7 @@
 :root{
   --ink:var(--v-ink); --ink2:var(--v-ink-2); --paper:var(--v-paper); --card:var(--v-card);
   --line:var(--v-line); --acc:var(--v-acc); --acc-soft:var(--v-acc-soft); --on-acc:var(--v-on-acc);
+  --acc-strong:var(--v-acc-strong);
   --danger:var(--v-crit); --danger-soft:var(--v-crit-soft); --ok:var(--v-go);
   --warn:var(--v-warn); --warn-soft:var(--v-warn-soft); --paper2:var(--v-paper-2);
 

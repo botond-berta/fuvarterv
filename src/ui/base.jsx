@@ -36,6 +36,22 @@ export function NumField({ label, hint, value, min = 0, onCommit }) {
   );
 }
 
+/* Logikai mező. A natív checkbox marad a kattintható címke mögött, hogy a
+   billentyűzet és a képernyőolvasó ingyen működjön; csak a méret és a szín
+   igazodik a többi mezőhöz. */
+export function Check({ label, hint, checked, onChange }) {
+  return (
+    <label className="block mb-3" style={{ cursor: "pointer" }}>
+      <span className="flex items-center gap-2">
+        <input type="checkbox" checked={!!checked} onChange={(e) => onChange(e.target.checked)}
+          style={{ width: 20, height: 20, accentColor: "var(--acc)", cursor: "pointer", flexShrink: 0 }} />
+        <span className="text-sm font-semibold">{label}</span>
+      </span>
+      {hint && <span className="block text-xs mt-1" style={{ color: "var(--ink2)" }}>{hint}</span>}
+    </label>
+  );
+}
+
 export function Modal({ title, onClose, children }) {
   const titleId = useId();
   /* A háttérre kattintás csak akkor zár, ha az egérgomb LENYOMÁSA is a háttéren
