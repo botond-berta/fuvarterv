@@ -451,6 +451,14 @@ isOverride }` for the direction you ask for.
 { id, name, address, note, lat: number|null, lon: number|null }
 ```
 
+`lat`/`lon` are **mandatory in the editor**: `MasterForm` refuses to save a station
+or venue without a coordinate, so new records always carry one. The type stays
+nullable because records saved before this rule (and `ensureShape`, which fills
+missing keys with `null`) can still be coordinate-less — those show a warning icon
+in the master list and must be given a coordinate the next time they are edited.
+Reading code must therefore keep its null checks (`legMin`, `computeMatrix`,
+`defaultMapCenter` all still guard).
+
 **Venue** (`venues[]`) — a training location. Same shape as a station.
 
 **Vehicle** (`vehicles[]`) — a minibus.

@@ -1,5 +1,6 @@
 /* Fuvarterv — Törzsadatok — állomások, helyszínek, járművek, sofőrök
-   Kiemelve a fuvarterv.jsx-ből; a viselkedés változatlan. */
+   Kiemelve a fuvarterv.jsx-ből. Egy eltérés az eredetitől: állomásnál és
+   helyszínnél a koordináta kötelező. */
 
 import { useState } from "react";
 import { Plus, Pencil, AlertTriangle, MapPin, X } from "lucide-react";
@@ -45,7 +46,9 @@ export function MasterScreen({ tab, state, update, notice, setNotice }) {
               <div className="font-semibold flex items-center gap-2 flex-wrap">
                 {tab === "vehicles"
                   ? <>{it.name} <PlateChip plate={it.plate} /></>
-                  : <>{it.name}{it.lat != null && it.lon != null && <MapPin size={14} style={{ color: "var(--ok)" }} aria-label="Koordináta megadva" />}</>}
+                  : <>{it.name}{it.lat != null && it.lon != null
+                      ? <MapPin size={14} style={{ color: "var(--ok)" }} aria-label="Koordináta megadva" />
+                      : <AlertTriangle size={14} style={{ color: "var(--warn)" }} aria-label="Hiányzó koordináta" />}</>}
               </div>
               <div className="text-sm" style={{ color: "var(--ink2)" }}>
                 {tab === "vehicles" && `${it.seats} férőhely (sofőr nélkül)`}
@@ -82,8 +85,16 @@ export function MasterForm({ kind, state, entity, onSave, onCancel }) {
   const [mapOpen, setMapOpen] = useState(false);
   const meta = MASTER_TABS.find((t) => t.key === kind);
   const singCap = meta.sing.charAt(0).toUpperCase() + meta.sing.slice(1);
+  /* Állomás és helyszín koordináta nélkül nem menthető: a legMin ilyenkor a
+     fallbackLegMin-re esik vissza, a mátrixból pedig kimarad a pont — az
+     optimalizáló órákat tervez rossz menetidőkkel, jelzés nélkül. A régi,
+     koordináta nélküli rekordok a listában figyelmeztetést kapnak, és a
+     szerkesztésük is csak koordinátával zárható le. */
+  const needsCoord = kind === "stations" || kind === "venues";
+  const hasCoord = f.lat != null && f.lon != null;
 
   const trySave = () => {
+    if (needsCoord && !hasCoord) return;
     if (kind === "vehicles") {
       const p = normalizePlate(f.plate);
       if (!p) { setPlateErr("A rendszám kötelező."); return; }
@@ -110,19 +121,19 @@ export function MasterForm({ kind, state, entity, onSave, onCancel }) {
       {(kind === "stations" || kind === "venues") && (
         <>
           <Field label="Cím"><input className="inp" value={f.address} onChange={(e) => setF({ ...f, address: e.target.value })} /></Field>
-          <Field label="Koordináta" hint="A térképen koppintással jelölöd ki, a jelölő húzható.">
+          <Field label="Koordináta *" hint="Kötelező. A térképen koppintással jelölöd ki, a jelölő húzható; új kijelölés felülírja a korábbit.">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="tnum" style={{ fontSize: 16 }}>
-                {f.lat != null && f.lon != null ? `${Number(f.lat).toFixed(5)}, ${Number(f.lon).toFixed(5)}` : "nincs megadva"}
+                {hasCoord ? `${Number(f.lat).toFixed(5)}, ${Number(f.lon).toFixed(5)}` : "nincs megadva"}
               </span>
               <button className="btn btn-ghost" onClick={() => setMapOpen(true)}>
-                <MapPin size={16} /> Kijelölés térképen
+                <MapPin size={16} /> {hasCoord ? "Módosítás térképen" : "Kijelölés térképen"}
               </button>
-              {f.lat != null && f.lon != null && (
-                <button className="iconbtn" aria-label="Koordináta törlése" onClick={() => setF({ ...f, lat: null, lon: null })}><X size={16} /></button>
-              )}
             </div>
           </Field>
+          {!hasCoord && (
+            <div className="banner banner-warn mb-3"><AlertTriangle size={18} />A koordináta kötelező — jelöld ki a térképen a mentéshez.</div>
+          )}
         </>
       )}
       {kind === "vehicles" && (
@@ -193,7 +204,7 @@ export function MasterForm({ kind, state, entity, onSave, onCancel }) {
       )}
       <Field label="Megjegyzés"><input className="inp" value={f.note} onChange={(e) => setF({ ...f, note: e.target.value })} /></Field>
       <div className="flex gap-2 mt-4">
-        <button className="btn btn-pri flex-1" disabled={!f.name.trim()} onClick={trySave}>Mentés</button>
+        <button className="btn btn-pri flex-1" disabled={!f.name.trim() || (needsCoord && !hasCoord)} onClick={trySave}>Mentés</button>
         <button className="btn btn-ghost" onClick={onCancel}>Mégse</button>
       </div>
       {mapOpen && (
