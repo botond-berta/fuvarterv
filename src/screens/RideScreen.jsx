@@ -6,7 +6,7 @@ import { useState, useMemo, useRef } from "react";
 import { ChevronLeft, ChevronRight, GripVertical, ArrowUp, ArrowDown, AlertTriangle, MapPin, Clock, X, Flag, Zap } from "lucide-react";
 import { DAYS, uid, byId } from "../domain/constants.js";
 import { mondayOf, toISO, addDays, timeToMin, minToTime, fmtDate, fmtDateFull, fmtWeekRange } from "../domain/datetime.js";
-import { weekOccurrences, findRides, findConflicts, rideWindow, seatSum, venueDepartMin, teamLeg } from "../domain/logic.js";
+import { weekOccurrences, findRides, findConflicts, rideWindow, seatSum, venueDepartMin, legFor } from "../domain/logic.js";
 import { planOda, planVissza, bestStationOrder } from "../domain/optimizer.js";
 import { Field, DangerBtn, EmptyState, InfoDot } from "../ui/base.jsx";
 import { OccCard } from "../ui/OccCard.jsx";
@@ -100,9 +100,10 @@ export function RideForm({ state, update, training, dayIdx, dateISO, existing, o
   const over = vehicle && pax > vehicle.seats;
 
   /* Az irány saját megállói kerülnek előre — de bármelyik állomás választható,
-     mert egy konkrét fuvar eltérhet a csapat állandó listájától (pl. egyszeri
-     kitérő). Korábban a lista iránytól függetlenül az ODAÚT megállóira szorult. */
-  const leg = teamLeg(team, dir);
+     mert egy konkrét fuvar eltérhet az állandó listától (pl. egyszeri kitérő).
+     A lista ezé az EDZÉSÉ, ha van saját listája: egy másik helyszínen tartott
+     edzés megállói másokat kínálnának fel elsőként. */
+  const leg = legFor(team, training, dir);
   const used = (id) => draft.stops.some((x) => x.stationId === id);
   const legStations = state.stations.filter((s) => leg.stationIds.includes(s.id) && !used(s.id));
   const otherStations = state.stations.filter((s) => !leg.stationIds.includes(s.id) && !used(s.id));
@@ -303,7 +304,7 @@ export function RideForm({ state, update, training, dayIdx, dateISO, existing, o
           aria-label="Megálló hozzáadása az útvonalhoz">
           <option value="">＋ Megálló hozzáadása…</option>
           {legStations.length > 0 && (
-            <optgroup label={`A csapat megállói (${isBack ? "VISSZA" : "ODA"})`}>
+            <optgroup label={`${training.stops ? "Az edzés" : "A csapat"} megállói (${isBack ? "VISSZA" : "ODA"})`}>
               {legStations.map((s) => <option key={s.id} value={s.id}>{s.name}{s.address ? ` – ${s.address}` : ""}</option>)}
             </optgroup>
           )}

@@ -105,34 +105,61 @@ export function chainRefs(state, field, id) {
   return c;
 }
 
-/* Egy csapat adott irányhoz tartozó "lába": mely megállókat érinti, mennyi
-   emberrel, és melyik megálló van rögzítve a sor végére.
+/* Honnan jönnek a megállók: az edzés saját listájából, vagy a csapatéból.
+
+   Egy csapatnak több edzése lehet, akár külön helyszíneken — a megállók, a
+   létszámok és a sorrend edzésenként eltérhetnek. Az edzés `stops` mezője
+   ezért egy TELJES felülírás: vagy null (a csapat listája érvényes, ez a
+   korábbi viselkedés), vagy ugyanazokkal a mezőnevekkel megadott saját lista.
+   Az azonos mezőnevek nem véletlenek: így ugyanaz a feloldás és ugyanaz a
+   szerkesztő komponens szolgálja ki mindkét szintet, adapter nélkül.
+
+   Irányonként félig örökölni (odaút az edzésé, visszaút a csapaté) szándékosan
+   nem lehet: az átláthatatlan mátrixot adna. Az edzés vagy a csapatét
+   használja, vagy van egy önálló, teljes sajátja. */
+export function legSource(team, training) {
+  return training?.stops || team || {};
+}
+export const hasOwnStops = (training) => !!training?.stops;
+
+/* Egy megállólista adott irányhoz tartozó "lába": mely megállókat érinti,
+   mennyi emberrel, és melyik megálló van rögzítve a sor végére.
 
    Ez az EGYETLEN hely, ahol eldől, hogy a visszaút saját listát használ-e vagy
    tükrözi az odautat. Ha nincs `returnStationIds`, mindkét irány az odaút
    mezőit kapja — vagyis a korábbi viselkedés változatlan, és a meglévő
-   csapatoknál semmit nem kell átállítani.
+   csapatoknál semmit nem kell átállítani. A szabály a forráson belül él, tehát
+   egy saját listás edzésnél az ő odaútját tükrözi, nem a csapatét.
 
    `isOverride` azért kell, mert a rendezés máshogy viselkedik: egy tükrözött
    visszautat meg kell fordítani, egy kézzel összeállított visszaút-listát
    viszont NEM — annak a sorrendje már a szándékolt sorrend. */
-export function teamLeg(team, dir) {
-  const own = dir === "vissza" && Array.isArray(team?.returnStationIds);
+export function legFor(team, training, dir) {
+  const src = legSource(team, training);
+  const own = dir === "vissza" && Array.isArray(src.returnStationIds);
+  const routeMode = src.routeMode || "auto";
   if (!own) {
     return {
-      stationIds: team?.stationIds || [],
-      stationCounts: team?.stationCounts || {},
-      routeAnchorId: team?.routeAnchorId ?? null,
+      stationIds: src.stationIds || [],
+      stationCounts: src.stationCounts || {},
+      routeAnchorId: src.routeAnchorId ?? null,
+      routeMode,
       isOverride: false,
     };
   }
   return {
-    stationIds: team.returnStationIds,
-    stationCounts: team.returnStationCounts || {},
-    routeAnchorId: team.returnRouteAnchorId ?? null,
+    stationIds: src.returnStationIds,
+    stationCounts: src.returnStationCounts || {},
+    routeAnchorId: src.returnRouteAnchorId ?? null,
+    routeMode,
     isOverride: true,
   };
 }
+
+/* A csapat szintje: pontosan az, ami az edzésenkénti listák előtt volt. Ez a
+   wrapper mondja ki azt az invariánst, amit a return-leg tesztek ellenőriznek:
+   felülírás nélkül semmi nem változik. */
+export const teamLeg = (team, dir) => legFor(team, null, dir);
 
 export function deleteGuard(state, kind, id) {
   const n = (c, w) => (c > 0 ? `Használatban: ${c} ${w}.` : null);
@@ -140,9 +167,13 @@ export function deleteGuard(state, kind, id) {
     // A visszaút saját listáját is számolni kell: egy csak hazafelé használt
     // állomás egyébként hivatkozatlannak látszana, törölhetővé válna, és utána
     // a teamRouteOrder szűrője némán kihagyná — a gyerekeket nem vinné haza senki.
-    const c = state.teams.filter((t) => (t.stationIds || []).includes(id) || (t.returnStationIds || []).includes(id)).length
+    // Ugyanez áll az edzések saját listáira: egy csak ott használt állomás
+    // szintén hivatkozatlannak tűnne.
+    const inSource = (src) => (src.stationIds || []).includes(id) || (src.returnStationIds || []).includes(id);
+    const c = state.teams.filter(inSource).length
+      + state.trainings.filter((t) => t.stops && inSource(t.stops)).length
       + state.rides.filter((r) => (r.stops || []).some((s) => s.stationId === id)).length;
-    return n(c, "csapat/fuvar");
+    return n(c, "csapat/edzés/fuvar");
   }
   if (kind === "venues") {
     const c = state.teams.filter((t) => (t.venueIds || []).includes(id)).length

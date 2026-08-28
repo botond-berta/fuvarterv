@@ -12,7 +12,7 @@ Four tabs, plus the ride editor which opens from a week-view card.
 
 - **Hét (Week)** — all trainings of the week, color-coded by team; every assigned bus per training (license-plate chip, driver, departure time), a yellow badge when no ride is assigned, red when there's a conflict.
 - **Beosztás (Schedule)** — daily view of transport tasks (outbound/return): chains per driver, link explanations ("X min deadhead: from → to"), task locking, manual reassignment, and an optimize button with a before/after comparison.
-- **Adatok (Data)** — five categories in one tab. **Csapatok:** team details, station and venue assignment, per-stop headcounts, route mode (auto-ordered / manual, with an optional pinned first stop), training CRUD. **Állomások / Helyszínek:** with map-based coordinate picking — the coordinate is mandatory, so a station or venue cannot be saved without one. **Járművek:** plate normalization + uniqueness check. **Sofőrök:** hourly wage, minimum shift, availability windows, preferred vehicle.
+- **Adatok (Data)** — five categories in one tab. **Csapatok:** team details, station and venue assignment, per-stop headcounts, route mode (auto-ordered / manual, with an optional pinned first stop), training CRUD — and each training may override the team's stop list with one of its own (different venue, different stops, different headcount). **Állomások / Helyszínek:** with map-based coordinate picking — the coordinate is mandatory, so a station or venue cannot be saved without one. **Járművek:** plate normalization + uniqueness check. **Sofőrök:** hourly wage, minimum shift, availability windows, preferred vehicle.
 - **Sofőr (Driver view)** — mobile-optimized, large-type daily route list with a "NEXT stop" highlight that advances every minute.
 - **Fuvar (Ride editor)** — per-occurrence ride editing: direction (outbound/return, chosen when the ride is created and locked afterwards), multiple parallel rides, drag & drop stop ordering, automatic time and stop-order calculation.
 
@@ -113,7 +113,7 @@ functions the tests import.
 | `src/domain/logic.js` | plate normalization, occurrences, ride windows, conflicts, delete guards |
 | `src/domain/optimizer.js` | task generation, Held–Karp, min-cost flow, assignment, diagnostics |
 | `src/ui/` | `styles.css`, `base.jsx`, `OccCard.jsx`, `MapPicker.jsx`, `format.js` |
-| `src/screens/` | Week, Schedule, Data (Teams + master data), Ride editor, Driver |
+| `src/screens/` | Week, Schedule, Data (Teams + master data), stop-list editor, Ride editor, Driver |
 | `src/App.jsx` | navigation, state, debounced saving |
 
 `src/domain/geo.js` is a leaf on purpose: both `logic` (`rideWindow`) and

@@ -4,7 +4,7 @@
 import { DAYS, byId, uid } from "./constants.js";
 import { timeToMin, minToTime } from "./datetime.js";
 import { legMin, locName } from "./geo.js";
-import { weekOccurrences, teamLeg } from "./logic.js";
+import { weekOccurrences, legFor, legSource } from "./logic.js";
 
 /* Held–Karp: az összes állomást érintő legrövidebb út sorrendje.
    pre/post: a lánc elé/mögé kötött pont (pl. helyszín); fixedFirst/fixedLast:
@@ -71,14 +71,15 @@ export function planVissza(state, order, venueId, departAt, dwell) {
   return { stops, venueDep: departAt, start: departAt, end: stops.length ? stops[stops.length - 1].arr : departAt };
 }
 
-/* A csapat útvonal-sorrendje: automatikus (opcionális rögzített kezdő megállóval)
-   vagy kézi (a chipek bekapcsolási sorrendje; VISSZA fordítva). Feladatbontásnál
+/* Egy megállólista útvonal-sorrendje: automatikus (opcionális rögzített kezdő
+   megállóval) vagy kézi (a chipek bekapcsolási sorrendje; VISSZA fordítva).
+   A lista az edzés sajátja, ha van neki, különben a csapaté. Feladatbontásnál
    egy megálló-részhalmaz is átadható; a rögzített kezdő megálló csak akkor
    érvényes, ha benne van a részhalmazban. */
-export function teamRouteOrder(state, team, venueId, dir, stationIds) {
-  const leg = teamLeg(team, dir);
+export function legRouteOrder(state, team, training, venueId, dir, stationIds) {
+  const leg = legFor(team, training, dir);
   const ids = (stationIds || leg.stationIds || []).filter((id) => byId(state.stations, id));
-  if (ids.length <= 1 || team.routeMode === "manual") {
+  if (ids.length <= 1 || leg.routeMode === "manual") {
     /* Kézi módban a tárolt sorrend a szándékolt sorrend. Megfordítani csak akkor
        helyes, ha a visszaút az ODAÚT listáját tükrözi; ha saját listája van, azt
        a felhasználó már hazafelé menő sorrendben állította össze. */
@@ -89,6 +90,10 @@ export function teamRouteOrder(state, team, venueId, dir, stationIds) {
   if (dir === "oda") return bestStationOrder(state, ids, { post: venueId, fixedFirst: anchor });
   return bestStationOrder(state, ids, { pre: venueId, fixedLast: anchor });
 }
+
+/* A csapat szintje — az edzésenkénti listák előtti hívási forma. */
+export const teamRouteOrder = (state, team, venueId, dir, stationIds) =>
+  legRouteOrder(state, team, null, venueId, dir, stationIds);
 
 /* Megállók csomagolása a lehető legkevesebb buszba (first-fit-decreasing):
    minden busz létszáma <= cap, egy megálló teljes létszáma egyetlen buszba kerül.
@@ -116,10 +121,16 @@ export function genDayTasks(state, weekday, weekMon) {
   const N = state.settings.arriveEarlyMin ?? 10, M = state.settings.departAfterMin ?? 10;
   const dwell = state.settings.dwellMin ?? 2;
   const maxSeats = Math.max(0, ...state.vehicles.map((v) => Number(v.seats) || 0));
+  /* Egy csapatnak több edzése lehet egy napon, külön helyszínen és külön
+     megállólistával — ilyenkor a puszta csapatnév két megkülönböztethetetlen
+     feladatot adna a beosztásban és a figyelmeztetésekben. A helyszínt csak
+     ekkor írjuk ki, hogy az egyedzéses napok címkéi rövidek maradjanak. */
+  const perTeam = occs.reduce((m, x) => ({ ...m, [x.training.teamId]: (m[x.training.teamId] || 0) + 1 }), {});
   for (const o of occs) {
     const t = o.training, team = byId(state.teams, t.teamId);
     if (!team) continue;
     const suffix = t.type === "weekly" ? weekday : "x";
+    const teamLabel = perTeam[t.teamId] > 1 ? `${team.name} · ${locName(state, t.venueId)}` : team.name;
 
     /* Irányonként külön kör: a visszaútnak saját megállói és saját létszámai
        lehetnek, ezért a megállóhalmazt, a létszámokat, a pax-ot ÉS a buszokra
@@ -128,16 +139,16 @@ export function genDayTasks(state, weekday, weekMon) {
        láncolás időre és üresjáratra megy, az #1/#2 párosítás sehol nincs
        kikényszerítve. */
     for (const dir of ["oda", "vissza"]) {
-      const leg = teamLeg(team, dir);
+      const leg = legFor(team, t, dir);
       const dirLabel = dir === "oda" ? "ODA" : "VISSZA";
-      const who = leg.isOverride ? `${team.name} · ${dirLabel}` : team.name;
+      const who = leg.isOverride ? `${teamLabel} · ${dirLabel}` : teamLabel;
 
       const st = (leg.stationIds || []).filter((id) => byId(state.stations, id));
       if (!st.length) {
         skipped.push(`${who}: nincs állomás rendelve, ezért nem készült ${dirLabel} feladat.`);
         continue;
       }
-      const pax = teamPax(team, dir);
+      const pax = legPax(team, t, dir);
       if (!pax) skipped.push(`${who}: nincs megadva létszám (se megállónként, se összesen) — 0 főnek számol.`);
       const sc = leg.stationCounts || {};
       const cnt = (sid) => Number(sc[sid]) || 0;
@@ -145,10 +156,10 @@ export function genDayTasks(state, weekday, weekMon) {
       /* Egy irány feladata egy megálló-részhalmazra. idx=null: teljes csapat egy
          buszon; idx>=1: a `count` buszra bontott feladat idx-edik része. */
       const mkTask = (subset, idx, count) => {
-        const order = teamRouteOrder(state, team, t.venueId, dir, subset);
+        const order = legRouteOrder(state, team, t, t.venueId, dir, subset);
         const split = idx != null;
         const tag = split ? `#${idx}` : "";
-        const name = `${team.name} · ${dirLabel}${split ? ` (${idx}/${count})` : ""}`;
+        const name = `${teamLabel} · ${dirLabel}${split ? ` (${idx}/${count})` : ""}`;
         const base = {
           id: `${t.id}:${suffix}:${dir}${tag}`, dir, teamId: team.id, trainingId: t.id,
           pax: split ? order.reduce((a, sid) => a + cnt(sid), 0) : pax, label: name,
@@ -189,15 +200,20 @@ export function genDayTasks(state, weekday, weekMon) {
    összlétszámot: egy 12 fős csapatnál, ahol az edző még csak két megállóhoz írt
    létszámot, ez 5 főt adott — nem indult kapacitás szerinti felosztás, és 12
    gyerek elé állt be egy 6 személyes busz, figyelmeztetés nélkül. */
-export function teamPax(team, dir = "oda") {
-  const leg = teamLeg(team, dir);
+export function legPax(team, training, dir = "oda") {
+  const leg = legFor(team, training, dir);
   const sc = leg.stationCounts;
   const sum = (leg.stationIds || []).reduce((a, id) => a + (Number(sc[id]) || 0), 0);
   /* Az összlétszám tartalék érték: csak akkor számít, ha a megállónkénti bontás
      kisebb nála. Saját visszaút-listánál is ugyanez a szabály — ugyanazok a
-     gyerekek utaznak, csak máshol szállnak le. */
-  return Math.max(sum, Number(team.passengerCount) || 0);
+     gyerekek utaznak, csak máshol szállnak le. A tartalék abból a forrásból jön,
+     amelyik a megállókat is adja: egy saját listás edzésen a csapat teljes kerete
+     nem érvényes, oda kevesebben is járhatnak. */
+  return Math.max(sum, Number(legSource(team, training).passengerCount) || 0);
 }
+
+/* A csapat szintje — az edzésenkénti listák előtti hívási forma. */
+export const teamPax = (team, dir = "oda") => legPax(team, null, dir);
 
 /* Elérhető-e a sofőr a teljes [startMin, endMin] sávban az adott hétköznapon?
    Az egymáshoz érő vagy átfedő ablakok ÖSSZEÁLLNAK: a 15:00–17:00 és a

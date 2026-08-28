@@ -144,7 +144,7 @@ flat config (`npm run lint`). See [§19](#19-tests).
 │   │   ├── OccCard.jsx       ← one training occurrence (week + ride picker)
 │   │   ├── MapPicker.jsx     ← Leaflet picker + offline SVG fallback
 │   │   └── format.js         ← Ft / hour formatters
-│   └── screens/              ← WeekScreen, TeamsScreen, MasterScreen,
+│   └── screens/              ← WeekScreen, TeamsScreen, MasterScreen, StopListEditor,
 │                               RideScreen, ScheduleScreen, DriverScreen, DataScreen
 └── supabase/migrations/
     ├── 0001_app_state.sql        ← the app_state table + RLS policies
@@ -487,8 +487,30 @@ Reading code must therefore keep its null checks (`legMin`, `computeMatrix`,
   days: [weekdayIdx, ...],               // for "weekly"
   date: "YYYY-MM-DD" | null,             // for "once"
   start: "HH:MM", end: "HH:MM",
+
+  // null = use the team's stop list (the pre-feature behaviour).
+  // An object = this training has a complete list of its own.
+  stops: null | {
+    stationIds, stationCounts, routeMode, routeAnchorId,
+    returnStationIds, returnStationCounts, returnRouteAnchorId,
+    passengerCount,                      // fallback headcount for THIS training
+  },
 }
 ```
+
+A team can have several trainings at **different venues**, so a single stop list on
+the team was wrong: every training got the same route and the same headcount. The
+`stops` override fixes that, and the field names deliberately match the team's, so
+one resolver and one editor component serve both levels with no adapter.
+
+The override is **all-or-nothing**: a training either uses the team's list or has a
+complete one of its own. There is no per-direction half-inheritance — inside an
+override, `returnStationIds === null` mirrors *that override's* outbound, not the
+team's return list. **Never read either level's fields directly**: use
+`legFor(team, training, dir)` from `src/domain/logic.js` (and `legPax` /
+`legRouteOrder` in the optimizer), which are the single place that resolves
+training → team. `teamLeg(team, dir)` is the team-level shorthand for
+`legFor(team, null, dir)` — it is exactly what the code did before this feature.
 
 **Ride** (`rides[]`) — a concrete bus run for one training occurrence. Several rides
 can belong to one occurrence (several buses carrying one team).
@@ -663,10 +685,16 @@ calculated *forwards* from "leave the gym `departAfterMin` after training ends".
 
 **The two directions are generated independently.** `genDayTasks` loops over
 `["oda", "vissza"]` and resolves the stop list, the per-stop counts, the `pax` **and
-the capacity split** separately for each, via `teamLeg(team, dir)`. A team whose
+the capacity split** separately for each, via `legFor(team, training, dir)` — which
+also picks up the training's own stop list when it has one. A team whose
 return has its own stops can therefore need a different number of buses each way —
 nothing requires `…:oda#1` and `…:vissza#1` to pair up. After `genDayTasks` returns,
 tasks are flat and independent; chaining is decided purely by time and deadhead.
+
+When a team has **more than one occurrence on the same day**, the task label carries
+the venue (`FU12 · Kistelek csarnok · ODA`); otherwise it stays short (`FU12 · ODA`).
+Without it, two trainings of one team produce two indistinguishable tasks in the
+schedule and in the `skipped` warnings.
 
 > **Task ids embed the split index** (`trainingId:weekday:dir` plus `#1`, `#2`, …).
 > Changing a team's stops or headcounts can therefore change how many buses a
@@ -848,6 +876,14 @@ which switches between five categories with a chip row:
 | **Hét** (Week) | `WeekScreen` / `OccCard` | All trainings this week, color-coded, with each assigned bus (plate chip, driver, time), and conflict/"no ride" badges. |
 | **Beosztás** (Schedule) | `ScheduleScreen` / `ChainCard` | Per-weekday task chains, the optimizer, before/after comparison, task lock/move, ride generation, and the ⚙ settings panel. |
 | **Adatok** (Data) | `DataScreen` → `TeamsScreen` / `MasterScreen` | Csapatok, Állomások, Helyszínek, Járművek, Sofőrök. Team details, station/venue assignment, per-stop headcounts, route mode; CRUD for the master entities. Also holds the one "restore sample data" button. |
+
+Inside **Csapatok**, a team row opens `TeamDetail` and a training row opens
+`TrainingDetail` — a screen, not a modal, because the stop editor is too tall for a
+bottom sheet on a phone. Both render the same `StopListEditor`: the team's permanent
+list at one level, the training's own list at the other. It is a controlled
+component (`value` + `onChange(patch)`), and it works unchanged at both levels only
+because the two sources share their field names — that is also why `value` can be
+handed straight to `legFor` / `legRouteOrder` / `legPax` as if it were a team.
 | **Sofőr** (Driver view) | `DriverScreen` | Mobile-friendly, large-type daily route list per driver with a "NEXT stop" highlight, refreshed every minute. |
 
 The **Fuvar** (ride editor, `RideScreen`) is not a tab — it opens from a week-view
