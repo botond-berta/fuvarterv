@@ -99,7 +99,7 @@
 .dirpill.v{background:var(--surface-inv);color:var(--on-inv);}
 .linkline{font-size:12.5px;color:var(--ink2);padding:0 0 0 30px;display:flex;align-items:center;gap:5px;flex-wrap:wrap;}
 .rail-dot.sm{width:10px;height:10px;border-width:3px;left:4px;}
-.statgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;}
+.statgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(76px,1fr));gap:8px;}
 .stat{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:10px 4px;text-align:center;}
 .stat b{display:block;font-family:'Nunito',sans-serif;font-size:22px;font-weight:800;line-height:1.1;}
 .stat span{font-size:10.5px;color:var(--ink2);letter-spacing:.02em;}

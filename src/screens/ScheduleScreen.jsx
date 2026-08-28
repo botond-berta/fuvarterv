@@ -7,6 +7,7 @@ import { DAYS, uid, byId } from "../domain/constants.js";
 import { mondayOf, weekdayIdx, minToTime, fmtDateFull } from "../domain/datetime.js";
 import { locName, matrixKey, computeMatrix } from "../domain/geo.js";
 import { resolveDay, dayStats, optimizeDay, withGeneratedRides, driverAvailableFor, driverPay, chainUse } from "../domain/optimizer.js";
+import { baseOf } from "../domain/logic.js";
 import { fmtFt, fmtH } from "../ui/format.js";
 import { Field, NumField, Modal, PlateChip, TeamDot, EmptyState, InfoDot } from "../ui/base.jsx";
 import { VignettePill } from "../ui/VignettePill.jsx";
@@ -334,6 +335,8 @@ export function ScheduleScreen({ state, update }) {
   const setSetting = (k, v) => update((s) => ({ ...s, settings: { ...s.settings, [k]: v } }));
 
   const moveChainId = moveTask ? (res.chains.find((c) => c.tasks.some((t) => t.id === moveTask.id))?.id || null) : null;
+  /* Melyik járműnek nincs feloldható telephelye (sem sajátja, sem klubszintű). */
+  const baseless = state.vehicles.filter((v) => !baseOf(state, v.id));
 
   return (
     <div className="px-4 pb-4">
@@ -381,8 +384,36 @@ export function ScheduleScreen({ state, update }) {
         <div className="stat"><b>{curStats.drivers}</b><span>sofőr</span></div>
         <div className="stat"><b>{fmtH(curStats.paidMin)}</b><span>fizetett idő</span></div>
         <div className="stat"><b>{curStats.dead} p</b><span>üresjárat</span></div>
+        {/* A várakozás eddig csak az optimalizálás összevetésében látszott, a napi
+            mutatók között nem — pedig a fizetett idő jó része lehet. */}
+        <div className="stat"><b>{curStats.idle} p</b><span>várakozás</span></div>
         <div className="stat"><b>{fmtFt(curStats.cost)}</b><span>becsült ktg.</span></div>
       </div>
+
+      {/* Telephely nélkül a beosztás a régi módon számol: minden rést fizetetlen
+          szabadidőnek vesz. Ezt a ⚙ panelben is jelezzük, de ott csak az látja,
+          aki kinyitja — a hibás számolás viszont a napi összegeken csapódik le. */}
+      {baseless.length > 0 && (
+        <div className="banner banner-warn mb-3" style={{ display: "block" }}>
+          <div className="flex items-center gap-2">
+            <AlertTriangle size={16} />
+            <b>{baseless.length === state.vehicles.length ? "Egy járműnek sincs telephelye" : `${baseless.length} járműnek nincs telephelye`}</b>
+          </div>
+          <div className="mt-1">
+            Enélkül a beosztás úgy számol, hogy a sofőr két fuvar között hazamehet — távoli helyszínnél ez nem igaz,
+            és a várakozás sem kerül bele a fizetett időbe.
+          </div>
+          {state.bases.length === 0 ? (
+            <div className="mt-1">Vegyél fel telephelyet az <b>Adatok → Telephelyek</b> fülön.</div>
+          ) : !state.settings.defaultBaseId && state.bases.length === 1 ? (
+            <button className="btn btn-ghost mt-2" onClick={() => setSetting("defaultBaseId", state.bases[0].id)}>
+              „{state.bases[0].name}” beállítása klubtelephelynek
+            </button>
+          ) : (
+            <div className="mt-1">Válaszd ki a klub telephelyét a ⚙ panelben, vagy add meg a járműveknél.</div>
+          )}
+        </div>
+      )}
 
       <div className="flex gap-2 mb-2 flex-wrap">
         <button className="btn btn-pri flex-1" onClick={doOptimize} disabled={busyOpt}>
