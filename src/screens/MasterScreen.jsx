@@ -14,6 +14,7 @@ import { VignettePill } from "../ui/VignettePill.jsx";
 export const MASTER_TABS = [
   { key: "stations", label: "Állomások", sing: "állomás" },
   { key: "venues", label: "Helyszínek", sing: "helyszín" },
+  { key: "bases", label: "Telephelyek", sing: "telephely" },
   { key: "vehicles", label: "Járművek", sing: "jármű" },
   { key: "drivers", label: "Sofőrök", sing: "sofőr" },
 ];
@@ -54,7 +55,7 @@ export function MasterScreen({ tab, state, update, notice, setNotice }) {
               <div className="text-sm" style={{ color: "var(--ink2)" }}>
                 {tab === "vehicles" && `${it.seats} férőhely (sofőr nélkül)`}
                 {tab === "drivers" && <>{it.phone ? <a href={`tel:${it.phone.replace(/\s/g, "")}`} className="underline">{it.phone}</a> : "nincs telefonszám"}{it.email ? ` · ${it.email}` : ""}</>}
-                {(tab === "stations" || tab === "venues") && (it.address || "nincs cím")}
+                {(tab === "stations" || tab === "venues" || tab === "bases") && (it.address || "nincs cím")}
                 {it.note ? ` · ${it.note}` : ""}
               </div>
             </div>
@@ -78,6 +79,7 @@ export function MasterForm({ kind, state, entity, onSave, onCancel }) {
   const blank = {
     stations: { name: "", address: "", note: "", lat: null, lon: null },
     venues: { name: "", address: "", note: "", lat: null, lon: null, needsVignette: false },
+    bases: { name: "", address: "", note: "", lat: null, lon: null },
     vehicles: { name: "", plate: "", seats: 8, note: "", hasVignette: false },
     drivers: { name: "", phone: "", email: "", note: "", wage: 3000, minShiftMin: 120, availability: [] },
   }[kind];
@@ -91,7 +93,7 @@ export function MasterForm({ kind, state, entity, onSave, onCancel }) {
      optimalizáló órákat tervez rossz menetidőkkel, jelzés nélkül. A régi,
      koordináta nélküli rekordok a listában figyelmeztetést kapnak, és a
      szerkesztésük is csak koordinátával zárható le. */
-  const needsCoord = kind === "stations" || kind === "venues";
+  const needsCoord = kind === "stations" || kind === "venues" || kind === "bases";
   const hasCoord = f.lat != null && f.lon != null;
 
   const trySave = () => {
@@ -100,7 +102,7 @@ export function MasterForm({ kind, state, entity, onSave, onCancel }) {
       const p = normalizePlate(f.plate);
       if (!p) { setPlateErr("A rendszám kötelező."); return; }
       if (plateExists(state, p, entity?.id)) { setPlateErr(`Ez a rendszám már létezik: ${p}`); return; }
-      onSave({ ...f, plate: p, seats: Math.max(1, Number(f.seats) || 1), hasVignette: !!f.hasVignette });
+      onSave({ ...f, plate: p, seats: Math.max(1, Number(f.seats) || 1), hasVignette: !!f.hasVignette, baseId: f.baseId || null });
       return;
     }
     if (kind === "drivers") {
@@ -119,7 +121,7 @@ export function MasterForm({ kind, state, entity, onSave, onCancel }) {
   return (
     <Modal title={entity ? `${singCap} szerkesztése` : `Új ${meta.sing}`} onClose={onCancel}>
       <Field label="Név *"><input className="inp" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></Field>
-      {(kind === "stations" || kind === "venues") && (
+      {needsCoord && (
         <>
           <Field label="Cím"><input className="inp" value={f.address} onChange={(e) => setF({ ...f, address: e.target.value })} /></Field>
           <Field label="Koordináta *" hint="Kötelező. A térképen koppintással jelölöd ki, a jelölő húzható; új kijelölés felülírja a korábbit.">
@@ -158,6 +160,12 @@ export function MasterForm({ kind, state, entity, onSave, onCancel }) {
           <Check label="Van országos autópálya-matricája"
             hint="Matricás helyszínre a beosztás csak ilyen járművet oszt be."
             checked={f.hasVignette} onChange={(b) => setF({ ...f, hasVignette: b })} />
+          <Field label="Telephely" hint="Innen indul és ide tér vissza a busz — a fizetett idő ettől a ponttól számít. Ha a sofőr a lakcímén tartja, válaszd azt.">
+            <select className="inp" value={f.baseId || ""} onChange={(e) => setF({ ...f, baseId: e.target.value || null })}>
+              <option value="">— a klub telephelye —</option>
+              {state.bases.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+            </select>
+          </Field>
         </>
       )}
       {kind === "drivers" && (

@@ -4,7 +4,7 @@
 import { DAYS, byId, uid } from "./constants.js";
 import { timeToMin, minToTime } from "./datetime.js";
 import { legMin, locName } from "./geo.js";
-import { weekOccurrences, legFor, legSource, taskNeedsVignette, chainNeedsVignette, vignetteVenues } from "./logic.js";
+import { weekOccurrences, legFor, legSource, taskNeedsVignette, chainNeedsVignette, vignetteVenues, baseOf } from "./logic.js";
 
 /* Held–Karp: az összes állomást érintő legrövidebb út sorrendje.
    pre/post: a lánc elé/mögé kötött pont (pl. helyszín); fixedFirst/fixedLast:
@@ -347,6 +347,55 @@ export const chainFrom = (c) => c.tasks[0].from;
 export const chainTo = (c) => c.tasks[c.tasks.length - 1].to;
 export const chainUse = (c, driverId, vehicleId) => ({ driverId, vehicleId, start: c.start, end: c.end, from: chainFrom(c), to: chainTo(c) });
 
+/* A lánc TELEPHELYTŐL TELEPHELYIG tartó sávja: a sofőr akkor lép munkába, amikor
+   elindul a telephelyről, és akkor végez, amikor visszaért. Telephely nélkül a
+   sáv a feladatokét fedi — vagyis pontosan a telephelyek előtti számítás. */
+export function spanOf(state, u) {
+  const base = baseOf(state, u.vehicleId);
+  if (!base) return { start: u.start, end: u.end };
+  return { start: u.start - legMin(state, base, u.from), end: u.end + legMin(state, u.to, base) };
+}
+
+/* Egy sofőr műszakjai: az egymásba érő telephely–telephely sávok EGY műszakká
+   olvadnak. Itt dől el a "hazamehet-e két fuvar között" kérdés, külön szabály
+   nélkül: ha nincs idő hazaérni és visszajönni, a két sáv átfed, tehát egy
+   műszak lesz belőlük — benne a fizetett helyszíni várakozással. */
+export function mergeShifts(spans) {
+  const out = [];
+  for (const s of [...spans].sort((a, b) => a.start - b.start)) {
+    const last = out[out.length - 1];
+    if (last && s.start <= last.end) last.end = Math.max(last.end, s.end);
+    else out.push({ ...s });
+  }
+  return out;
+}
+
+/* Egy sofőr fizetett ideje és költsége a hozzá tartozó lánchasználatokból.
+   A kiszállási díj MŰSZAKONKÉNT jár, nem lánconként: aki nem tudott közben
+   hazamenni, az nem szállt ki kétszer. */
+export function driverPay(state, driver, uses) {
+  const shifts = mergeShifts(uses.map((u) => spanOf(state, u)));
+  let paid = 0, cost = 0;
+  for (const sh of shifts) {
+    const p = Math.max(sh.end - sh.start, driver?.minShiftMin || 0);
+    paid += p;
+    cost += (state.settings.calloutFee || 0) + (p / 60) * (driver?.wage || 0);
+  }
+  return { paid, cost, shifts };
+}
+
+/* Helyszíni várakozás: két egy műszakba eső lánc közti idő. A sofőr ilyenkor
+   nem tud hazamenni, tehát ott várakozik — ezt eddig semmi nem számolta. */
+export function onSiteWait(state, uses) {
+  const us = [...uses].sort((a, b) => a.start - b.start);
+  let w = 0;
+  for (let i = 0; i < us.length - 1; i++) {
+    const a = us[i], b = us[i + 1];
+    if (spanOf(state, b).start <= spanOf(state, a).end) w += Math.max(0, b.start - a.end);
+  }
+  return w;
+}
+
 /* Ütközik-e két, UGYANAZT az erőforrást használó lánc? Nem elég, hogy időben ne
    fedjék egymást: a busznak át is kell érnie. Enélkül ugyanaz a sofőr+busz
    megkaphatott egy 15:50-kor Kisteleken végződő és egy 15:50-kor Szegeden induló
@@ -381,15 +430,19 @@ export function assignResources(state, weekday, freeChains, fixedUse) {
         if (v.seats < c.maxPax) continue;
         if (needsV && !v.hasVignette) continue;
         if (used.some((u) => u.vehicleId === v.id && resourceClash(state, u, c))) continue;
-        const paid = Math.max(c.end - c.start, d.minShiftMin || 0);
-        const base = (state.settings.calloutFee || 0) + (paid / 60) * (d.wage || 0);
+        /* A lánc ára a sofőr napi költségének NÖVEKMÉNYE. Ha a lánc egy már
+           meglévő műszakjához tapad — mert közben nem tud hazamenni —, akkor
+           csak a plusz fizetett idő az ára, második kiszállási díj nélkül. */
+        const mine = used.filter((u) => u.driverId === d.id);
+        const delta = driverPay(state, d, [...mine, chainUse(c, d.id, v.id)]).cost
+          - driverPay(state, d, mine).cost;
         // Soft preferred-vehicle bias: penalize putting a driver on any bus
         // other than their preferred one, so the optimizer keeps drivers on
         // their usual vehicle unless a real constraint (capacity/availability/
         // contention) or a larger true saving makes it worthwhile.
         const offPreferred = d.preferredVehicleId && v.id !== d.preferredVehicleId;
         const bias = offPreferred ? (state.settings.preferredBias || 0) : 0;
-        opts.push({ d, v, cost: base + bias });
+        opts.push({ d, v, cost: delta + bias });
       }
     }
     opts.sort((x, y) => x.cost - y.cost || x.v.seats - y.v.seats);
@@ -489,15 +542,24 @@ export function resolveDay(state, weekday, weekMon) {
 export function dayStats(state, chains) {
   let paid = 0, cost = 0, dead = 0, idle = 0;
   const ds = new Set();
+  /* Sofőrönként számolunk, nem lánconként: a fizetett idő a telephelytől
+     telephelyig tartó műszak, és két lánc egy műszakba is eshet. Lánconként
+     összegezve a köztes helyszíni várakozás kimaradt, a kiszállási díj viszont
+     kétszer szerepelt. */
+  const byDriver = new Map();
   for (const c of chains) {
-    const d = byId(state.drivers, c.driverId);
-    if (c.driverId) ds.add(c.driverId);
-    const p = Math.max(c.end - c.start, d?.minShiftMin || 0);
-    paid += p;
+    for (const l of c.links) { dead += l.dead; idle += l.idle; }
     // Kiszállási díj csak akkor jár, ha tényleg kiszáll valaki: a sofőr nélküli
     // lánc korábban is 1500 Ft-ot vitt, felfújva a javaslat "előtte" oszlopát.
-    if (d) cost += (state.settings.calloutFee || 0) + (p / 60) * (d.wage || 0);
-    for (const l of c.links) { dead += l.dead; idle += l.idle; }
+    if (!c.driverId) { paid += Math.max(c.end - c.start, 0); continue; }
+    ds.add(c.driverId);
+    if (!byDriver.has(c.driverId)) byDriver.set(c.driverId, []);
+    byDriver.get(c.driverId).push(chainUse(c, c.driverId, c.vehicleId));
+  }
+  for (const [id, uses] of byDriver) {
+    const r = driverPay(state, byId(state.drivers, id), uses);
+    paid += r.paid; cost += r.cost;
+    idle += onSiteWait(state, uses);
   }
   return { drivers: ds.size, chains: chains.length, paidMin: paid, dead, idle, cost: Math.round(cost) };
 }
@@ -598,14 +660,23 @@ export function optimizeDay(state, weekday, weekMon) {
   // 1. fázis: láncolás min. költségű folyammal (átlag-órabérrel súlyozott rések)
   const wages = state.drivers.map((d) => d.wage || 0);
   const avgWpm = (wages.reduce((a, b) => a + b, 0) / (wages.length || 1)) / 60;
+  const homeBase = state.settings?.defaultBaseId || null;
   const edges = [];
   for (let a = 0; a < free.length; a++)
     for (let b = 0; b < free.length; b++) {
       if (a === b) continue;
       const A = free[a], B = free[b];
       const dead = legMin(state, A.to, B.from);
-      if (A.end + dead <= B.start)
-        edges.push({ a, b, cost: Math.round((B.start - A.end) * avgWpm) - (state.settings.calloutFee || 0) });
+      if (A.end + dead <= B.start) {
+        /* Ha a sofőr a rés alatt nem tud hazamenni, a várakozás fizetett akkor
+           is, ha NEM láncolunk — ilyenkor a láncolás tisztán egy kiszállási
+           díjat spórol, tehát a rést nem szabad a láncolás terhére írni. A
+           jármű (és így a telephelye) itt még nincs eldöntve, ezért a klub
+           telephelyével számolunk; a pontos árat az assignResources adja. */
+        const gap = B.start - A.end;
+        const forced = homeBase && gap < legMin(state, A.to, homeBase) + legMin(state, homeBase, B.from);
+        edges.push({ a, b, cost: (forced ? 0 : Math.round(gap * avgWpm)) - (state.settings.calloutFee || 0) });
+      }
     }
   let freeChains = minCostChains(free.length, edges).map((seq) => mkChain(state, seq.map((i) => free[i])));
 
@@ -619,10 +690,9 @@ export function optimizeDay(state, weekday, weekMon) {
      és az optimalizálás UTÁN nőtt a kijelzett napi költség. */
   const skelCost = (c) => {
     const d = byId(state.drivers, c.driverId);
-    const paid = Math.max(c.end - c.start, d?.minShiftMin || 0);
-    const base = (state.settings.calloutFee || 0) + (paid / 60) * (d?.wage || 0);
     const offPreferred = d?.preferredVehicleId && c.vehicleId !== d.preferredVehicleId;
-    return base + (offPreferred ? (state.settings.preferredBias || 0) : 0);
+    return driverPay(state, d, [chainUse(c, c.driverId, c.vehicleId)]).cost
+      + (offPreferred ? (state.settings.preferredBias || 0) : 0);
   };
   const fixedUseOf = (sk) => sk.map((c) => chainUse(c, c.driverId, c.vehicleId));
   let anyCapped = false;

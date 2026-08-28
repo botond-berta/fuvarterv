@@ -21,7 +21,12 @@ describe("settings defaults stay in sync", () => {
   });
 
   test("a fresh seed carries the DEFAULT_SETTINGS values", () => {
-    expect(seedState().settings).toEqual(DEFAULT_SETTINGS);
+    /* One deliberate exception: the sample data ships a club base, so its
+       defaultBaseId points at that base instead of the null default. Everything
+       else must still match, or the two sources have drifted. */
+    const seeded = seedState();
+    expect({ ...seeded.settings, defaultBaseId: null }).toEqual(DEFAULT_SETTINGS);
+    expect(seeded.bases.some((b) => b.id === seeded.settings.defaultBaseId)).toBe(true);
   });
 
   test("ensureShape does not overwrite a value the saved state already has", () => {

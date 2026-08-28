@@ -466,12 +466,21 @@ on stations: the destination is what forces the motorway, and one field is enoug
 keep up to date. `legMin`-style routing is unaffected; this is purely an assignment
 constraint (see [§10.5](#105-assign-real-drivers-and-buses--assignresources)).
 
+**Base** (`bases[]`) — a depot: where a bus is kept overnight. Same shape as a
+station (coordinate mandatory in the editor), but never selectable as a stop.
+```js
+{ id, name, address, note, lat, lon }
+```
+
 **Vehicle** (`vehicles[]`) — a minibus.
 ```js
 { id, name, plate, seats, note,
-  hasVignette: boolean }                 // national motorway vignette
+  hasVignette: boolean,                  // national motorway vignette
+  baseId: id|null }                      // null = settings.defaultBaseId
 ```
-`plate` is normalized; `seats` excludes the driver.
+`plate` is normalized; `seats` excludes the driver. The base is on the **vehicle**,
+not the driver, because a driver often keeps the bus at their home address and it is
+the bus's whereabouts that decides the deadhead.
 
 **Driver** (`drivers[]`)
 ```js
@@ -807,11 +816,25 @@ A **locked** task still wins over all of this: its chain keeps the driver and ve
 the admin picked (§10.7), and the local-improvement step will not graft a
 vignette-requiring task onto a locked chain whose bus lacks one.
 
-The cost of an option is:
+The cost of an option is the **increase in that driver's cost for the whole day**,
+not a figure computed for the chain alone:
 ```
-base = calloutFee + paidHours × driver.wage
-paidHours uses max(shift length, driver.minShiftMin)   // min-shift is paid even if short
+span(chain)  = [chain.start − legMin(base → first stop),
+                chain.end   + legMin(last stop → base)]   // paid door to door
+shifts       = overlapping spans of that driver merged into one
+cost         = per shift: calloutFee + max(shift length, minShiftMin)/60 × wage
+option cost  = cost(driver's chains + this one) − cost(driver's chains so far)
 ```
+**Paid time runs from the depot and ends at the depot** — the driver is working from
+the moment they leave. That one rule also settles what used to be a separate
+question: if two chains are so close that the base-to-base spans overlap, the driver
+could not have gone home between them, so the spans merge into a single shift with
+the wait inside it — paid, and charged **one** callout, not two. With a far venue
+(training in Eger) this is the difference between billing 6.3 hours across two
+callouts and the true 8.7-hour shift with 140 minutes of on-site waiting.
+
+With no depot known (`settings.defaultBaseId` and `vehicle.baseId` both null), the
+span is the chain's own start/end, which is exactly the pre-depot behaviour.
 
 **Preferred-vehicle bias (soft preference).** On top of `base`, if the driver has a
 `preferredVehicleId` and this vehicle is a *different* one, we add
@@ -906,7 +929,7 @@ which switches between five categories with a chip row:
 |---|---|---|
 | **Hét** (Week) | `WeekScreen` / `OccCard` | All trainings this week, color-coded, with each assigned bus (plate chip, driver, time), and conflict/"no ride" badges. |
 | **Beosztás** (Schedule) | `ScheduleScreen` / `ChainCard` | Per-weekday task chains, the optimizer, before/after comparison, task lock/move, ride generation, and the ⚙ settings panel. |
-| **Adatok** (Data) | `DataScreen` → `TeamsScreen` / `MasterScreen` | Csapatok, Állomások, Helyszínek, Járművek, Sofőrök. Team details, station/venue assignment, per-stop headcounts, route mode; CRUD for the master entities. Also holds the one "restore sample data" button. |
+| **Adatok** (Data) | `DataScreen` → `TeamsScreen` / `MasterScreen` | Csapatok, Állomások, Helyszínek, Telephelyek, Járművek, Sofőrök. Team details, station/venue assignment, per-stop headcounts, route mode; CRUD for the master entities. Also holds the one "restore sample data" button. |
 
 Inside **Csapatok**, a team row opens `TeamDetail` and a training row opens
 `TrainingDetail` — a screen, not a modal, because the stop editor is too tall for a
@@ -1003,6 +1026,7 @@ one of them has a fallback.
 | `estSpeedKmh` | Assumed speed for straight-line travel-time estimates. | 50 |
 | `fallbackLegMin` | Travel time used when there's no matrix and no coordinates. | 12 |
 | `preferredBias` | Extra cost (Ft) charged when a driver is put on a bus other than their preferred one. 0 disables the preference. | 1000 |
+| `defaultBaseId` | The club's depot — where buses without a `baseId` of their own start and end the day. `null` means no depot is known, and paid time falls back to spanning the tasks only. | null |
 
 ---
 
@@ -1073,6 +1097,11 @@ Only two, both read at build time by Vite and inlined into the browser bundle:
 - **Exact TSP only up to 10 stops.** Beyond that, the given stop order is kept.
 - **The optimizer's assignment search is capped** at 30,000 iterations; very large
   days fall back to the best solution found and say so.
+- **Driver availability still uses the task span, not the paid span.** Paid time runs
+  depot to depot, but `driverAvailableFor` is checked against the chain's first and
+  last task. A driver whose window opens at 15:00 can therefore be scheduled for a
+  chain that requires leaving the depot at 14:30. Deliberate for now: widening it
+  would make previously coverable days uncoverable.
 - **Plate validation is lenient.** Any non-empty alphanumeric string is accepted as
   a plate (this is intentional — Hungary allows custom plates — but there's no strict
   format check).

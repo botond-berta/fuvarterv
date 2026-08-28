@@ -13,6 +13,7 @@ export const DEFAULT_SETTINGS = {
   estSpeedKmh: 50,      // km/h: légvonalas menetidő-becsléshez
   fallbackLegMin: 12,   // perc: üresjárat, ha se mátrix, se koordináta nincs
   preferredBias: 1000,  // Ft: büntetés, ha a sofőr nem a preferált buszát kapja (0 = kikapcsolva)
+  defaultBaseId: null,  // a klub telephelye; a jármű saját baseId-je felülírja
 };
 
 /* Igaz, ha a hiba azt jelenti: "még nincs mentett adat" (üres munkaterület).

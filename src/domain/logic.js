@@ -178,6 +178,14 @@ export const vignetteVenues = (state, chain) => [...new Set((chain?.tasks || [])
   .filter((id) => venueNeedsVignette(state, id))
   .map((id) => byId(state.venues, id).name))];
 
+/* Melyik telephelyről indul és hova tér vissza ez a jármű. A jármű saját
+   telephelye erősebb a klubénál; ha egyik sincs, null — olyankor a fizetett idő
+   a feladatoktól számít, ahogy a telephelyek bevezetése előtt. */
+export function baseOf(state, vehicleId) {
+  const v = byId(state.vehicles, vehicleId);
+  return (v && v.baseId) || state.settings?.defaultBaseId || null;
+}
+
 export function deleteGuard(state, kind, id) {
   const n = (c, w) => (c > 0 ? `Használatban: ${c} ${w}.` : null);
   if (kind === "stations") {
@@ -204,6 +212,14 @@ export function deleteGuard(state, kind, id) {
       // minden járműre igaz marad, így a preferredBias végleg elrejti őt.
       + state.drivers.filter((d) => d.preferredVehicleId === id).length;
     return n(c, "fuvar/beosztás/sofőr");
+  }
+  if (kind === "bases") {
+    // A settings.defaultBaseId-t is számolni kell: a klub telephelyét törölve
+    // minden jármű telephely nélkül maradna, és a fizetett idő némán visszaesne
+    // a feladatok szerinti számításra.
+    const c = state.vehicles.filter((v) => v.baseId === id).length
+      + (state.settings?.defaultBaseId === id ? 1 : 0);
+    return n(c, "jármű/beállítás");
   }
   if (kind === "drivers") {
     const c = state.rides.filter((r) => r.driverId === id).length + chainRefs(state, "driverId", id);

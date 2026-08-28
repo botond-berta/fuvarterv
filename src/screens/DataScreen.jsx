@@ -12,6 +12,7 @@ export const DATA_CATS = [
   { key: "teams", label: "Csapatok" },
   { key: "stations", label: "Állomások" },
   { key: "venues", label: "Helyszínek" },
+  { key: "bases", label: "Telephelyek" },
   { key: "vehicles", label: "Járművek" },
   { key: "drivers", label: "Sofőrök" },
   { key: "users", label: "Felhasználók" },
