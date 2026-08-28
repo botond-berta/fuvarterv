@@ -164,8 +164,17 @@ export function genDayTasks(state, weekday, weekMon) {
         skipped.push(`${who}: minden megállónál 0 fő szerepel, ezért nem készült ${dirLabel} feladat.`);
         continue;
       }
+      /* 0 fő = nincs kit vinni. Eddig ilyenkor is készült feladat (csak egy
+         figyelmeztetéssel), így az optimalizáló sofőrt és buszt rendelt egy üres
+         fuvarhoz, kiszállási díjjal és fizetett órával együtt. A pax a
+         megállónkénti bontás és az összlétszám MAXIMUMA, tehát a 0 azt jelenti,
+         hogy sehol nincs létszámadat — ilyenkor nem fuvart kell szervezni,
+         hanem szólni, hogy hiányzik az adat. */
       const pax = legPax(team, t, dir);
-      if (!pax) skipped.push(`${who}: nincs megadva létszám (se megállónként, se összesen) — 0 főnek számol.`);
+      if (!pax) {
+        skipped.push(`${who}: nincs megadva létszám (se megállónként, se összesen), ezért nem készült ${dirLabel} feladat. Add meg a létszámot a csapatnál vagy az edzésnél.`);
+        continue;
+      }
 
       /* Egy irány feladata egy megálló-részhalmazra. idx=null: teljes csapat egy
          buszon; idx>=1: a `count` buszra bontott feladat idx-edik része. */

@@ -698,6 +698,11 @@ return has its own stops can therefore need a different number of buses each way
 nothing requires `…:oda#1` and `…:vissza#1` to pair up. After `genDayTasks` returns,
 tasks are flat and independent; chaining is decided purely by time and deadhead.
 
+**A direction with 0 passengers produces no task at all.** `pax` is the maximum of
+the per-stop breakdown and the fallback total, so 0 means there is no headcount data
+anywhere — and a bus sent for nobody still costs a callout fee and paid hours. The
+day's notes say which team is missing its headcount instead.
+
 **A stop with an explicit `0` is dropped from the route.** The distinction that
 matters is `0` vs. *blank*: the editor stores a cleared field as `""` and a typed
 zero as a number, so `0` means "nobody there today" (skip it) while blank means "not
