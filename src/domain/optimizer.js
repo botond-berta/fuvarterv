@@ -143,15 +143,29 @@ export function genDayTasks(state, weekday, weekMon) {
       const dirLabel = dir === "oda" ? "ODA" : "VISSZA";
       const who = leg.isOverride ? `${teamLabel} · ${dirLabel}` : teamLabel;
 
-      const st = (leg.stationIds || []).filter((id) => byId(state.stations, id));
-      if (!st.length) {
+      const listed = (leg.stationIds || []).filter((id) => byId(state.stations, id));
+      if (!listed.length) {
         skipped.push(`${who}: nincs állomás rendelve, ezért nem készült ${dirLabel} feladat.`);
+        continue;
+      }
+      const sc = leg.stationCounts || {};
+      const cnt = (sid) => Number(sc[sid]) || 0;
+
+      /* Kifejezett 0 = ide most nem kell menni, a megálló kimarad az útvonalból.
+         Az ÜRES mező viszont nem ugyanez: az azt jelenti, "még nincs megadva".
+         Egy félig kitöltött bontásnál (az edző még csak két megállóhoz írt
+         létszámot) a többit kihagyni annyi lenne, mint ottfelejteni a
+         gyerekeket — a legPax épp ezért is számol tovább az összlétszámmal.
+         A kettőt az adat meg tudja különböztetni: a szerkesztő a kiürített
+         mezőt ""-ként, a beírt nullát számként tárolja. */
+      const zeroed = (sid) => sc[sid] != null && sc[sid] !== "" && Number(sc[sid]) === 0;
+      const st = listed.filter((sid) => !zeroed(sid));
+      if (!st.length) {
+        skipped.push(`${who}: minden megállónál 0 fő szerepel, ezért nem készült ${dirLabel} feladat.`);
         continue;
       }
       const pax = legPax(team, t, dir);
       if (!pax) skipped.push(`${who}: nincs megadva létszám (se megállónként, se összesen) — 0 főnek számol.`);
-      const sc = leg.stationCounts || {};
-      const cnt = (sid) => Number(sc[sid]) || 0;
 
       /* Egy irány feladata egy megálló-részhalmazra. idx=null: teljes csapat egy
          buszon; idx>=1: a `count` buszra bontott feladat idx-edik része. */

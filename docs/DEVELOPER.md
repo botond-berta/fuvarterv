@@ -691,6 +691,14 @@ return has its own stops can therefore need a different number of buses each way
 nothing requires `…:oda#1` and `…:vissza#1` to pair up. After `genDayTasks` returns,
 tasks are flat and independent; chaining is decided purely by time and deadhead.
 
+**A stop with an explicit `0` is dropped from the route.** The distinction that
+matters is `0` vs. *blank*: the editor stores a cleared field as `""` and a typed
+zero as a number, so `0` means "nobody there today" (skip it) while blank means "not
+filled in yet" (still drive there — `legPax` likewise keeps counting with the total
+headcount, so a half-finished breakdown never strands anyone). If every stop of a
+direction is an explicit `0`, no task is generated for it and `skipped` says so —
+silence there would look like a lost training.
+
 When a team has **more than one occurrence on the same day**, the task label carries
 the venue (`FU12 · Kistelek csarnok · ODA`); otherwise it stays short (`FU12 · ODA`).
 Without it, two trainings of one team produce two indistinguishable tasks in the

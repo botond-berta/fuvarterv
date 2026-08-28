@@ -42,11 +42,19 @@ export function StopListEditor({ state, value, onChange, venueId, venueName }) {
       <div className="flex flex-col gap-2">
         {ids.map((sid) => {
           const st = byId(state.stations, sid);
+          const raw = (v[countsKey] || {})[sid];
+          /* A beírt 0 kihagyja a megállót az útvonalból; az üresen hagyott mező
+             nem — ott csak "még nincs megadva" a létszám. A különbség enélkül
+             láthatatlan lenne, pedig a busz útja múlik rajta. */
+          const zeroed = raw != null && raw !== "" && Number(raw) === 0;
           return (
             <div key={sid} className="flex items-center gap-2">
-              <span className="flex-1 text-sm truncate">{st?.name || "?"}</span>
+              <span className="flex-1 text-sm truncate">
+                {st?.name || "?"}
+                {zeroed && <span className="pill ml-2" style={{ background: "var(--paper2)", color: "var(--ink2)" }}>kihagyva</span>}
+              </span>
               <input type="number" min="0" className="inp" style={{ width: 84, minHeight: 38, padding: "6px 8px" }}
-                value={(v[countsKey] || {})[sid] ?? ""} placeholder="fő"
+                value={raw ?? ""} placeholder="fő"
                 aria-label={`Létszám${key === "vissza" ? " hazafelé" : ""}: ${st?.name || ""}`}
                 onChange={(e) => setCount(countsKey, sid, e.target.value)} />
             </div>
@@ -55,8 +63,8 @@ export function StopListEditor({ state, value, onChange, venueId, venueName }) {
       </div>
       <p className="text-xs mt-2" style={{ color: "var(--ink2)" }}>
         {key === "oda"
-          ? <>Az optimalizáló ennek az összegét használja. Ha minden mező üres, a megadott összlétszám számít{v.passengerCount ? ` (most ${v.passengerCount} fő)` : ""}.</>
-          : "A visszaút kapacitását és buszokra bontását ez határozza meg — az odaúttól függetlenül."}
+          ? <>Az optimalizáló ennek az összegét használja. Ha minden mező üres, a megadott összlétszám számít{v.passengerCount ? ` (most ${v.passengerCount} fő)` : ""}. A <b>0</b> beírása kihagyja a megállót az útvonalból; az üresen hagyott mező nem — oda a busz elmegy.</>
+          : "A visszaút kapacitását és buszokra bontását ez határozza meg — az odaúttól függetlenül. A 0 itt is kihagyja a megállót."}
       </p>
     </div>
   );
