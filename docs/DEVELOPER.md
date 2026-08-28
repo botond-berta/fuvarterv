@@ -854,6 +854,13 @@ The **Fuvar** (ride editor, `RideScreen`) is not a tab — it opens from a week-
 card. It edits one occurrence's rides: direction (ODA/VISSZA), vehicle, driver, and
 ordered, timed stops.
 
+The direction is picked when the ride is created and **locked once it is saved**: the
+ride's own name in the picker chips (`3. fuvar · VISSZA · Anna`), its stop times, and
+the stop list offered by `teamLeg` all follow `dir`, so flipping it on an existing
+ride would carry the old, now meaningless times into the other direction and show the
+driver the same ride reversed. A ride saved with the wrong direction is deleted and
+re-added, not flipped.
+
 ### 12.2 Styling
 
 Styling is **not** mostly Tailwind. The visual identity lives in

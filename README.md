@@ -14,7 +14,7 @@ Four tabs, plus the ride editor which opens from a week-view card.
 - **Beosztás (Schedule)** — daily view of transport tasks (outbound/return): chains per driver, link explanations ("X min deadhead: from → to"), task locking, manual reassignment, and an optimize button with a before/after comparison.
 - **Adatok (Data)** — five categories in one tab. **Csapatok:** team details, station and venue assignment, per-stop headcounts, route mode (auto-ordered / manual, with an optional pinned first stop), training CRUD. **Állomások / Helyszínek:** with map-based coordinate picking — the coordinate is mandatory, so a station or venue cannot be saved without one. **Járművek:** plate normalization + uniqueness check. **Sofőrök:** hourly wage, minimum shift, availability windows, preferred vehicle.
 - **Sofőr (Driver view)** — mobile-optimized, large-type daily route list with a "NEXT stop" highlight that advances every minute.
-- **Fuvar (Ride editor)** — per-occurrence ride editing: direction (outbound/return), multiple parallel rides, drag & drop stop ordering, automatic time and stop-order calculation.
+- **Fuvar (Ride editor)** — per-occurrence ride editing: direction (outbound/return, chosen when the ride is created and locked afterwards), multiple parallel rides, drag & drop stop ordering, automatic time and stop-order calculation.
 
 ## Key features
 
