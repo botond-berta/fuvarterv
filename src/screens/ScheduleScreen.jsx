@@ -6,7 +6,7 @@ import { Plus, AlertTriangle, X, ChevronsRight, Lock, Unlock, Zap, ArrowLeftRigh
 import { DAYS, uid, byId } from "../domain/constants.js";
 import { mondayOf, weekdayIdx, minToTime, fmtDateFull } from "../domain/datetime.js";
 import { locName, matrixKey, computeMatrix } from "../domain/geo.js";
-import { resolveDay, dayStats, optimizeDay, withGeneratedRides, driverAvailableFor } from "../domain/optimizer.js";
+import { resolveDay, dayStats, optimizeDay, withGeneratedRides, driverAvailableFor, driverPay, chainUse } from "../domain/optimizer.js";
 import { fmtFt, fmtH } from "../ui/format.js";
 import { Field, NumField, Modal, PlateChip, TeamDot, EmptyState, InfoDot } from "../ui/base.jsx";
 import { VignettePill } from "../ui/VignettePill.jsx";
@@ -70,8 +70,12 @@ export function TaskRow({ state, task: t, locked, inChain, onLock, onMove, reaso
 }
 
 export function ChainCard({ state, chain: c, onLock, onMove }) {
-  const paid = Math.max(c.end - c.start, c.driver?.minShiftMin || 0);
-  const cost = (state.settings.calloutFee || 0) + (paid / 60) * (c.driver?.wage || 0);
+  /* Ugyanaz a képlet, mint a napi összesítőben: a fizetett idő a telephelytől
+     telephelyig tartó műszak, nem a feladatok sávja. Külön számolva a kártya és
+     a nap összege elcsúszna egymástól. */
+  const { paid, cost, shifts } = driverPay(state, c.driver, [chainUse(c, c.driverId, c.vehicleId)]);
+  const span = shifts[0];
+  const fromBase = span && (span.start !== c.start || span.end !== c.end);
   return (
     <div className="card mb-3 overflow-hidden">
       <div className="p-3 flex items-center gap-2 flex-wrap" style={{ background: "var(--surface-inv)", color: "var(--on-inv)" }}>
@@ -82,7 +86,8 @@ export function ChainCard({ state, chain: c, onLock, onMove }) {
         <span className="tnum ml-auto text-base">{minToTime(c.start)}–{minToTime(c.end)}</span>
       </div>
       <div className="px-3 py-1 text-xs flex gap-3 flex-wrap" style={{ color: "var(--ink2)", borderBottom: "1px solid var(--line)" }}>
-        <span>fizetett: <b>{fmtH(paid)}</b>{paid > c.end - c.start ? " (min. műszak)" : ""}</span>
+        <span>fizetett: <b>{fmtH(paid)}</b>{paid > (span ? span.end - span.start : c.end - c.start) ? " (min. műszak)" : ""}</span>
+        {fromBase && <span>műszak: <b className="tnum">{minToTime(span.start)}–{minToTime(span.end)}</b> (telephelytől)</span>}
         <span>ktg.: <b>{fmtFt(cost)}</b></span>
         <span>max. létszám: <b>{c.maxPax} fő</b></span>
       </div>
@@ -352,6 +357,17 @@ export function ScheduleScreen({ state, update }) {
             <NumField label="Preferált jármű súlya (Ft)" hint="Mennyire ragaszkodjon a sofőr saját buszához. 0 = kikapcsolva."
               value={state.settings.preferredBias} min={0} onCommit={(v) => setSetting("preferredBias", v)} />
           </div>
+          <Field label="Klub telephelye" hint="Innen indulnak a buszok, ha a járműnél nincs saját telephely megadva. A fizetett idő a telephelytől a visszaérkezésig tart.">
+            <select className="inp" value={state.settings.defaultBaseId || ""} onChange={(e) => setSetting("defaultBaseId", e.target.value || null)}>
+              <option value="">— nincs megadva —</option>
+              {state.bases.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+            </select>
+          </Field>
+          {!state.settings.defaultBaseId && (
+            <div className="banner banner-warn"><AlertTriangle size={16} />
+              Telephely nélkül a beosztás úgy számol, hogy a sofőr két fuvar között hazamehet — távoli helyszínnél ez nem igaz, és a várakozás sem jelenik meg.
+            </div>
+          )}
         </div>
       )}
 

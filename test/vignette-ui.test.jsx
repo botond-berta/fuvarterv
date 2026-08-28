@@ -9,7 +9,7 @@ import { MasterForm } from "../src/screens/MasterScreen.jsx";
  * NINCS ilyen mező — a matricát a célpont kényszeríti ki.
  */
 
-const baseState = { stations: [], venues: [], vehicles: [], drivers: [], rides: [], teams: [], trainings: [] };
+const baseState = { stations: [], venues: [], bases: [], vehicles: [], drivers: [], rides: [], teams: [], trainings: [] };
 
 let container, root;
 

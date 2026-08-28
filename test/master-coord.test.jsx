@@ -10,7 +10,7 @@ import { MasterForm } from "../src/screens/MasterScreen.jsx";
  * űrlap, ezért itt rögzítjük, hogy a Mentés tiltva marad.
  */
 
-const baseState = { stations: [], venues: [], vehicles: [], drivers: [], rides: [], teams: [], trainings: [] };
+const baseState = { stations: [], venues: [], bases: [], vehicles: [], drivers: [], rides: [], teams: [], trainings: [] };
 
 let container, root;
 

@@ -15,7 +15,12 @@ export function ensureShape(s) {
      A jelölés szándékosan csak a helyszíneken van, a megállókon nem — a matricát
      a célpont kényszeríti ki, és egy mezőt kell csak karbantartani. */
   s.venues = (s.venues || []).map((x) => ({ ...x, lat: x.lat ?? null, lon: x.lon ?? null, needsVignette: !!x.needsVignette }));
-  s.vehicles = (s.vehicles || []).map((v) => ({ ...v, seats: Number(v.seats) || 0, plate: v.plate || "", hasVignette: !!v.hasVignette }));
+  /* Telephely: ahol a busz éjszakázik. Járművenként állítható, mert a sofőr
+     gyakran a lakcímén tartja a kocsit; null = a klub telephelye
+     (settings.defaultBaseId). Ha egyik sincs megadva, a fizetett idő a mai
+     módon a feladatoktól számít — a meglévő adat viselkedése nem változik. */
+  s.bases = (s.bases || []).map((x) => ({ ...x, lat: x.lat ?? null, lon: x.lon ?? null }));
+  s.vehicles = (s.vehicles || []).map((v) => ({ ...v, seats: Number(v.seats) || 0, plate: v.plate || "", hasVignette: !!v.hasVignette, baseId: v.baseId ?? null }));
   /* email: a sofőr belépési e-mail-címe (kisbetűsen) — sofőr-szerepkörű
      felhasználónál ez alapján nyílik alapból a saját napiterve. */
   s.drivers = (s.drivers || []).map((d) => ({ ...d, wage: d.wage ?? 3000, minShiftMin: d.minShiftMin ?? 120, availability: d.availability || [], preferredVehicleId: d.preferredVehicleId ?? null, email: d.email || "" }));
@@ -38,6 +43,11 @@ export function seedState() {
   return {
     /* Források: 2025–26 terembeosztás (edzések), sofőrök lap (sofőrök, rendszámok),
        csütörtöki fuvarlista (megállók, létszámok, indulási idők). */
+    /* A klub telephelye. A járművek baseId-je null, vagyis mind innen indul —
+       ha egy busz a sofőr lakcímén áll, ott állítható át. */
+    bases: [
+      { id: "hZAK", name: "Klub telephely", address: "Zákányszék", note: "", lat: 46.2745, lon: 19.889 },
+    ],
     teams: [
       { id: "tLU12K", name: "LU12 Kitti", age: "U12", gender: "lány", color: "#D6336C",
         stationIds: ["sGD", "sDORO", "sROSZ1", "sMORA", "sZSOM", "sBORD"], venueIds: ["vZAK", "vMORA"],
@@ -186,7 +196,7 @@ export function seedState() {
           { id: "x27", stationId: "sZSOM", time: "16:35", count: 5 },
         ] },
     ],
-    settings: { ...DEFAULT_SETTINGS },
+    settings: { ...DEFAULT_SETTINGS, defaultBaseId: "hZAK" },
     matrix: null,
     assignments: {},
   };
