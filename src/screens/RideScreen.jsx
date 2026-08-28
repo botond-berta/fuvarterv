@@ -1,11 +1,12 @@
 /* Fuvarterv — Fuvar szerkesztő — irány, jármű, sofőr, megállók
-   Kiemelve a fuvarterv.jsx-ből; a viselkedés változatlan. */
+   Kiemelve a fuvarterv.jsx-ből. Egy eltérés az eredetitől: egy már mentett
+   fuvar iránya nem állítható át. */
 
 import { useState, useMemo, useRef } from "react";
 import { ChevronLeft, ChevronRight, GripVertical, ArrowUp, ArrowDown, AlertTriangle, MapPin, Clock, X, Flag, Zap } from "lucide-react";
 import { DAYS, uid, byId } from "../domain/constants.js";
 import { mondayOf, toISO, addDays, timeToMin, minToTime, fmtDate, fmtDateFull, fmtWeekRange } from "../domain/datetime.js";
-import { weekOccurrences, findRides, findConflicts, rideWindow, seatSum, venueDepartMin, teamLeg } from "../domain/logic.js";
+import { weekOccurrences, findRides, findConflicts, rideWindow, seatSum, venueDepartMin, legFor } from "../domain/logic.js";
 import { planOda, planVissza, bestStationOrder } from "../domain/optimizer.js";
 import { Field, DangerBtn, EmptyState, InfoDot } from "../ui/base.jsx";
 import { OccCard } from "../ui/OccCard.jsx";
@@ -58,7 +59,7 @@ export function RideEditor({ state, update, training, dayIdx, dateISO, onBack })
             const d = byId(state.drivers, r.driverId);
             return (
               <button key={r.id} className={`chip ${i === idx ? "on" : ""}`} onClick={() => setSelIdx(i)}>
-                {i + 1}. fuvar{(r.dir || "oda") === "vissza" ? " · VISSZA" : ""}{d ? ` · ${d.name}` : ""}
+                {i + 1}. fuvar · {(r.dir || "oda") === "vissza" ? "VISSZA" : "ODA"}{d ? ` · ${d.name}` : ""}
               </button>
             );
           })}
@@ -84,6 +85,12 @@ export function RideForm({ state, update, training, dayIdx, dateISO, existing, o
      rideWindow is így értelmezi (`ride.dir || "oda"`), tehát a kettő nem csúszhat szét. */
   const dir = draft.dir || "oda";
   const isBack = dir === "vissza";
+  /* Mentett fuvarnál az irány rögzített. A fuvar neve (a fenti választó chipje),
+     a megállók idői és a csapat iránya szerinti megállólista mind az irányra
+     épül — átkapcsolva egy VISSZA fuvar ODA-ként menne tovább a régi, immár
+     értelmetlen időivel, a sofőr pedig a listáján ugyanazt a fuvart látná
+     megfordulva. Rossz irány esetén a fuvart törölni kell és újra felvenni. */
+  const dirLocked = !!existing;
 
   const vehicle = byId(state.vehicles, draft.vehicleId);
   const conflicts = useMemo(() => findConflicts(state, draft), [state, draft]);
@@ -93,9 +100,10 @@ export function RideForm({ state, update, training, dayIdx, dateISO, existing, o
   const over = vehicle && pax > vehicle.seats;
 
   /* Az irány saját megállói kerülnek előre — de bármelyik állomás választható,
-     mert egy konkrét fuvar eltérhet a csapat állandó listájától (pl. egyszeri
-     kitérő). Korábban a lista iránytól függetlenül az ODAÚT megállóira szorult. */
-  const leg = teamLeg(team, dir);
+     mert egy konkrét fuvar eltérhet az állandó listától (pl. egyszeri kitérő).
+     A lista ezé az EDZÉSÉ, ha van saját listája: egy másik helyszínen tartott
+     edzés megállói másokat kínálnának fel elsőként. */
+  const leg = legFor(team, training, dir);
   const used = (id) => draft.stops.some((x) => x.stationId === id);
   const legStations = state.stations.filter((s) => leg.stationIds.includes(s.id) && !used(s.id));
   const otherStations = state.stations.filter((s) => !leg.stationIds.includes(s.id) && !used(s.id));
@@ -192,10 +200,15 @@ export function RideForm({ state, update, training, dayIdx, dateISO, existing, o
         </div>
       </div>
 
-      <Field label="Irány" hint="ODA: a falvakból a helyszínre. VISSZA: a helyszínről haza.">
+      <Field label={dirLocked ? `Irány · ${isBack ? "VISSZA" : "ODA"} (rögzített)` : "Irány"}
+        hint={dirLocked
+          ? "A mentett fuvar iránya nem módosítható. Ha rossz irányú lett, töröld a fuvart, és vedd fel újra a másik irányban."
+          : "ODA: a falvakból a helyszínre. VISSZA: a helyszínről haza. Mentés után már nem módosítható."}>
         <div className="seg">
-          <button className={!isBack ? "on" : ""} onClick={() => setDraft({ ...draft, dir: "oda" })}>ODA</button>
-          <button className={isBack ? "on" : ""} onClick={() => setDraft({ ...draft, dir: "vissza" })}>VISSZA</button>
+          <button className={!isBack ? "on" : ""} disabled={dirLocked} aria-pressed={!isBack}
+            onClick={() => setDraft({ ...draft, dir: "oda" })}>ODA</button>
+          <button className={isBack ? "on" : ""} disabled={dirLocked} aria-pressed={isBack}
+            onClick={() => setDraft({ ...draft, dir: "vissza" })}>VISSZA</button>
         </div>
       </Field>
 
@@ -291,7 +304,7 @@ export function RideForm({ state, update, training, dayIdx, dateISO, existing, o
           aria-label="Megálló hozzáadása az útvonalhoz">
           <option value="">＋ Megálló hozzáadása…</option>
           {legStations.length > 0 && (
-            <optgroup label={`A csapat megállói (${isBack ? "VISSZA" : "ODA"})`}>
+            <optgroup label={`${training.stops ? "Az edzés" : "A csapat"} megállói (${isBack ? "VISSZA" : "ODA"})`}>
               {legStations.map((s) => <option key={s.id} value={s.id}>{s.name}{s.address ? ` – ${s.address}` : ""}</option>)}
             </optgroup>
           )}

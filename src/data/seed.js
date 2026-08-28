@@ -21,7 +21,10 @@ export function ensureShape(s) {
      megállói vannak. A mezők szándékosan laposak, nem egy beágyazott objektumban:
      a csapat-felület tömbkapcsoló segédfüggvénye felső szintű mezőnévvel dolgozik. */
   s.teams = (s.teams || []).map((t) => ({ ...t, stationIds: t.stationIds || [], venueIds: t.venueIds || [], passengerCount: t.passengerCount ?? null, stationCounts: t.stationCounts || {}, routeMode: t.routeMode || "auto", routeAnchorId: t.routeAnchorId ?? null, returnStationIds: t.returnStationIds ?? null, returnStationCounts: t.returnStationCounts || {}, returnRouteAnchorId: t.returnRouteAnchorId ?? null }));
-  s.trainings = (s.trainings || []).map((t) => ({ ...t, type: t.type || "weekly", days: t.days || [], date: t.date ?? null }));
+  /* stops === null azt jelenti: az edzés a csapat megállólistáját használja (ez
+     a korábbi, egyetlen listás viselkedés). Objektum esetén az edzésnek saját,
+     teljes listája van — ugyanazokkal a mezőnevekkel, mint a csapatnak. */
+  s.trainings = (s.trainings || []).map((t) => ({ ...t, type: t.type || "weekly", days: t.days || [], date: t.date ?? null, stops: t.stops ?? null }));
   s.rides = (s.rides || []).map((r) => ({ ...r, dir: r.dir || "oda", stops: r.stops || [] }));
   s.matrix = s.matrix || null;
   s.assignments = s.assignments || {};
@@ -107,7 +110,13 @@ export function seedState() {
       { id: "trLU14_p", teamId: "tLU14", venueId: "vMORA", type: "weekly", days: [4], date: null, start: "17:00", end: "18:30" },
       { id: "trFU12_hsze", teamId: "tFU12", venueId: "vKIS", type: "weekly", days: [0, 2], date: null, start: "16:00", end: "17:30" },
       { id: "trFU12_cs", teamId: "tFU12", venueId: "vALG", type: "weekly", days: [3], date: null, start: "15:30", end: "17:00" },
-      { id: "trFU12_p", teamId: "tFU12", venueId: "vBAL", type: "weekly", days: [4], date: null, start: "15:00", end: "16:30" },
+      /* Példa edzésenkénti megállólistára: a péntek Balástyán van, ahol a helyi
+         gyerekek gyalog is odaérnek — ehhez az edzéshez tehát a csapat állandó
+         listájából kimarad Balástya, és kevesebben is utaznak. */
+      { id: "trFU12_p", teamId: "tFU12", venueId: "vBAL", type: "weekly", days: [4], date: null, start: "15:00", end: "16:30",
+        stops: { stationIds: ["sZSOM", "sKIISK", "sSAND"], stationCounts: { sZSOM: 1, sKIISK: 4, sSAND: 2 },
+          routeMode: "auto", routeAnchorId: null,
+          returnStationIds: null, returnStationCounts: {}, returnRouteAnchorId: null, passengerCount: null } },
       { id: "trFU14_hszep", teamId: "tFU14", venueId: "vALG", type: "weekly", days: [0, 2, 4], date: null, start: "17:00", end: "18:30" },
       { id: "trFU14_cs", teamId: "tFU14", venueId: "vGEL", type: "weekly", days: [3], date: null, start: "17:00", end: "18:30" },
       { id: "trFU16_hszep", teamId: "tFU16", venueId: "vALG", type: "weekly", days: [0, 2, 4], date: null, start: "18:30", end: "20:00" },

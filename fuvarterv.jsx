@@ -30,10 +30,11 @@ export {
 } from "./src/domain/datetime.js";
 export { legMin, matrixKey, computeMatrix } from "./src/domain/geo.js";
 export {
-  normalizePlate, plateExists, rideWindow, findConflicts, venueDepartMin, deleteGuard, teamLeg,
+  normalizePlate, plateExists, rideWindow, findConflicts, venueDepartMin, deleteGuard,
+  teamLeg, legFor, legSource, hasOwnStops,
 } from "./src/domain/logic.js";
 export {
-  bestStationOrder, teamRouteOrder, splitStationsByCapacity, planOda, planVissza,
-  teamPax, genDayTasks, resolveDay, mkChain, dayStats, driverAvailableFor,
+  bestStationOrder, teamRouteOrder, legRouteOrder, splitStationsByCapacity, planOda, planVissza,
+  teamPax, legPax, genDayTasks, resolveDay, mkChain, dayStats, driverAvailableFor,
   optimizeDay, withGeneratedRides,
 } from "./src/domain/optimizer.js";
