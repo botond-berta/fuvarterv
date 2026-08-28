@@ -1,5 +1,5 @@
 import { describe, test, expect } from "vitest";
-import { genDayTasks, mondayOf } from "../fuvarterv.jsx";
+import { genDayTasks, mondayOf, seedState, ensureShape } from "../fuvarterv.jsx";
 
 /*
  * A 0 fős megálló kimarad az útvonalból — de csak a KIFEJEZETT nulla.
@@ -90,5 +90,38 @@ describe("ha minden megálló 0", () => {
   test("a csapat összlétszáma sem írja felül a kifejezett nullákat", () => {
     const { tasks } = run(makeState({ sA: 0, sB: 0, sC: 0 }, { passengerCount: 12 }));
     expect(tasks).toHaveLength(0);
+  });
+});
+
+describe("0 fős feladat egyáltalán nem készül", () => {
+  /* Enélkül az optimalizáló sofőrt és buszt rendelt egy üres fuvarhoz,
+     kiszállási díjjal és fizetett órával — a mintaadat NB2 csapata minden
+     edzésnapon két ilyen feladatot adott. */
+  test("se megállónkénti, se összlétszám: nincs feladat, csak indoklás", () => {
+    const { tasks, skipped } = run(makeState({}));
+    expect(tasks).toHaveLength(0);
+    expect(skipped.filter((m) => /nincs megadva létszám/.test(m))).toHaveLength(2); // ODA + VISSZA
+    expect(skipped[0]).toMatch(/Add meg a létszámot/);
+  });
+
+  test("csak összlétszám: a feladat elkészül (a tartalék változatlanul működik)", () => {
+    const { tasks } = run(makeState({}, { passengerCount: 6 }));
+    expect(tasks).toHaveLength(2);
+    expect(tasks[0].pax).toBe(6);
+  });
+
+  test("csak megállónkénti létszám: a feladat elkészül", () => {
+    const { tasks } = run(makeState({ sB: 3 }));
+    expect(tasks).toHaveLength(2);
+    expect(tasks[0].pax).toBe(3);
+  });
+
+  test("a mintaadat egyetlen napján sincs 0 fős feladat", () => {
+    const state = ensureShape(seedState());
+    const mon = mondayOf(new Date(2026, 7, 31));
+    for (const day of [0, 1, 2, 3, 4]) {
+      const { tasks } = genDayTasks(state, day, mon);
+      expect(tasks.filter((t) => !t.pax)).toEqual([]);
+    }
   });
 });
