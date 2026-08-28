@@ -2,6 +2,7 @@ import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import App, { seedState } from "../fuvarterv.jsx";
+import { DATA_CATS } from "../src/screens/DataScreen.jsx";
 
 /*
  * Integration smoke test: actually mounts <App/> against a fake window.storage
@@ -81,7 +82,9 @@ describe("App renders end to end", () => {
       .find((b) => b.textContent.includes("Adatok"));
     await act(async () => { dataTab.click(); });
     const cats = [...container.querySelectorAll(".data-cats button")];
-    expect(cats.length).toBe(6);
+    // A listához kötve, nem beégetett számhoz: egy új kategória (pl. Telephelyek)
+    // így nem "elromlott tesztként" jelentkezik, de a bejárás továbbra is teljes.
+    expect(cats.length).toBe(DATA_CATS.length);
     for (const c of cats) {
       await act(async () => { c.click(); });
       expect(container.textContent.length).toBeGreaterThan(0);

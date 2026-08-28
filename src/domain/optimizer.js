@@ -4,7 +4,7 @@
 import { DAYS, byId, uid } from "./constants.js";
 import { timeToMin, minToTime } from "./datetime.js";
 import { legMin, locName } from "./geo.js";
-import { weekOccurrences, teamLeg } from "./logic.js";
+import { weekOccurrences, legFor, legSource, taskNeedsVignette, chainNeedsVignette, vignetteVenues, baseOf } from "./logic.js";
 
 /* Held–Karp: az összes állomást érintő legrövidebb út sorrendje.
    pre/post: a lánc elé/mögé kötött pont (pl. helyszín); fixedFirst/fixedLast:
@@ -71,14 +71,15 @@ export function planVissza(state, order, venueId, departAt, dwell) {
   return { stops, venueDep: departAt, start: departAt, end: stops.length ? stops[stops.length - 1].arr : departAt };
 }
 
-/* A csapat útvonal-sorrendje: automatikus (opcionális rögzített kezdő megállóval)
-   vagy kézi (a chipek bekapcsolási sorrendje; VISSZA fordítva). Feladatbontásnál
+/* Egy megállólista útvonal-sorrendje: automatikus (opcionális rögzített kezdő
+   megállóval) vagy kézi (a chipek bekapcsolási sorrendje; VISSZA fordítva).
+   A lista az edzés sajátja, ha van neki, különben a csapaté. Feladatbontásnál
    egy megálló-részhalmaz is átadható; a rögzített kezdő megálló csak akkor
    érvényes, ha benne van a részhalmazban. */
-export function teamRouteOrder(state, team, venueId, dir, stationIds) {
-  const leg = teamLeg(team, dir);
+export function legRouteOrder(state, team, training, venueId, dir, stationIds) {
+  const leg = legFor(team, training, dir);
   const ids = (stationIds || leg.stationIds || []).filter((id) => byId(state.stations, id));
-  if (ids.length <= 1 || team.routeMode === "manual") {
+  if (ids.length <= 1 || leg.routeMode === "manual") {
     /* Kézi módban a tárolt sorrend a szándékolt sorrend. Megfordítani csak akkor
        helyes, ha a visszaút az ODAÚT listáját tükrözi; ha saját listája van, azt
        a felhasználó már hazafelé menő sorrendben állította össze. */
@@ -89,6 +90,10 @@ export function teamRouteOrder(state, team, venueId, dir, stationIds) {
   if (dir === "oda") return bestStationOrder(state, ids, { post: venueId, fixedFirst: anchor });
   return bestStationOrder(state, ids, { pre: venueId, fixedLast: anchor });
 }
+
+/* A csapat szintje — az edzésenkénti listák előtti hívási forma. */
+export const teamRouteOrder = (state, team, venueId, dir, stationIds) =>
+  legRouteOrder(state, team, null, venueId, dir, stationIds);
 
 /* Megállók csomagolása a lehető legkevesebb buszba (first-fit-decreasing):
    minden busz létszáma <= cap, egy megálló teljes létszáma egyetlen buszba kerül.
@@ -116,10 +121,16 @@ export function genDayTasks(state, weekday, weekMon) {
   const N = state.settings.arriveEarlyMin ?? 10, M = state.settings.departAfterMin ?? 10;
   const dwell = state.settings.dwellMin ?? 2;
   const maxSeats = Math.max(0, ...state.vehicles.map((v) => Number(v.seats) || 0));
+  /* Egy csapatnak több edzése lehet egy napon, külön helyszínen és külön
+     megállólistával — ilyenkor a puszta csapatnév két megkülönböztethetetlen
+     feladatot adna a beosztásban és a figyelmeztetésekben. A helyszínt csak
+     ekkor írjuk ki, hogy az egyedzéses napok címkéi rövidek maradjanak. */
+  const perTeam = occs.reduce((m, x) => ({ ...m, [x.training.teamId]: (m[x.training.teamId] || 0) + 1 }), {});
   for (const o of occs) {
     const t = o.training, team = byId(state.teams, t.teamId);
     if (!team) continue;
     const suffix = t.type === "weekly" ? weekday : "x";
+    const teamLabel = perTeam[t.teamId] > 1 ? `${team.name} · ${locName(state, t.venueId)}` : team.name;
 
     /* Irányonként külön kör: a visszaútnak saját megállói és saját létszámai
        lehetnek, ezért a megállóhalmazt, a létszámokat, a pax-ot ÉS a buszokra
@@ -128,27 +139,50 @@ export function genDayTasks(state, weekday, weekMon) {
        láncolás időre és üresjáratra megy, az #1/#2 párosítás sehol nincs
        kikényszerítve. */
     for (const dir of ["oda", "vissza"]) {
-      const leg = teamLeg(team, dir);
+      const leg = legFor(team, t, dir);
       const dirLabel = dir === "oda" ? "ODA" : "VISSZA";
-      const who = leg.isOverride ? `${team.name} · ${dirLabel}` : team.name;
+      const who = leg.isOverride ? `${teamLabel} · ${dirLabel}` : teamLabel;
 
-      const st = (leg.stationIds || []).filter((id) => byId(state.stations, id));
-      if (!st.length) {
+      const listed = (leg.stationIds || []).filter((id) => byId(state.stations, id));
+      if (!listed.length) {
         skipped.push(`${who}: nincs állomás rendelve, ezért nem készült ${dirLabel} feladat.`);
         continue;
       }
-      const pax = teamPax(team, dir);
-      if (!pax) skipped.push(`${who}: nincs megadva létszám (se megállónként, se összesen) — 0 főnek számol.`);
       const sc = leg.stationCounts || {};
       const cnt = (sid) => Number(sc[sid]) || 0;
+
+      /* Kifejezett 0 = ide most nem kell menni, a megálló kimarad az útvonalból.
+         Az ÜRES mező viszont nem ugyanez: az azt jelenti, "még nincs megadva".
+         Egy félig kitöltött bontásnál (az edző még csak két megállóhoz írt
+         létszámot) a többit kihagyni annyi lenne, mint ottfelejteni a
+         gyerekeket — a legPax épp ezért is számol tovább az összlétszámmal.
+         A kettőt az adat meg tudja különböztetni: a szerkesztő a kiürített
+         mezőt ""-ként, a beírt nullát számként tárolja. */
+      const zeroed = (sid) => sc[sid] != null && sc[sid] !== "" && Number(sc[sid]) === 0;
+      const st = listed.filter((sid) => !zeroed(sid));
+      if (!st.length) {
+        skipped.push(`${who}: minden megállónál 0 fő szerepel, ezért nem készült ${dirLabel} feladat.`);
+        continue;
+      }
+      /* 0 fő = nincs kit vinni. Eddig ilyenkor is készült feladat (csak egy
+         figyelmeztetéssel), így az optimalizáló sofőrt és buszt rendelt egy üres
+         fuvarhoz, kiszállási díjjal és fizetett órával együtt. A pax a
+         megállónkénti bontás és az összlétszám MAXIMUMA, tehát a 0 azt jelenti,
+         hogy sehol nincs létszámadat — ilyenkor nem fuvart kell szervezni,
+         hanem szólni, hogy hiányzik az adat. */
+      const pax = legPax(team, t, dir);
+      if (!pax) {
+        skipped.push(`${who}: nincs megadva létszám (se megállónként, se összesen), ezért nem készült ${dirLabel} feladat. Add meg a létszámot a csapatnál vagy az edzésnél.`);
+        continue;
+      }
 
       /* Egy irány feladata egy megálló-részhalmazra. idx=null: teljes csapat egy
          buszon; idx>=1: a `count` buszra bontott feladat idx-edik része. */
       const mkTask = (subset, idx, count) => {
-        const order = teamRouteOrder(state, team, t.venueId, dir, subset);
+        const order = legRouteOrder(state, team, t, t.venueId, dir, subset);
         const split = idx != null;
         const tag = split ? `#${idx}` : "";
-        const name = `${team.name} · ${dirLabel}${split ? ` (${idx}/${count})` : ""}`;
+        const name = `${teamLabel} · ${dirLabel}${split ? ` (${idx}/${count})` : ""}`;
         const base = {
           id: `${t.id}:${suffix}:${dir}${tag}`, dir, teamId: team.id, trainingId: t.id,
           pax: split ? order.reduce((a, sid) => a + cnt(sid), 0) : pax, label: name,
@@ -189,15 +223,20 @@ export function genDayTasks(state, weekday, weekMon) {
    összlétszámot: egy 12 fős csapatnál, ahol az edző még csak két megállóhoz írt
    létszámot, ez 5 főt adott — nem indult kapacitás szerinti felosztás, és 12
    gyerek elé állt be egy 6 személyes busz, figyelmeztetés nélkül. */
-export function teamPax(team, dir = "oda") {
-  const leg = teamLeg(team, dir);
+export function legPax(team, training, dir = "oda") {
+  const leg = legFor(team, training, dir);
   const sc = leg.stationCounts;
   const sum = (leg.stationIds || []).reduce((a, id) => a + (Number(sc[id]) || 0), 0);
   /* Az összlétszám tartalék érték: csak akkor számít, ha a megállónkénti bontás
      kisebb nála. Saját visszaút-listánál is ugyanez a szabály — ugyanazok a
-     gyerekek utaznak, csak máshol szállnak le. */
-  return Math.max(sum, Number(team.passengerCount) || 0);
+     gyerekek utaznak, csak máshol szállnak le. A tartalék abból a forrásból jön,
+     amelyik a megállókat is adja: egy saját listás edzésen a csapat teljes kerete
+     nem érvényes, oda kevesebben is járhatnak. */
+  return Math.max(sum, Number(legSource(team, training).passengerCount) || 0);
 }
+
+/* A csapat szintje — az edzésenkénti listák előtti hívási forma. */
+export const teamPax = (team, dir = "oda") => legPax(team, null, dir);
 
 /* Elérhető-e a sofőr a teljes [startMin, endMin] sávban az adott hétköznapon?
    Az egymáshoz érő vagy átfedő ablakok ÖSSZEÁLLNAK: a 15:00–17:00 és a
@@ -308,6 +347,55 @@ export const chainFrom = (c) => c.tasks[0].from;
 export const chainTo = (c) => c.tasks[c.tasks.length - 1].to;
 export const chainUse = (c, driverId, vehicleId) => ({ driverId, vehicleId, start: c.start, end: c.end, from: chainFrom(c), to: chainTo(c) });
 
+/* A lánc TELEPHELYTŐL TELEPHELYIG tartó sávja: a sofőr akkor lép munkába, amikor
+   elindul a telephelyről, és akkor végez, amikor visszaért. Telephely nélkül a
+   sáv a feladatokét fedi — vagyis pontosan a telephelyek előtti számítás. */
+export function spanOf(state, u) {
+  const base = baseOf(state, u.vehicleId);
+  if (!base) return { start: u.start, end: u.end };
+  return { start: u.start - legMin(state, base, u.from), end: u.end + legMin(state, u.to, base) };
+}
+
+/* Egy sofőr műszakjai: az egymásba érő telephely–telephely sávok EGY műszakká
+   olvadnak. Itt dől el a "hazamehet-e két fuvar között" kérdés, külön szabály
+   nélkül: ha nincs idő hazaérni és visszajönni, a két sáv átfed, tehát egy
+   műszak lesz belőlük — benne a fizetett helyszíni várakozással. */
+export function mergeShifts(spans) {
+  const out = [];
+  for (const s of [...spans].sort((a, b) => a.start - b.start)) {
+    const last = out[out.length - 1];
+    if (last && s.start <= last.end) last.end = Math.max(last.end, s.end);
+    else out.push({ ...s });
+  }
+  return out;
+}
+
+/* Egy sofőr fizetett ideje és költsége a hozzá tartozó lánchasználatokból.
+   A kiszállási díj MŰSZAKONKÉNT jár, nem lánconként: aki nem tudott közben
+   hazamenni, az nem szállt ki kétszer. */
+export function driverPay(state, driver, uses) {
+  const shifts = mergeShifts(uses.map((u) => spanOf(state, u)));
+  let paid = 0, cost = 0;
+  for (const sh of shifts) {
+    const p = Math.max(sh.end - sh.start, driver?.minShiftMin || 0);
+    paid += p;
+    cost += (state.settings.calloutFee || 0) + (p / 60) * (driver?.wage || 0);
+  }
+  return { paid, cost, shifts };
+}
+
+/* Helyszíni várakozás: két egy műszakba eső lánc közti idő. A sofőr ilyenkor
+   nem tud hazamenni, tehát ott várakozik — ezt eddig semmi nem számolta. */
+export function onSiteWait(state, uses) {
+  const us = [...uses].sort((a, b) => a.start - b.start);
+  let w = 0;
+  for (let i = 0; i < us.length - 1; i++) {
+    const a = us[i], b = us[i + 1];
+    if (spanOf(state, b).start <= spanOf(state, a).end) w += Math.max(0, b.start - a.end);
+  }
+  return w;
+}
+
 /* Ütközik-e két, UGYANAZT az erőforrást használó lánc? Nem elég, hogy időben ne
    fedjék egymást: a busznak át is kell érnie. Enélkül ugyanaz a sofőr+busz
    megkaphatott egy 15:50-kor Kisteleken végződő és egy 15:50-kor Szegeden induló
@@ -331,21 +419,30 @@ export function assignResources(state, weekday, freeChains, fixedUse) {
     if (i === chains.length) { best = { cost, picks: acc.map((x) => ({ ...x })) }; return; }
     const c = chains[i];
     const opts = [];
+    /* A matrica ugyanolyan kemény feltétel, mint a férőhely: matricás helyszínre
+       menő láncra matrica nélküli jármű nem is kerül szóba. Így az optimalizálás
+       eleve nem ad rossz javaslatot — nincs mit kézzel visszajavítani. */
+    const needsV = chainNeedsVignette(state, c);
     for (const d of state.drivers) {
       if (!driverAvailableFor(d, weekday, c.start, c.end)) continue;
       if (used.some((u) => u.driverId === d.id && resourceClash(state, u, c))) continue;
       for (const v of state.vehicles) {
         if (v.seats < c.maxPax) continue;
+        if (needsV && !v.hasVignette) continue;
         if (used.some((u) => u.vehicleId === v.id && resourceClash(state, u, c))) continue;
-        const paid = Math.max(c.end - c.start, d.minShiftMin || 0);
-        const base = (state.settings.calloutFee || 0) + (paid / 60) * (d.wage || 0);
+        /* A lánc ára a sofőr napi költségének NÖVEKMÉNYE. Ha a lánc egy már
+           meglévő műszakjához tapad — mert közben nem tud hazamenni —, akkor
+           csak a plusz fizetett idő az ára, második kiszállási díj nélkül. */
+        const mine = used.filter((u) => u.driverId === d.id);
+        const delta = driverPay(state, d, [...mine, chainUse(c, d.id, v.id)]).cost
+          - driverPay(state, d, mine).cost;
         // Soft preferred-vehicle bias: penalize putting a driver on any bus
         // other than their preferred one, so the optimizer keeps drivers on
         // their usual vehicle unless a real constraint (capacity/availability/
         // contention) or a larger true saving makes it worthwhile.
         const offPreferred = d.preferredVehicleId && v.id !== d.preferredVehicleId;
         const bias = offPreferred ? (state.settings.preferredBias || 0) : 0;
-        opts.push({ d, v, cost: base + bias });
+        opts.push({ d, v, cost: delta + bias });
       }
     }
     opts.sort((x, y) => x.cost - y.cost || x.v.seats - y.v.seats);
@@ -367,8 +464,10 @@ export function assignResources(state, weekday, freeChains, fixedUse) {
 
 export function contentionReasons(state, weekday, t) {
   const av = state.drivers.filter((d) => driverAvailableFor(d, weekday, t.start, t.end));
-  const bigV = state.vehicles.filter((v) => v.seats >= t.pax);
-  return [`Erőforrás-ütközés: ${DAYS[weekday]} ${minToTime(t.start)}–${minToTime(t.end)} között minden alkalmas erőforrás foglalt (elérhető sofőr: ${av.length}, elegendő férőhelyű jármű: ${bigV.length}).`];
+  const needsV = taskNeedsVignette(state, t);
+  const bigV = state.vehicles.filter((v) => v.seats >= t.pax && (!needsV || v.hasVignette));
+  const what = needsV ? "elegendő férőhelyű, országos matricás jármű" : "elegendő férőhelyű jármű";
+  return [`Erőforrás-ütközés: ${DAYS[weekday]} ${minToTime(t.start)}–${minToTime(t.end)} között minden alkalmas erőforrás foglalt (elérhető sofőr: ${av.length}, ${what}: ${bigV.length}).`];
 }
 
 /* A mentett beosztás feloldása nézetmodellé + élő ütközésjelzés */
@@ -397,6 +496,11 @@ export function resolveDay(state, weekday, weekMon) {
       c.issues.push(`${c.driver.name} nem érhető el a teljes ${minToTime(c.start)}–${minToTime(c.end)} sávban.`);
     if (c.vehicle && c.maxPax > c.vehicle.seats)
       c.issues.push(`A létszám (${c.maxPax} fő) meghaladja a(z) ${c.vehicle.plate} férőhelyét (${c.vehicle.seats}).`);
+    /* Kézzel is beosztható matrica nélküli autó, és a régi, mentett beosztásokban
+       is maradhatott ilyen — az optimalizálás óta lett a helyszín matricás. Nem
+       javítjuk automatikusan, de megmondjuk. */
+    if (c.vehicle && !c.vehicle.hasVignette && chainNeedsVignette(state, c))
+      c.issues.push(`A(z) ${c.vehicle.plate} nincs országos matricával, de a lánc ide megy: ${vignetteVenues(state, c).join(", ")}.`);
     chains.push(c);
   }
   for (let i = 0; i < chains.length; i++)
@@ -438,15 +542,24 @@ export function resolveDay(state, weekday, weekMon) {
 export function dayStats(state, chains) {
   let paid = 0, cost = 0, dead = 0, idle = 0;
   const ds = new Set();
+  /* Sofőrönként számolunk, nem lánconként: a fizetett idő a telephelytől
+     telephelyig tartó műszak, és két lánc egy műszakba is eshet. Lánconként
+     összegezve a köztes helyszíni várakozás kimaradt, a kiszállási díj viszont
+     kétszer szerepelt. */
+  const byDriver = new Map();
   for (const c of chains) {
-    const d = byId(state.drivers, c.driverId);
-    if (c.driverId) ds.add(c.driverId);
-    const p = Math.max(c.end - c.start, d?.minShiftMin || 0);
-    paid += p;
+    for (const l of c.links) { dead += l.dead; idle += l.idle; }
     // Kiszállási díj csak akkor jár, ha tényleg kiszáll valaki: a sofőr nélküli
     // lánc korábban is 1500 Ft-ot vitt, felfújva a javaslat "előtte" oszlopát.
-    if (d) cost += (state.settings.calloutFee || 0) + (p / 60) * (d.wage || 0);
-    for (const l of c.links) { dead += l.dead; idle += l.idle; }
+    if (!c.driverId) { paid += Math.max(c.end - c.start, 0); continue; }
+    ds.add(c.driverId);
+    if (!byDriver.has(c.driverId)) byDriver.set(c.driverId, []);
+    byDriver.get(c.driverId).push(chainUse(c, c.driverId, c.vehicleId));
+  }
+  for (const [id, uses] of byDriver) {
+    const r = driverPay(state, byId(state.drivers, id), uses);
+    paid += r.paid; cost += r.cost;
+    idle += onSiteWait(state, uses);
   }
   return { drivers: ds.size, chains: chains.length, paidMin: paid, dead, idle, cost: Math.round(cost) };
 }
@@ -533,6 +646,8 @@ export function optimizeDay(state, weekday, weekMon) {
     const reasons = [];
     if (t.pax > maxSeats)
       reasons.push(`Nincs jármű elegendő férőhellyel: ${t.pax} fő kellene, a legnagyobb jármű ${maxSeats} férőhelyes.`);
+    if (taskNeedsVignette(state, t) && !state.vehicles.some((v) => v.hasVignette && v.seats >= t.pax))
+      reasons.push(`Nincs országos matricás jármű ${t.pax} fővel: ${vignetteVenues(state, { tasks: [t] }).join(", ")} csak matricás autóval érhető el.`);
     if (!state.drivers.some((d) => driverAvailableFor(d, weekday, t.start, t.end)))
       reasons.push(`Egyik sofőr sem érhető el ${DAYS[weekday]} ${minToTime(t.start)}–${minToTime(t.end)} között.`);
     if (reasons.length) uncovered.push({ task: t, reasons });
@@ -545,14 +660,23 @@ export function optimizeDay(state, weekday, weekMon) {
   // 1. fázis: láncolás min. költségű folyammal (átlag-órabérrel súlyozott rések)
   const wages = state.drivers.map((d) => d.wage || 0);
   const avgWpm = (wages.reduce((a, b) => a + b, 0) / (wages.length || 1)) / 60;
+  const homeBase = state.settings?.defaultBaseId || null;
   const edges = [];
   for (let a = 0; a < free.length; a++)
     for (let b = 0; b < free.length; b++) {
       if (a === b) continue;
       const A = free[a], B = free[b];
       const dead = legMin(state, A.to, B.from);
-      if (A.end + dead <= B.start)
-        edges.push({ a, b, cost: Math.round((B.start - A.end) * avgWpm) - (state.settings.calloutFee || 0) });
+      if (A.end + dead <= B.start) {
+        /* Ha a sofőr a rés alatt nem tud hazamenni, a várakozás fizetett akkor
+           is, ha NEM láncolunk — ilyenkor a láncolás tisztán egy kiszállási
+           díjat spórol, tehát a rést nem szabad a láncolás terhére írni. A
+           jármű (és így a telephelye) itt még nincs eldöntve, ezért a klub
+           telephelyével számolunk; a pontos árat az assignResources adja. */
+        const gap = B.start - A.end;
+        const forced = homeBase && gap < legMin(state, A.to, homeBase) + legMin(state, homeBase, B.from);
+        edges.push({ a, b, cost: (forced ? 0 : Math.round(gap * avgWpm)) - (state.settings.calloutFee || 0) });
+      }
     }
   let freeChains = minCostChains(free.length, edges).map((seq) => mkChain(state, seq.map((i) => free[i])));
 
@@ -566,10 +690,9 @@ export function optimizeDay(state, weekday, weekMon) {
      és az optimalizálás UTÁN nőtt a kijelzett napi költség. */
   const skelCost = (c) => {
     const d = byId(state.drivers, c.driverId);
-    const paid = Math.max(c.end - c.start, d?.minShiftMin || 0);
-    const base = (state.settings.calloutFee || 0) + (paid / 60) * (d?.wage || 0);
     const offPreferred = d?.preferredVehicleId && c.vehicleId !== d.preferredVehicleId;
-    return base + (offPreferred ? (state.settings.preferredBias || 0) : 0);
+    return driverPay(state, d, [chainUse(c, c.driverId, c.vehicleId)]).cost
+      + (offPreferred ? (state.settings.preferredBias || 0) : 0);
   };
   const fixedUseOf = (sk) => sk.map((c) => chainUse(c, c.driverId, c.vehicleId));
   let anyCapped = false;
@@ -608,6 +731,9 @@ export function optimizeDay(state, weekday, weekMon) {
           const before = F.end + legMin(state, F.tasks[F.tasks.length - 1].to, K.tasks[0].from) <= K.start;
           if ((!after && !before) || Math.max(F.maxPax, K.maxPax) > v.seats) continue;
           if (!driverAvailableFor(d, weekday, Math.min(K.start, F.start), Math.max(K.end, F.end))) continue;
+          /* A csontváz-lánc járműve rögzített, tehát nem tud matricássá válni:
+             matricás feladatot csak matricás autóra fűzhetünk rá. */
+          if (chainNeedsVignette(state, F) && !v.hasVignette) continue;
           const trialS = skl.map((c, x) => (x === k ? mkChain(state, [...c.tasks, ...F.tasks], c) : c));
           const trialF = fre.filter((_, x) => x !== i);
           const t = evalPlan(trialS, trialF);

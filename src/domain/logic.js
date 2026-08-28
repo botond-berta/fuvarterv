@@ -105,33 +105,85 @@ export function chainRefs(state, field, id) {
   return c;
 }
 
-/* Egy csapat adott irányhoz tartozó "lába": mely megállókat érinti, mennyi
-   emberrel, és melyik megálló van rögzítve a sor végére.
+/* Honnan jönnek a megállók: az edzés saját listájából, vagy a csapatéból.
+
+   Egy csapatnak több edzése lehet, akár külön helyszíneken — a megállók, a
+   létszámok és a sorrend edzésenként eltérhetnek. Az edzés `stops` mezője
+   ezért egy TELJES felülírás: vagy null (a csapat listája érvényes, ez a
+   korábbi viselkedés), vagy ugyanazokkal a mezőnevekkel megadott saját lista.
+   Az azonos mezőnevek nem véletlenek: így ugyanaz a feloldás és ugyanaz a
+   szerkesztő komponens szolgálja ki mindkét szintet, adapter nélkül.
+
+   Irányonként félig örökölni (odaút az edzésé, visszaút a csapaté) szándékosan
+   nem lehet: az átláthatatlan mátrixot adna. Az edzés vagy a csapatét
+   használja, vagy van egy önálló, teljes sajátja. */
+export function legSource(team, training) {
+  return training?.stops || team || {};
+}
+export const hasOwnStops = (training) => !!training?.stops;
+
+/* Egy megállólista adott irányhoz tartozó "lába": mely megállókat érinti,
+   mennyi emberrel, és melyik megálló van rögzítve a sor végére.
 
    Ez az EGYETLEN hely, ahol eldől, hogy a visszaút saját listát használ-e vagy
    tükrözi az odautat. Ha nincs `returnStationIds`, mindkét irány az odaút
    mezőit kapja — vagyis a korábbi viselkedés változatlan, és a meglévő
-   csapatoknál semmit nem kell átállítani.
+   csapatoknál semmit nem kell átállítani. A szabály a forráson belül él, tehát
+   egy saját listás edzésnél az ő odaútját tükrözi, nem a csapatét.
 
    `isOverride` azért kell, mert a rendezés máshogy viselkedik: egy tükrözött
    visszautat meg kell fordítani, egy kézzel összeállított visszaút-listát
    viszont NEM — annak a sorrendje már a szándékolt sorrend. */
-export function teamLeg(team, dir) {
-  const own = dir === "vissza" && Array.isArray(team?.returnStationIds);
+export function legFor(team, training, dir) {
+  const src = legSource(team, training);
+  const own = dir === "vissza" && Array.isArray(src.returnStationIds);
+  const routeMode = src.routeMode || "auto";
   if (!own) {
     return {
-      stationIds: team?.stationIds || [],
-      stationCounts: team?.stationCounts || {},
-      routeAnchorId: team?.routeAnchorId ?? null,
+      stationIds: src.stationIds || [],
+      stationCounts: src.stationCounts || {},
+      routeAnchorId: src.routeAnchorId ?? null,
+      routeMode,
       isOverride: false,
     };
   }
   return {
-    stationIds: team.returnStationIds,
-    stationCounts: team.returnStationCounts || {},
-    routeAnchorId: team.returnRouteAnchorId ?? null,
+    stationIds: src.returnStationIds,
+    stationCounts: src.returnStationCounts || {},
+    routeAnchorId: src.returnRouteAnchorId ?? null,
+    routeMode,
     isOverride: true,
   };
+}
+
+/* A csapat szintje: pontosan az, ami az edzésenkénti listák előtt volt. Ez a
+   wrapper mondja ki azt az invariánst, amit a return-leg tesztek ellenőriznek:
+   felülírás nélkül semmi nem változik. */
+export const teamLeg = (team, dir) => legFor(team, null, dir);
+
+/* Országos autópálya-matrica. A jelölés a HELYSZÍNEN van (`needsVignette`), a
+   járművön pedig a tény (`hasVignette`) — a feladat két végpontja közül az egyik
+   mindig a helyszín (ODA: `to`, VISSZA: `from`), ezért iránytól függetlenül
+   elég mindkettőt megnézni. A megállók szándékosan nem jelölhetők: a matricát a
+   célpont kényszeríti ki, és így egyetlen mezőt kell karbantartani. */
+export const venueNeedsVignette = (state, id) => !!byId(state.venues, id)?.needsVignette;
+export const taskNeedsVignette = (state, task) =>
+  venueNeedsVignette(state, task.from) || venueNeedsVignette(state, task.to);
+export const chainNeedsVignette = (state, chain) =>
+  (chain?.tasks || []).some((t) => taskNeedsVignette(state, t));
+/* Mely matricás helyszínekre megy a lánc — az indoklásokhoz, hogy ne csak azt
+   mondjuk meg, hogy baj van, hanem azt is, melyik helyszín miatt. */
+export const vignetteVenues = (state, chain) => [...new Set((chain?.tasks || [])
+  .flatMap((t) => [t.from, t.to])
+  .filter((id) => venueNeedsVignette(state, id))
+  .map((id) => byId(state.venues, id).name))];
+
+/* Melyik telephelyről indul és hova tér vissza ez a jármű. A jármű saját
+   telephelye erősebb a klubénál; ha egyik sincs, null — olyankor a fizetett idő
+   a feladatoktól számít, ahogy a telephelyek bevezetése előtt. */
+export function baseOf(state, vehicleId) {
+  const v = byId(state.vehicles, vehicleId);
+  return (v && v.baseId) || state.settings?.defaultBaseId || null;
 }
 
 export function deleteGuard(state, kind, id) {
@@ -140,9 +192,13 @@ export function deleteGuard(state, kind, id) {
     // A visszaút saját listáját is számolni kell: egy csak hazafelé használt
     // állomás egyébként hivatkozatlannak látszana, törölhetővé válna, és utána
     // a teamRouteOrder szűrője némán kihagyná — a gyerekeket nem vinné haza senki.
-    const c = state.teams.filter((t) => (t.stationIds || []).includes(id) || (t.returnStationIds || []).includes(id)).length
+    // Ugyanez áll az edzések saját listáira: egy csak ott használt állomás
+    // szintén hivatkozatlannak tűnne.
+    const inSource = (src) => (src.stationIds || []).includes(id) || (src.returnStationIds || []).includes(id);
+    const c = state.teams.filter(inSource).length
+      + state.trainings.filter((t) => t.stops && inSource(t.stops)).length
       + state.rides.filter((r) => (r.stops || []).some((s) => s.stationId === id)).length;
-    return n(c, "csapat/fuvar");
+    return n(c, "csapat/edzés/fuvar");
   }
   if (kind === "venues") {
     const c = state.teams.filter((t) => (t.venueIds || []).includes(id)).length
@@ -156,6 +212,14 @@ export function deleteGuard(state, kind, id) {
       // minden járműre igaz marad, így a preferredBias végleg elrejti őt.
       + state.drivers.filter((d) => d.preferredVehicleId === id).length;
     return n(c, "fuvar/beosztás/sofőr");
+  }
+  if (kind === "bases") {
+    // A settings.defaultBaseId-t is számolni kell: a klub telephelyét törölve
+    // minden jármű telephely nélkül maradna, és a fizetett idő némán visszaesne
+    // a feladatok szerinti számításra.
+    const c = state.vehicles.filter((v) => v.baseId === id).length
+      + (state.settings?.defaultBaseId === id ? 1 : 0);
+    return n(c, "jármű/beállítás");
   }
   if (kind === "drivers") {
     const c = state.rides.filter((r) => r.driverId === id).length + chainRefs(state, "driverId", id);

@@ -15,6 +15,7 @@
 :root{
   --ink:var(--v-ink); --ink2:var(--v-ink-2); --paper:var(--v-paper); --card:var(--v-card);
   --line:var(--v-line); --acc:var(--v-acc); --acc-soft:var(--v-acc-soft); --on-acc:var(--v-on-acc);
+  --acc-strong:var(--v-acc-strong);
   --danger:var(--v-crit); --danger-soft:var(--v-crit-soft); --ok:var(--v-go);
   --warn:var(--v-warn); --warn-soft:var(--v-warn-soft); --paper2:var(--v-paper-2);
 
@@ -68,6 +69,8 @@
 .seg{display:flex;background:var(--paper2);border-radius:14px;padding:4px;gap:3px;}
 .seg button{flex:1;border:none;background:transparent;border-radius:11px;padding:9px 6px;font-weight:800;font-size:13px;color:var(--ink2);cursor:pointer;font-family:inherit;min-height:40px;}
 .seg button.on{background:var(--card);color:var(--ink);box-shadow:0 1px 3px rgba(16,24,40,.12);}
+.seg button:disabled{cursor:default;}
+.seg button:disabled:not(.on){opacity:.4;}
 .data-cats{scrollbar-width:none;-ms-overflow-style:none;}
 .data-cats::-webkit-scrollbar{display:none;}
 .tabbar{position:fixed;left:0;right:0;bottom:0;background:var(--surface-inv);display:flex;z-index:40;padding-bottom:env(safe-area-inset-bottom);}

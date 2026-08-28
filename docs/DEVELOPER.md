@@ -144,7 +144,7 @@ flat config (`npm run lint`). See [§19](#19-tests).
 │   │   ├── OccCard.jsx       ← one training occurrence (week + ride picker)
 │   │   ├── MapPicker.jsx     ← Leaflet picker + offline SVG fallback
 │   │   └── format.js         ← Ft / hour formatters
-│   └── screens/              ← WeekScreen, TeamsScreen, MasterScreen,
+│   └── screens/              ← WeekScreen, TeamsScreen, MasterScreen, StopListEditor,
 │                               RideScreen, ScheduleScreen, DriverScreen, DataScreen
 └── supabase/migrations/
     ├── 0001_app_state.sql        ← the app_state table + RLS policies
@@ -451,12 +451,36 @@ isOverride }` for the direction you ask for.
 { id, name, address, note, lat: number|null, lon: number|null }
 ```
 
-**Venue** (`venues[]`) — a training location. Same shape as a station.
+`lat`/`lon` are **mandatory in the editor**: `MasterForm` refuses to save a station
+or venue without a coordinate, so new records always carry one. The type stays
+nullable because records saved before this rule (and `ensureShape`, which fills
+missing keys with `null`) can still be coordinate-less — those show a warning icon
+in the master list and must be given a coordinate the next time they are edited.
+Reading code must therefore keep its null checks (`legMin`, `computeMatrix`,
+`defaultMapCenter` all still guard).
+
+**Venue** (`venues[]`) — a training location. Same shape as a station, plus
+`needsVignette: boolean` — the venue is reached via the motorway, so only a vehicle
+with `hasVignette` may be scheduled there. The flag lives on **venues only**, never
+on stations: the destination is what forces the motorway, and one field is enough to
+keep up to date. `legMin`-style routing is unaffected; this is purely an assignment
+constraint (see [§10.5](#105-assign-real-drivers-and-buses--assignresources)).
+
+**Base** (`bases[]`) — a depot: where a bus is kept overnight. Same shape as a
+station (coordinate mandatory in the editor), but never selectable as a stop.
+```js
+{ id, name, address, note, lat, lon }
+```
 
 **Vehicle** (`vehicles[]`) — a minibus.
 ```js
-{ id, name, plate, seats, note }         // plate is normalized; seats excludes the driver
+{ id, name, plate, seats, note,
+  hasVignette: boolean,                  // national motorway vignette
+  baseId: id|null }                      // null = settings.defaultBaseId
 ```
+`plate` is normalized; `seats` excludes the driver. The base is on the **vehicle**,
+not the driver, because a driver often keeps the bus at their home address and it is
+the bus's whereabouts that decides the deadhead.
 
 **Driver** (`drivers[]`)
 ```js
@@ -479,8 +503,30 @@ isOverride }` for the direction you ask for.
   days: [weekdayIdx, ...],               // for "weekly"
   date: "YYYY-MM-DD" | null,             // for "once"
   start: "HH:MM", end: "HH:MM",
+
+  // null = use the team's stop list (the pre-feature behaviour).
+  // An object = this training has a complete list of its own.
+  stops: null | {
+    stationIds, stationCounts, routeMode, routeAnchorId,
+    returnStationIds, returnStationCounts, returnRouteAnchorId,
+    passengerCount,                      // fallback headcount for THIS training
+  },
 }
 ```
+
+A team can have several trainings at **different venues**, so a single stop list on
+the team was wrong: every training got the same route and the same headcount. The
+`stops` override fixes that, and the field names deliberately match the team's, so
+one resolver and one editor component serve both levels with no adapter.
+
+The override is **all-or-nothing**: a training either uses the team's list or has a
+complete one of its own. There is no per-direction half-inheritance — inside an
+override, `returnStationIds === null` mirrors *that override's* outbound, not the
+team's return list. **Never read either level's fields directly**: use
+`legFor(team, training, dir)` from `src/domain/logic.js` (and `legPax` /
+`legRouteOrder` in the optimizer), which are the single place that resolves
+training → team. `teamLeg(team, dir)` is the team-level shorthand for
+`legFor(team, null, dir)` — it is exactly what the code did before this feature.
 
 **Ride** (`rides[]`) — a concrete bus run for one training occurrence. Several rides
 can belong to one occurrence (several buses carrying one team).
@@ -655,10 +701,29 @@ calculated *forwards* from "leave the gym `departAfterMin` after training ends".
 
 **The two directions are generated independently.** `genDayTasks` loops over
 `["oda", "vissza"]` and resolves the stop list, the per-stop counts, the `pax` **and
-the capacity split** separately for each, via `teamLeg(team, dir)`. A team whose
+the capacity split** separately for each, via `legFor(team, training, dir)` — which
+also picks up the training's own stop list when it has one. A team whose
 return has its own stops can therefore need a different number of buses each way —
 nothing requires `…:oda#1` and `…:vissza#1` to pair up. After `genDayTasks` returns,
 tasks are flat and independent; chaining is decided purely by time and deadhead.
+
+**A direction with 0 passengers produces no task at all.** `pax` is the maximum of
+the per-stop breakdown and the fallback total, so 0 means there is no headcount data
+anywhere — and a bus sent for nobody still costs a callout fee and paid hours. The
+day's notes say which team is missing its headcount instead.
+
+**A stop with an explicit `0` is dropped from the route.** The distinction that
+matters is `0` vs. *blank*: the editor stores a cleared field as `""` and a typed
+zero as a number, so `0` means "nobody there today" (skip it) while blank means "not
+filled in yet" (still drive there — `legPax` likewise keeps counting with the total
+headcount, so a half-finished breakdown never strands anyone). If every stop of a
+direction is an explicit `0`, no task is generated for it and `skipped` says so —
+silence there would look like a lost training.
+
+When a team has **more than one occurrence on the same day**, the task label carries
+the venue (`FU12 · Kistelek csarnok · ODA`); otherwise it stays short (`FU12 · ODA`).
+Without it, two trainings of one team produce two indistinguishable tasks in the
+schedule and in the `skipped` warnings.
 
 > **Task ids embed the split index** (`trainingId:weekday:dir` plus `#1`, `#2`, …).
 > Changing a team's stops or headcounts can therefore change how many buses a
@@ -734,17 +799,42 @@ iterations, after which it keeps the best found and notes it was heuristic).
 
 For each chain it enumerates valid (driver, vehicle) options, requiring:
 - **Capacity:** `vehicle.seats >= chain.maxPax`.
+- **Motorway vignette:** if any task in the chain goes to a venue marked
+  `needsVignette`, the vehicle must have `hasVignette`. This is a hard constraint like
+  capacity, deliberately: an assignment the optimizer never proposes is one nobody has
+  to correct by hand afterwards. `optimizeDay` pre-checks it too, so a day with no
+  suitable bus yields an **uncovered** task naming the venue, rather than a silently
+  wrong bus; `resolveDay` raises the same thing as a live chain issue for schedules
+  saved before the venue was flagged (or assigned by hand).
 - **Driver availability:** `driverAvailableFor(driver, weekday, start, end)` — true
   if the driver has no availability windows, else a window on that weekday must fully
   contain the shift.
 - **No double-booking:** neither the driver nor the vehicle already overlaps another
   chain in time.
 
-The cost of an option is:
+A **locked** task still wins over all of this: its chain keeps the driver and vehicle
+the admin picked (§10.7), and the local-improvement step will not graft a
+vignette-requiring task onto a locked chain whose bus lacks one.
+
+The cost of an option is the **increase in that driver's cost for the whole day**,
+not a figure computed for the chain alone:
 ```
-base = calloutFee + paidHours × driver.wage
-paidHours uses max(shift length, driver.minShiftMin)   // min-shift is paid even if short
+span(chain)  = [chain.start − legMin(base → first stop),
+                chain.end   + legMin(last stop → base)]   // paid door to door
+shifts       = overlapping spans of that driver merged into one
+cost         = per shift: calloutFee + max(shift length, minShiftMin)/60 × wage
+option cost  = cost(driver's chains + this one) − cost(driver's chains so far)
 ```
+**Paid time runs from the depot and ends at the depot** — the driver is working from
+the moment they leave. That one rule also settles what used to be a separate
+question: if two chains are so close that the base-to-base spans overlap, the driver
+could not have gone home between them, so the spans merge into a single shift with
+the wait inside it — paid, and charged **one** callout, not two. With a far venue
+(training in Eger) this is the difference between billing 6.3 hours across two
+callouts and the true 8.7-hour shift with 140 minutes of on-site waiting.
+
+With no depot known (`settings.defaultBaseId` and `vehicle.baseId` both null), the
+span is the chain's own start/end, which is exactly the pre-depot behaviour.
 
 **Preferred-vehicle bias (soft preference).** On top of `base`, if the driver has a
 `preferredVehicleId` and this vehicle is a *different* one, we add
@@ -839,12 +929,27 @@ which switches between five categories with a chip row:
 |---|---|---|
 | **Hét** (Week) | `WeekScreen` / `OccCard` | All trainings this week, color-coded, with each assigned bus (plate chip, driver, time), and conflict/"no ride" badges. |
 | **Beosztás** (Schedule) | `ScheduleScreen` / `ChainCard` | Per-weekday task chains, the optimizer, before/after comparison, task lock/move, ride generation, and the ⚙ settings panel. |
-| **Adatok** (Data) | `DataScreen` → `TeamsScreen` / `MasterScreen` | Csapatok, Állomások, Helyszínek, Járművek, Sofőrök. Team details, station/venue assignment, per-stop headcounts, route mode; CRUD for the master entities. Also holds the one "restore sample data" button. |
+| **Adatok** (Data) | `DataScreen` → `TeamsScreen` / `MasterScreen` | Csapatok, Állomások, Helyszínek, Telephelyek, Járművek, Sofőrök. Team details, station/venue assignment, per-stop headcounts, route mode; CRUD for the master entities. Also holds the one "restore sample data" button. |
+
+Inside **Csapatok**, a team row opens `TeamDetail` and a training row opens
+`TrainingDetail` — a screen, not a modal, because the stop editor is too tall for a
+bottom sheet on a phone. Both render the same `StopListEditor`: the team's permanent
+list at one level, the training's own list at the other. It is a controlled
+component (`value` + `onChange(patch)`), and it works unchanged at both levels only
+because the two sources share their field names — that is also why `value` can be
+handed straight to `legFor` / `legRouteOrder` / `legPax` as if it were a team.
 | **Sofőr** (Driver view) | `DriverScreen` | Mobile-friendly, large-type daily route list per driver with a "NEXT stop" highlight, refreshed every minute. |
 
 The **Fuvar** (ride editor, `RideScreen`) is not a tab — it opens from a week-view
 card. It edits one occurrence's rides: direction (ODA/VISSZA), vehicle, driver, and
 ordered, timed stops.
+
+The direction is picked when the ride is created and **locked once it is saved**: the
+ride's own name in the picker chips (`3. fuvar · VISSZA · Anna`), its stop times, and
+the stop list offered by `teamLeg` all follow `dir`, so flipping it on an existing
+ride would carry the old, now meaningless times into the other direction and show the
+driver the same ride reversed. A ride saved with the wrong direction is deleted and
+re-added, not flipped.
 
 ### 12.2 Styling
 
@@ -921,6 +1026,7 @@ one of them has a fallback.
 | `estSpeedKmh` | Assumed speed for straight-line travel-time estimates. | 50 |
 | `fallbackLegMin` | Travel time used when there's no matrix and no coordinates. | 12 |
 | `preferredBias` | Extra cost (Ft) charged when a driver is put on a bus other than their preferred one. 0 disables the preference. | 1000 |
+| `defaultBaseId` | The club's depot — where buses without a `baseId` of their own start and end the day. `null` means no depot is known, and paid time falls back to spanning the tasks only. | null |
 
 ---
 
@@ -991,6 +1097,11 @@ Only two, both read at build time by Vite and inlined into the browser bundle:
 - **Exact TSP only up to 10 stops.** Beyond that, the given stop order is kept.
 - **The optimizer's assignment search is capped** at 30,000 iterations; very large
   days fall back to the best solution found and say so.
+- **Driver availability still uses the task span, not the paid span.** Paid time runs
+  depot to depot, but `driverAvailableFor` is checked against the chain's first and
+  last task. A driver whose window opens at 15:00 can therefore be scheduled for a
+  chain that requires leaving the depot at 14:30. Deliberate for now: widening it
+  would make previously coverable days uncoverable.
 - **Plate validation is lenient.** Any non-empty alphanumeric string is accepted as
   a plate (this is intentional — Hungary allows custom plates — but there's no strict
   format check).

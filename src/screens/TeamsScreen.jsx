@@ -1,14 +1,16 @@
 /* Fuvarterv — Csapatok — állomások, létszámok, útvonal, edzések
-   Kiemelve a fuvarterv.jsx-ből; a viselkedés változatlan. */
+   Kiemelve a fuvarterv.jsx-ből. A megállólista-szerkesztő azóta önálló,
+   újrahasznosított komponens (StopListEditor): a csapat állandó listáját és az
+   edzés saját listáját (TrainingDetail) ugyanaz szolgálja ki. */
 
 import { useState } from "react";
-import { Plus, Pencil, ChevronLeft, AlertTriangle, MapPin, ChevronsRight } from "lucide-react";
+import { Plus, Pencil, ChevronLeft, AlertTriangle, MapPin, ChevronsRight, Route } from "lucide-react";
 import { GENDERS, TEAM_COLORS, uid, byId } from "../domain/constants.js";
 import { DAYS, DAYS_SHORT } from "../domain/constants.js";
 import { fmtDate } from "../domain/datetime.js";
 import { Field, Modal, DangerBtn, TeamDot, EmptyState, InfoDot } from "../ui/base.jsx";
 import { fmtDateFull, toISO } from "../domain/datetime.js";
-import { planOda, teamPax, teamRouteOrder } from "../domain/optimizer.js";
+import { StopListEditor } from "./StopListEditor.jsx";
 
 /* ---------- 4.2 CSAPATOK ---------- */
 export function TeamsScreen({ state, update, notice }) {
@@ -89,7 +91,9 @@ export function TeamForm({ team, onSave, onCancel }) {
 export function TeamDetail({ state, update, team, onBack, notice }) {
   const [editing, setEditing] = useState(false);
   const [trForm, setTrForm] = useState(null); // null | {} | training
+  const [selTrId, setSelTrId] = useState(null);
   const trainings = state.trainings.filter((t) => t.teamId === team.id);
+  const selTr = selTrId && byId(trainings, selTrId);
 
   const toggle = (key, id) => update((s) => ({
     ...s,
@@ -98,30 +102,9 @@ export function TeamDetail({ state, update, team, onBack, notice }) {
     }),
   }));
 
-  const setReturnCount = (sid, val) => update((s) => ({
-    ...s,
-    teams: s.teams.map((t) => t.id !== team.id ? t : {
-      ...t, returnStationCounts: { ...(t.returnStationCounts || {}), [sid]: val === "" ? "" : Math.max(0, Number(val) || 0) },
-    }),
-  }));
-
-  const setCount = (sid, val) => update((s) => ({
-    ...s,
-    teams: s.teams.map((t) => t.id !== team.id ? t : {
-      ...t, stationCounts: { ...(t.stationCounts || {}), [sid]: val === "" ? "" : Math.max(0, Number(val) || 0) },
-    }),
-  }));
-
   const setTeamField = (patch) => update((s) => ({
     ...s, teams: s.teams.map((x) => (x.id === team.id ? { ...x, ...patch } : x)),
   }));
-
-  /* A visszaút saját listája: null = tükrözze az odautat (a korábbi viselkedés).
-     Bekapcsoláskor az odaút megállóival indulunk, hogy legyen mit szerkeszteni,
-     kikapcsoláskor null-ra állunk vissza. */
-  const setReturnOwn = (own) => setTeamField(own
-    ? { returnStationIds: [...team.stationIds], returnStationCounts: { ...(team.stationCounts || {}) } }
-    : { returnStationIds: null, returnRouteAnchorId: null });
 
   const deleteTeam = () => {
     update((s) => {
@@ -142,6 +125,10 @@ export function TeamDetail({ state, update, team, onBack, notice }) {
     rides: s.rides.filter((r) => r.trainingId !== id),
   }));
 
+  if (selTr) return (
+    <TrainingDetail state={state} update={update} team={team} training={selTr} onBack={() => setSelTrId(null)} />
+  );
+
   return (
     <div className="px-4 pb-4">
       <div className="flex items-center gap-2 py-3">
@@ -152,139 +139,8 @@ export function TeamDetail({ state, update, team, onBack, notice }) {
       </div>
       <div className="text-sm mb-4 px-1" style={{ color: "var(--ink2)" }}>{team.age} · {team.gender}</div>
 
-      <h3 className="disp text-base mb-2">Állomások (felszállóhelyek)</h3>
-      <div className="flex gap-2 flex-wrap mb-1">
-        {state.stations.map((s) => (
-          <button key={s.id} className={`chip ${team.stationIds.includes(s.id) ? "on" : ""}`} onClick={() => toggle("stationIds", s.id)}>{s.name}</button>
-        ))}
-        {state.stations.length === 0 && <span className="text-sm" style={{ color: "var(--ink2)" }}>Vegyél fel állomást az Adatok fülön.</span>}
-      </div>
-      <p className="text-xs mb-2 px-1" style={{ color: "var(--ink2)" }}>A fuvarokhoz csak a bekapcsolt állomások választhatók.</p>
-      {team.stationIds.length > 0 && (
-        <div className="card p-3 mb-4">
-          <div className="flex items-center justify-between mb-2">
-            <h4 className="disp text-sm">Létszám megállónként</h4>
-            <span className="text-sm font-semibold tnum">Σ {teamPax(team)} fő</span>
-          </div>
-          <div className="flex flex-col gap-2">
-            {team.stationIds.map((sid) => {
-              const st = byId(state.stations, sid);
-              return (
-                <div key={sid} className="flex items-center gap-2">
-                  <span className="flex-1 text-sm truncate">{st?.name || "?"}</span>
-                  <input type="number" min="0" className="inp" style={{ width: 84, minHeight: 38, padding: "6px 8px" }}
-                    value={team.stationCounts?.[sid] ?? ""} placeholder="fő" aria-label={`Létszám: ${st?.name || ""}`}
-                    onChange={(e) => setCount(sid, e.target.value)} />
-                </div>
-              );
-            })}
-          </div>
-          <p className="text-xs mt-2" style={{ color: "var(--ink2)" }}>
-            Az optimalizáló ennek az összegét használja. Ha minden mező üres, a csapat összlétszáma számít{team.passengerCount ? ` (most ${team.passengerCount} fő)` : ""}.
-          </p>
-        </div>
-      )}
-
-      {team.stationIds.length > 1 && (
-        <div className="card p-3 mb-4">
-          <h4 className="disp text-sm mb-2">Útvonal (felszállási sorrend)</h4>
-          <div className="seg mb-3">
-            <button className={(team.routeMode || "auto") === "auto" ? "on" : ""} onClick={() => setTeamField({ routeMode: "auto" })}>Automatikus</button>
-            <button className={team.routeMode === "manual" ? "on" : ""} onClick={() => setTeamField({ routeMode: "manual" })}>Kézi sorrend</button>
-          </div>
-          {(team.routeMode || "auto") === "auto" ? (
-            <>
-              <Field label="Kezdő megálló" hint="Az odaút első megállójaként rögzítjük; üresen a leggyorsabb sorrend nyer.">
-                <select className="inp" value={team.routeAnchorId || ""} onChange={(e) => setTeamField({ routeAnchorId: e.target.value || null })}>
-                  <option value="">— szabad (leggyorsabb) —</option>
-                  {team.stationIds.map((sid) => <option key={sid} value={sid}>{byId(state.stations, sid)?.name || "?"}</option>)}
-                </select>
-              </Field>
-              {team.venueIds[0] && (() => {
-                const venue = byId(state.venues, team.venueIds[0]);
-                const order = teamRouteOrder(state, team, team.venueIds[0], "oda");
-                const p0 = planOda(state, order, team.venueIds[0], 0, state.settings.dwellMin ?? 2);
-                return (
-                  <p className="text-xs" style={{ color: "var(--ink2)" }}>
-                    Számított sorrend ({venue?.name || "1. helyszín"} felé): <b>{order.map((id) => byId(state.stations, id)?.name || "?").join(" → ")}</b> · össz. {Math.round(-p0.start)} perc az első megállótól.
-                  </p>
-                );
-              })()}
-            </>
-          ) : (
-            <p className="text-xs" style={{ color: "var(--ink2)" }}>
-              A megállók bekapcsolási sorrendje a felszállási sorrend
-              {team.returnStationIds ? "; a visszaútnak saját sorrendje van (lentebb)." : "; a VISSZA irány ennek fordítottja."}
-            </p>
-          )}
-        </div>
-      )}
-
-      <h3 className="disp text-base mb-2">Visszaút (leszállóhelyek)</h3>
-      <div className="seg mb-2">
-        <button className={!team.returnStationIds ? "on" : ""} onClick={() => setReturnOwn(false)}>Megegyezik az odaúttal</button>
-        <button className={team.returnStationIds ? "on" : ""} onClick={() => setReturnOwn(true)}>Külön lista</button>
-      </div>
-
-      {!team.returnStationIds ? (
-        <p className="text-xs mb-4 px-1" style={{ color: "var(--ink2)" }}>
-          A busz hazafelé ugyanazokat a megállókat érinti, fordított sorrendben. Válaszd a <b>Külön lista</b> opciót, ha a gyerekek máshol szállnak le, mint ahol felszálltak.
-        </p>
-      ) : (
-        <>
-          <div className="flex gap-2 flex-wrap mb-1">
-            {state.stations.map((s2) => (
-              <button key={s2.id} className={`chip ${team.returnStationIds.includes(s2.id) ? "on" : ""}`}
-                onClick={() => toggle("returnStationIds", s2.id)}>{s2.name}</button>
-            ))}
-          </div>
-          <p className="text-xs mb-2 px-1" style={{ color: "var(--ink2)" }}>
-            Ezek teljesen függetlenek az odaút megállóitól — lehet kevesebb, több vagy egészen más.
-          </p>
-
-          {team.returnStationIds.length > 0 && (
-            <div className="card p-3 mb-4">
-              <div className="flex items-center justify-between mb-2">
-                <h4 className="disp text-sm">Létszám megállónként (vissza)</h4>
-                <span className="text-sm font-semibold tnum">Σ {teamPax(team, "vissza")} fő</span>
-              </div>
-              <div className="flex flex-col gap-2">
-                {team.returnStationIds.map((sid) => {
-                  const st = byId(state.stations, sid);
-                  return (
-                    <div key={sid} className="flex items-center gap-2">
-                      <span className="flex-1 text-sm truncate">{st?.name || "?"}</span>
-                      <input type="number" min="0" className="inp" style={{ width: 84, minHeight: 38, padding: "6px 8px" }}
-                        value={team.returnStationCounts?.[sid] ?? ""} placeholder="fő" aria-label={`Létszám hazafelé: ${st?.name || ""}`}
-                        onChange={(e) => setReturnCount(sid, e.target.value)} />
-                    </div>
-                  );
-                })}
-              </div>
-              <p className="text-xs mt-2" style={{ color: "var(--ink2)" }}>
-                A visszaút kapacitását és buszokra bontását ez határozza meg — az odaúttól függetlenül.
-              </p>
-            </div>
-          )}
-
-          {team.returnStationIds.length > 1 && (team.routeMode || "auto") === "auto" && (
-            <div className="card p-3 mb-4">
-              <Field label="Utolsó megálló (vissza)" hint="A hazaút végére rögzítjük; üresen a leggyorsabb sorrend nyer.">
-                <select className="inp" value={team.returnRouteAnchorId || ""} onChange={(e) => setTeamField({ returnRouteAnchorId: e.target.value || null })}>
-                  <option value="">— szabad (leggyorsabb) —</option>
-                  {team.returnStationIds.map((sid) => <option key={sid} value={sid}>{byId(state.stations, sid)?.name || "?"}</option>)}
-                </select>
-              </Field>
-              {team.venueIds[0] && (
-                <p className="text-xs" style={{ color: "var(--ink2)" }}>
-                  Számított sorrend ({byId(state.venues, team.venueIds[0])?.name || "1. helyszín"} felől):{" "}
-                  <b>{teamRouteOrder(state, team, team.venueIds[0], "vissza").map((id) => byId(state.stations, id)?.name || "?").join(" → ")}</b>
-                </p>
-              )}
-            </div>
-          )}
-        </>
-      )}
+      <StopListEditor state={state} value={team} onChange={setTeamField}
+        venueId={team.venueIds[0] || null} venueName={byId(state.venues, team.venueIds[0])?.name || "1. helyszín"} />
 
       <h3 className="disp text-base mb-2">Helyszínek</h3>
       <div className="flex gap-2 flex-wrap mb-4">
@@ -303,15 +159,18 @@ export function TeamDetail({ state, update, team, onBack, notice }) {
           const venue = byId(state.venues, t.venueId);
           return (
             <div key={t.id} className="card p-3 flex items-center gap-3">
-              <div className="flex-1 min-w-0">
-                <div className="font-semibold tnum">
+              <button className="flex-1 min-w-0 text-left" style={{ background: "none", border: "none", padding: 0, font: "inherit", cursor: "pointer", color: "inherit" }}
+                onClick={() => setSelTrId(t.id)}>
+                <div className="font-semibold tnum flex items-center gap-2 flex-wrap">
                   {t.type === "weekly" ? t.days.map((d) => DAYS_SHORT[d]).join(", ") : fmtDateFull(t.date)} · {t.start}–{t.end}
+                  {t.stops && <span className="pill" style={{ background: "var(--acc-soft)", color: "var(--acc)" }}>saját megállók</span>}
                 </div>
                 <div className="text-sm flex items-center gap-1" style={{ color: "var(--ink2)" }}>
                   <MapPin size={13} /> {venue?.name || "nincs helyszín"}
+                  <span>· {(t.stops ? t.stops.stationIds || [] : team.stationIds).length} állomás</span>
                 </div>
-              </div>
-              <button className="iconbtn" onClick={() => setTrForm(t)} aria-label="Edzés szerkesztése"><Pencil size={16} /></button>
+              </button>
+              <button className="iconbtn" onClick={() => setSelTrId(t.id)} aria-label="Edzés megnyitása"><ChevronsRight size={17} /></button>
               <DangerBtn small onConfirm={() => deleteTraining(t.id)} />
             </div>
           );
@@ -334,6 +193,103 @@ export function TeamDetail({ state, update, team, onBack, notice }) {
               : { ...s, trainings: [...s.trainings, { ...tr, id: uid() }] });
             setTrForm(null);
           }} />
+      )}
+    </div>
+  );
+}
+
+/* Egy edzés részletei. Külön képernyő és nem modál: a megállólista-szerkesztő
+   túl magas ahhoz, hogy mobilon egy alsó lapon kényelmesen elférjen. */
+export function TrainingDetail({ state, update, team, training, onBack }) {
+  const [editing, setEditing] = useState(false);
+  const venue = byId(state.venues, training.venueId);
+  const own = !!training.stops;
+
+  const setTraining = (patch) => update((s) => ({
+    ...s, trainings: s.trainings.map((t) => (t.id === training.id ? { ...t, ...patch } : t)),
+  }));
+  const setStops = (patch) => setTraining({ stops: { ...training.stops, ...patch } });
+
+  /* Bekapcsoláskor a csapat aktuális listájából indulunk, hogy legyen mit
+     szerkeszteni — ugyanaz a minta, mint a visszaút külön listájánál. A másolat
+     ettől a pillanattól független: a csapat listájának változása nem követi. */
+  const copyOf = (src) => ({
+    stationIds: [...(src.stationIds || [])],
+    stationCounts: { ...(src.stationCounts || {}) },
+    routeMode: src.routeMode || "auto",
+    routeAnchorId: src.routeAnchorId ?? null,
+    returnStationIds: src.returnStationIds ? [...src.returnStationIds] : null,
+    returnStationCounts: { ...(src.returnStationCounts || {}) },
+    returnRouteAnchorId: src.returnRouteAnchorId ?? null,
+    passengerCount: src.passengerCount ?? null,
+  });
+  const setOwn = (v) => setTraining({ stops: v ? copyOf(team) : null });
+
+  /* A csapat többi, saját listás edzése — egy háromedzéses csapatnál enélkül
+     minden listát elölről kellene összekattintgatni. */
+  const sources = state.trainings.filter((t) => t.teamId === team.id && t.id !== training.id && t.stops);
+  const when = (t) => (t.type === "weekly" ? (t.days || []).map((d) => DAYS_SHORT[d]).join(", ") : fmtDate(t.date));
+
+  return (
+    <div className="px-4 pb-4">
+      <div className="flex items-center gap-2 py-3">
+        <button className="iconbtn" onClick={onBack} aria-label="Vissza"><ChevronLeft size={18} /></button>
+        <TeamDot color={team.color} size={14} />
+        <h2 className="disp text-xl flex-1 truncate">{team.name} · edzés</h2>
+        <button className="iconbtn" onClick={() => setEditing(true)} aria-label="Edzés szerkesztése"><Pencil size={17} /></button>
+      </div>
+
+      <div className="card p-3 mb-4">
+        <div className="font-semibold tnum">
+          {training.type === "weekly" ? (training.days || []).map((d) => DAYS[d]).join(", ") : fmtDateFull(training.date)} · {training.start}–{training.end}
+        </div>
+        <div className="text-sm flex items-center gap-1" style={{ color: "var(--ink2)" }}>
+          <MapPin size={13} /> {venue?.name || "nincs helyszín"}
+        </div>
+      </div>
+
+      <div className="flex items-center gap-2 mb-2">
+        <Route size={17} style={{ color: "var(--ink2)" }} />
+        <h3 className="disp text-base">Megállók</h3>
+      </div>
+      <div className="seg mb-2">
+        <button className={!own ? "on" : ""} onClick={() => setOwn(false)}>Megegyezik a csapatéval</button>
+        <button className={own ? "on" : ""} onClick={() => setOwn(true)}>Saját lista</button>
+      </div>
+
+      {!own ? (
+        <p className="text-xs mb-4 px-1" style={{ color: "var(--ink2)" }}>
+          Az edzés a csapat állandó megállólistáját használja ({team.stationIds.length} állomás). Válaszd a <b>Saját lista</b> opciót, ha ez az edzés más helyszínen van, vagy más megállókról hozod a gyerekeket.
+        </p>
+      ) : (
+        <>
+          <p className="text-xs mb-3 px-1" style={{ color: "var(--ink2)" }}>
+            Csak erre az edzésre érvényes. A csapat listájának későbbi módosítása ezt már nem írja felül.
+          </p>
+          {sources.length > 0 && (
+            <Field label="Másolás másik edzésből" hint="Felülírja az itteni listát a kiválasztott edzés megállóival és létszámaival.">
+              <select className="inp" value=""
+                onChange={(e) => { const src = byId(sources, e.target.value); if (src) setTraining({ stops: copyOf(src.stops) }); }}>
+                <option value="">— válassz edzést —</option>
+                {sources.map((t) => (
+                  <option key={t.id} value={t.id}>{when(t)} {t.start} · {byId(state.venues, t.venueId)?.name || "?"}</option>
+                ))}
+              </select>
+            </Field>
+          )}
+          <Field label="Szállítandó létszám ezen az edzésen" hint="Tartalék érték: ha nincs megállónkénti bontás, ez számít. Üresen a csapat kerete NEM érvényes erre az edzésre.">
+            <input type="number" min="0" className="inp" value={training.stops.passengerCount ?? ""} placeholder="pl. 7"
+              onChange={(e) => setStops({ passengerCount: e.target.value === "" ? null : Math.max(0, Number(e.target.value) || 0) })} />
+          </Field>
+          <StopListEditor state={state} value={training.stops} onChange={setStops}
+            venueId={training.venueId} venueName={venue?.name} />
+        </>
+      )}
+
+      {editing && (
+        <TrainingForm state={state} team={team} training={training}
+          onCancel={() => setEditing(false)}
+          onSave={(tr) => { update((s) => ({ ...s, trainings: s.trainings.map((x) => (x.id === tr.id ? tr : x)) })); setEditing(false); }} />
       )}
     </div>
   );

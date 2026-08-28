@@ -21,7 +21,9 @@ export function defaultMapCenter(state, item) {
   return { ...CLUB_CENTER, zoom: 13 };
 }
 
-export const locOf = (state, id) => byId(state.stations, id) || byId(state.venues, id);
+/* A telephely is hely: enélkül a legMin nem tudná kiszámolni a hazautat, és a
+   mátrixból is kimaradna — a fizetett idő pont ezen a távolságon múlik. */
+export const locOf = (state, id) => byId(state.stations, id) || byId(state.venues, id) || byId(state.bases, id);
 export const locName = (state, id) => locOf(state, id)?.name || "?";
 
 export function haversineKm(a, b) {
@@ -45,15 +47,17 @@ export function legMin(state, aId, bId) {
   return state.settings.fallbackLegMin ?? 10;
 }
 
+export const allPoints = (state) => [...(state.stations || []), ...(state.venues || []), ...(state.bases || [])];
+
 export const matrixKey = (state) =>
-  [...state.stations, ...state.venues]
+  allPoints(state)
     .filter((p) => p.lat != null && p.lon != null)
     .map((p) => `${p.id}:${p.lat.toFixed(5)},${p.lon.toFixed(5)}`)
     .join(";");
 
 /* Üresjárati mátrix minden koordinátás pontpárra — OSRM egy kérésben, esésnél becslés */
 export async function computeMatrix(state) {
-  const pts = [...state.stations, ...state.venues].filter((p) => p.lat != null && p.lon != null);
+  const pts = allPoints(state).filter((p) => p.lat != null && p.lon != null);
   if (pts.length < 2) throw new Error("Legalább két, koordinátával rendelkező pont kell a mátrixhoz.");
   const durations = {};
   let source = "osrm";

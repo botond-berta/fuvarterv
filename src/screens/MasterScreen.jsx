@@ -1,17 +1,20 @@
 /* Fuvarterv — Törzsadatok — állomások, helyszínek, járművek, sofőrök
-   Kiemelve a fuvarterv.jsx-ből; a viselkedés változatlan. */
+   Kiemelve a fuvarterv.jsx-ből. Egy eltérés az eredetitől: állomásnál és
+   helyszínnél a koordináta kötelező. */
 
 import { useState } from "react";
 import { Plus, Pencil, AlertTriangle, MapPin, X } from "lucide-react";
 import { DAYS_SHORT, uid, byId } from "../domain/constants.js";
 import { normalizePlate, plateExists, deleteGuard } from "../domain/logic.js";
-import { Field, Modal, DangerBtn, PlateChip, EmptyState } from "../ui/base.jsx";
+import { Field, Check, Modal, DangerBtn, PlateChip, EmptyState } from "../ui/base.jsx";
 import { MapPickerModal } from "../ui/MapPicker.jsx";
+import { VignettePill } from "../ui/VignettePill.jsx";
 
 /* ---------- 4.3 TÖRZSADATOK ---------- */
 export const MASTER_TABS = [
   { key: "stations", label: "Állomások", sing: "állomás" },
   { key: "venues", label: "Helyszínek", sing: "helyszín" },
+  { key: "bases", label: "Telephelyek", sing: "telephely" },
   { key: "vehicles", label: "Járművek", sing: "jármű" },
   { key: "drivers", label: "Sofőrök", sing: "sofőr" },
 ];
@@ -44,13 +47,15 @@ export function MasterScreen({ tab, state, update, notice, setNotice }) {
             <div className="flex-1 min-w-0">
               <div className="font-semibold flex items-center gap-2 flex-wrap">
                 {tab === "vehicles"
-                  ? <>{it.name} <PlateChip plate={it.plate} /></>
-                  : <>{it.name}{it.lat != null && it.lon != null && <MapPin size={14} style={{ color: "var(--ok)" }} aria-label="Koordináta megadva" />}</>}
+                  ? <>{it.name} <PlateChip plate={it.plate} />{it.hasVignette && <VignettePill />}</>
+                  : <>{it.name}{tab === "venues" && it.needsVignette && <VignettePill need />}{it.lat != null && it.lon != null
+                      ? <MapPin size={14} style={{ color: "var(--ok)" }} aria-label="Koordináta megadva" />
+                      : <AlertTriangle size={14} style={{ color: "var(--warn)" }} aria-label="Hiányzó koordináta" />}</>}
               </div>
               <div className="text-sm" style={{ color: "var(--ink2)" }}>
                 {tab === "vehicles" && `${it.seats} férőhely (sofőr nélkül)`}
                 {tab === "drivers" && <>{it.phone ? <a href={`tel:${it.phone.replace(/\s/g, "")}`} className="underline">{it.phone}</a> : "nincs telefonszám"}{it.email ? ` · ${it.email}` : ""}</>}
-                {(tab === "stations" || tab === "venues") && (it.address || "nincs cím")}
+                {(tab === "stations" || tab === "venues" || tab === "bases") && (it.address || "nincs cím")}
                 {it.note ? ` · ${it.note}` : ""}
               </div>
             </div>
@@ -73,8 +78,9 @@ export function MasterScreen({ tab, state, update, notice, setNotice }) {
 export function MasterForm({ kind, state, entity, onSave, onCancel }) {
   const blank = {
     stations: { name: "", address: "", note: "", lat: null, lon: null },
-    venues: { name: "", address: "", note: "", lat: null, lon: null },
-    vehicles: { name: "", plate: "", seats: 8, note: "" },
+    venues: { name: "", address: "", note: "", lat: null, lon: null, needsVignette: false },
+    bases: { name: "", address: "", note: "", lat: null, lon: null },
+    vehicles: { name: "", plate: "", seats: 8, note: "", hasVignette: false },
     drivers: { name: "", phone: "", email: "", note: "", wage: 3000, minShiftMin: 120, availability: [] },
   }[kind];
   const [f, setF] = useState(entity || blank);
@@ -82,13 +88,21 @@ export function MasterForm({ kind, state, entity, onSave, onCancel }) {
   const [mapOpen, setMapOpen] = useState(false);
   const meta = MASTER_TABS.find((t) => t.key === kind);
   const singCap = meta.sing.charAt(0).toUpperCase() + meta.sing.slice(1);
+  /* Állomás és helyszín koordináta nélkül nem menthető: a legMin ilyenkor a
+     fallbackLegMin-re esik vissza, a mátrixból pedig kimarad a pont — az
+     optimalizáló órákat tervez rossz menetidőkkel, jelzés nélkül. A régi,
+     koordináta nélküli rekordok a listában figyelmeztetést kapnak, és a
+     szerkesztésük is csak koordinátával zárható le. */
+  const needsCoord = kind === "stations" || kind === "venues" || kind === "bases";
+  const hasCoord = f.lat != null && f.lon != null;
 
   const trySave = () => {
+    if (needsCoord && !hasCoord) return;
     if (kind === "vehicles") {
       const p = normalizePlate(f.plate);
       if (!p) { setPlateErr("A rendszám kötelező."); return; }
       if (plateExists(state, p, entity?.id)) { setPlateErr(`Ez a rendszám már létezik: ${p}`); return; }
-      onSave({ ...f, plate: p, seats: Math.max(1, Number(f.seats) || 1) });
+      onSave({ ...f, plate: p, seats: Math.max(1, Number(f.seats) || 1), hasVignette: !!f.hasVignette, baseId: f.baseId || null });
       return;
     }
     if (kind === "drivers") {
@@ -107,22 +121,27 @@ export function MasterForm({ kind, state, entity, onSave, onCancel }) {
   return (
     <Modal title={entity ? `${singCap} szerkesztése` : `Új ${meta.sing}`} onClose={onCancel}>
       <Field label="Név *"><input className="inp" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></Field>
-      {(kind === "stations" || kind === "venues") && (
+      {needsCoord && (
         <>
           <Field label="Cím"><input className="inp" value={f.address} onChange={(e) => setF({ ...f, address: e.target.value })} /></Field>
-          <Field label="Koordináta" hint="A térképen koppintással jelölöd ki, a jelölő húzható.">
+          <Field label="Koordináta *" hint="Kötelező. A térképen koppintással jelölöd ki, a jelölő húzható; új kijelölés felülírja a korábbit.">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="tnum" style={{ fontSize: 16 }}>
-                {f.lat != null && f.lon != null ? `${Number(f.lat).toFixed(5)}, ${Number(f.lon).toFixed(5)}` : "nincs megadva"}
+                {hasCoord ? `${Number(f.lat).toFixed(5)}, ${Number(f.lon).toFixed(5)}` : "nincs megadva"}
               </span>
               <button className="btn btn-ghost" onClick={() => setMapOpen(true)}>
-                <MapPin size={16} /> Kijelölés térképen
+                <MapPin size={16} /> {hasCoord ? "Módosítás térképen" : "Kijelölés térképen"}
               </button>
-              {f.lat != null && f.lon != null && (
-                <button className="iconbtn" aria-label="Koordináta törlése" onClick={() => setF({ ...f, lat: null, lon: null })}><X size={16} /></button>
-              )}
             </div>
           </Field>
+          {!hasCoord && (
+            <div className="banner banner-warn mb-3"><AlertTriangle size={18} />A koordináta kötelező — jelöld ki a térképen a mentéshez.</div>
+          )}
+          {kind === "venues" && (
+            <Check label="Csak országos matricás autóval érhető el"
+              hint="Autópályán megközelíthető helyszín. A beosztás ide csak matricás járművet oszt be, és jelzi, ha nincs szabad."
+              checked={f.needsVignette} onChange={(b) => setF({ ...f, needsVignette: b })} />
+          )}
         </>
       )}
       {kind === "vehicles" && (
@@ -137,6 +156,15 @@ export function MasterForm({ kind, state, entity, onSave, onCancel }) {
           {f.plate && !plateErr && <div className="mb-3">Előnézet: <PlateChip plate={normalizePlate(f.plate)} /></div>}
           <Field label="Férőhelyek száma (sofőr nélkül) *">
             <input type="number" min="1" className="inp" value={f.seats} onChange={(e) => setF({ ...f, seats: e.target.value })} />
+          </Field>
+          <Check label="Van országos autópálya-matricája"
+            hint="Matricás helyszínre a beosztás csak ilyen járművet oszt be."
+            checked={f.hasVignette} onChange={(b) => setF({ ...f, hasVignette: b })} />
+          <Field label="Telephely" hint="Innen indul és ide tér vissza a busz — a fizetett idő ettől a ponttól számít. Ha a sofőr a lakcímén tartja, válaszd azt.">
+            <select className="inp" value={f.baseId || ""} onChange={(e) => setF({ ...f, baseId: e.target.value || null })}>
+              <option value="">— a klub telephelye —</option>
+              {state.bases.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+            </select>
           </Field>
         </>
       )}
@@ -193,7 +221,7 @@ export function MasterForm({ kind, state, entity, onSave, onCancel }) {
       )}
       <Field label="Megjegyzés"><input className="inp" value={f.note} onChange={(e) => setF({ ...f, note: e.target.value })} /></Field>
       <div className="flex gap-2 mt-4">
-        <button className="btn btn-pri flex-1" disabled={!f.name.trim()} onClick={trySave}>Mentés</button>
+        <button className="btn btn-pri flex-1" disabled={!f.name.trim() || (needsCoord && !hasCoord)} onClick={trySave}>Mentés</button>
         <button className="btn btn-ghost" onClick={onCancel}>Mégse</button>
       </div>
       {mapOpen && (
