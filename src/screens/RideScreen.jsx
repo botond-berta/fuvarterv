@@ -6,7 +6,7 @@ import { useState, useMemo, useRef } from "react";
 import { ChevronLeft, ChevronRight, GripVertical, ArrowUp, ArrowDown, AlertTriangle, MapPin, Clock, X, Flag, Zap } from "lucide-react";
 import { DAYS, uid, byId } from "../domain/constants.js";
 import { mondayOf, toISO, addDays, timeToMin, minToTime, fmtDate, fmtDateFull, fmtWeekRange } from "../domain/datetime.js";
-import { weekOccurrences, findRides, findConflicts, rideWindow, seatSum, venueDepartMin, legFor } from "../domain/logic.js";
+import { weekOccurrences, findRides, findConflicts, rideWindow, seatSum, venueDepartMin, legFor, venueNeedsVignette } from "../domain/logic.js";
 import { planOda, planVissza, bestStationOrder } from "../domain/optimizer.js";
 import { Field, DangerBtn, EmptyState, InfoDot } from "../ui/base.jsx";
 import { OccCard } from "../ui/OccCard.jsx";
@@ -93,6 +93,8 @@ export function RideForm({ state, update, training, dayIdx, dateISO, existing, o
   const dirLocked = !!existing;
 
   const vehicle = byId(state.vehicles, draft.vehicleId);
+  const needsVignette = venueNeedsVignette(state, training.venueId);
+  const hasSchedule = ((state.assignments?.[dayIdx]?.chains) || []).length > 0;
   const conflicts = useMemo(() => findConflicts(state, draft), [state, draft]);
   const vConf = conflicts.filter((c) => c.type === "vehicle");
   const dConf = conflicts.filter((c) => c.type === "driver");
@@ -197,6 +199,10 @@ export function RideForm({ state, update, training, dayIdx, dateISO, existing, o
             <MapPin size={14} /> {venue?.name} <span>· {fmtDateFull(dateISO)}</span>
           </div>
           {draft.source === "schedule" && <div className="text-xs mt-1" style={{ color: "var(--ink2)" }}>Beosztásból generált fuvar — kézi módosítás után az újragenerálás felülírja.</div>}
+          {/* A withGeneratedRides a nap érintett edzéseinek MINDEN fuvarját lecseréli,
+              tehát az itt kézzel választott jármű is elveszik a következő generálásnál.
+              Csak akkor szólunk, ha van mentett beosztás a napra — különben nincs mi felülírja. */}
+          {hasSchedule && <div className="text-xs mt-1" style={{ color: "var(--warn)" }}>Erre a napra van mentett beosztás: a „Fuvarok generálása” ezt a fuvart felülírja. Ha a járművet rögzíteni akarod, a Beosztás fülön zárold a feladatot.</div>}
         </div>
       </div>
 
@@ -215,13 +221,17 @@ export function RideForm({ state, update, training, dayIdx, dateISO, existing, o
       <Field label="Jármű *">
         <select className="inp" value={draft.vehicleId} onChange={(e) => setDraft({ ...draft, vehicleId: e.target.value })}>
           <option value="">– válassz járművet –</option>
-          {state.vehicles.map((v) => <option key={v.id} value={v.id}>{v.name} ({v.plate}) · {v.seats} fő</option>)}
+          {state.vehicles.map((v) => <option key={v.id} value={v.id}>{v.name} ({v.plate}) · {v.seats} fő{v.hasVignette ? " · matricás" : ""}</option>)}
         </select>
       </Field>
       {vConf.map((c, i) => (
         <div key={i} className="banner banner-danger mb-3"><AlertTriangle size={18} />
           <span>A jármű ekkor máshol foglalt: <b>{confText(c)}</b></span></div>
       ))}
+      {needsVignette && vehicle && !vehicle.hasVignette && (
+        <div className="banner banner-warn mb-3"><AlertTriangle size={18} />
+          <span><b>{venue?.name}</b> csak országos matricás autóval érhető el, a(z) {vehicle.plate} viszont nincs matricával.</span></div>
+      )}
 
       <Field label="Sofőr *">
         <select className="inp" value={draft.driverId} onChange={(e) => setDraft({ ...draft, driverId: e.target.value })}>

@@ -32,9 +32,10 @@ export { legMin, matrixKey, computeMatrix } from "./src/domain/geo.js";
 export {
   normalizePlate, plateExists, rideWindow, findConflicts, venueDepartMin, deleteGuard,
   teamLeg, legFor, legSource, hasOwnStops,
+  venueNeedsVignette, taskNeedsVignette, chainNeedsVignette, vignetteVenues,
 } from "./src/domain/logic.js";
 export {
   bestStationOrder, teamRouteOrder, legRouteOrder, splitStationsByCapacity, planOda, planVissza,
-  teamPax, legPax, genDayTasks, resolveDay, mkChain, dayStats, driverAvailableFor,
+  teamPax, legPax, genDayTasks, resolveDay, mkChain, dayStats, driverAvailableFor, assignResources,
   optimizeDay, withGeneratedRides,
 } from "./src/domain/optimizer.js";

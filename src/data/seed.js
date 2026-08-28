@@ -11,8 +11,11 @@ import { DEFAULT_SETTINGS } from "./storage.js";
 export function ensureShape(s) {
   s.settings = { ...DEFAULT_SETTINGS, ...(s.settings || {}) };
   s.stations = (s.stations || []).map((x) => ({ ...x, lat: x.lat ?? null, lon: x.lon ?? null }));
-  s.venues = (s.venues || []).map((x) => ({ ...x, lat: x.lat ?? null, lon: x.lon ?? null }));
-  s.vehicles = (s.vehicles || []).map((v) => ({ ...v, seats: Number(v.seats) || 0, plate: v.plate || "" }));
+  /* needsVignette: a helyszín csak országos autópálya-matricás autóval érhető el.
+     A jelölés szándékosan csak a helyszíneken van, a megállókon nem — a matricát
+     a célpont kényszeríti ki, és egy mezőt kell csak karbantartani. */
+  s.venues = (s.venues || []).map((x) => ({ ...x, lat: x.lat ?? null, lon: x.lon ?? null, needsVignette: !!x.needsVignette }));
+  s.vehicles = (s.vehicles || []).map((v) => ({ ...v, seats: Number(v.seats) || 0, plate: v.plate || "", hasVignette: !!v.hasVignette }));
   /* email: a sofőr belépési e-mail-címe (kisbetűsen) — sofőr-szerepkörű
      felhasználónál ez alapján nyílik alapból a saját napiterve. */
   s.drivers = (s.drivers || []).map((d) => ({ ...d, wage: d.wage ?? 3000, minShiftMin: d.minShiftMin ?? 120, availability: d.availability || [], preferredVehicleId: d.preferredVehicleId ?? null, email: d.email || "" }));
@@ -75,19 +78,22 @@ export function seedState() {
     venues: [
       { id: "vZAK", name: "Zákányszék spcs.", address: "Sportcsarnok, Zákányszék", note: "", lat: 46.2745, lon: 19.889 },
       { id: "vKIS", name: "Kistelek spcs.", address: "Sportcsarnok, Kistelek", note: "", lat: 46.4703, lon: 19.9793 },
-      { id: "vALG", name: "Algyő spcs.", address: "Sportcsarnok, Algyő", note: "", lat: 46.3327, lon: 20.2069 },
+      /* Példa a matricakötelezettségre: Algyő az autópályán át közelíthető meg
+         kényelmesen, ezért ide csak országos matricás autót szabad beosztani.
+         A valós adatban a helyszíneknél állítható. */
+      { id: "vALG", name: "Algyő spcs.", address: "Sportcsarnok, Algyő", note: "", lat: 46.3327, lon: 20.2069, needsVignette: true },
       { id: "vGEL", name: "Újszeged Gellért", address: "Újszeged, Szeged", note: "Pontosítsd a térképen", lat: 46.245, lon: 20.1745 },
       { id: "vMORA", name: "Mórahalom spcs.", address: "Sportcsarnok, Mórahalom", note: "", lat: 46.2172, lon: 19.883 },
       { id: "vBAL", name: "Balástya terem", address: "Iskola tornaterme, Balástya", note: "", lat: 46.4262, lon: 20.0046 },
     ],
     vehicles: [
-      { id: "jPAK543", name: "Kisbusz 1", plate: "PAK-543", seats: 8, note: "Országos engedély · Sipos Zsolti" },
-      { id: "jPAK544", name: "Kisbusz 2", plate: "PAK-544", seats: 8, note: "Megyei engedély · Vincze Gábor" },
-      { id: "jPAK545", name: "Kisbusz 3", plate: "PAK-545", seats: 8, note: "Megyei engedély · Habenyák/Csomor" },
-      { id: "jPPC574", name: "Kisbusz 4", plate: "PPC-574", seats: 8, note: "Országos engedély · Nagy Ferenc" },
-      { id: "jPWF852", name: "Kisbusz 5", plate: "PWF-852", seats: 8, note: "Országos engedély · Gera Józsi" },
-      { id: "jSLP752", name: "Kisbusz 6", plate: "SLP-752", seats: 8, note: "Országos engedély · Kolumbán Józsi" },
-      { id: "jSLP753", name: "Kisbusz 7", plate: "SLP-753", seats: 8, note: "Megyei engedély · Zámbó Zsolti" },
+      { id: "jPAK543", name: "Kisbusz 1", plate: "PAK-543", seats: 8, hasVignette: true, note: "Országos engedély · Sipos Zsolti" },
+      { id: "jPAK544", name: "Kisbusz 2", plate: "PAK-544", seats: 8, hasVignette: false, note: "Megyei engedély · Vincze Gábor" },
+      { id: "jPAK545", name: "Kisbusz 3", plate: "PAK-545", seats: 8, hasVignette: false, note: "Megyei engedély · Habenyák/Csomor" },
+      { id: "jPPC574", name: "Kisbusz 4", plate: "PPC-574", seats: 8, hasVignette: true, note: "Országos engedély · Nagy Ferenc" },
+      { id: "jPWF852", name: "Kisbusz 5", plate: "PWF-852", seats: 8, hasVignette: true, note: "Országos engedély · Gera Józsi" },
+      { id: "jSLP752", name: "Kisbusz 6", plate: "SLP-752", seats: 8, hasVignette: true, note: "Országos engedély · Kolumbán Józsi" },
+      { id: "jSLP753", name: "Kisbusz 7", plate: "SLP-753", seats: 8, hasVignette: false, note: "Megyei engedély · Zámbó Zsolti" },
     ],
     drivers: [
       { id: "dSIP", name: "Sipos Zsolti", phone: "", note: "Állandó busz: PAK-543", wage: 3000, minShiftMin: 120, availability: [], preferredVehicleId: "jPAK543" },
