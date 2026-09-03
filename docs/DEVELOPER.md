@@ -13,6 +13,13 @@ bus and which driver does which run, at what time, for the lowest cost.
 > but many domain words are Hungarian. A glossary at the end maps the Hungarian
 > words to English so the code reads clearly.
 
+> **Where this fits.** This document is the *how it works* reference. For the
+> *why* — layers and dependency rules, invariants, the optimizer's design, the
+> security model and the known risks — see [`ARCHITECTURE.md`](ARCHITECTURE.md);
+> for the decision log see [`DECISIONS.md`](DECISIONS.md), and for the day-to-day
+> workflow and checklists [`MAINTENANCE.md`](MAINTENANCE.md). Index:
+> [`docs/README.md`](README.md).
+
 ---
 
 ## Table of contents
@@ -42,37 +49,41 @@ bus and which driver does which run, at what time, for the lowest cost.
 
 ## 1. The big picture
 
-The app has an unusual shape you must understand before anything else:
+The app has a history you must understand before anything else.
 
-**Almost the entire application lives in one file: `fuvarterv.jsx`** (about 2,800
-lines). It was originally built as a "Claude artifact" — a self-contained React
-component that runs in a sandbox. The file is deliberately kept as a single,
-portable unit. It is organized into clearly labelled layers (data, domain logic,
-optimizer, UI base, screens, App) so it *could* be split into real modules later,
-but today it is one file.
+It was originally built as a "Claude artifact" — a single, self-contained React
+file (`fuvarterv.jsx`, ~2,800 lines) running in a sandbox. That file has since been
+**split into real modules under `src/`**, organized in layers (data → domain → ui →
+screens → App). `fuvarterv.jsx` itself is now a ~40-line **barrel**: it re-exports
+`src/App.jsx` plus the pure functions the tests import, so the split broke no
+imports. Write new code in the right module, never in the barrel.
 
-Around that one file sits a small **committed Vite project** (in `src/`, plus
-config files at the repo root). This wrapper does three jobs:
+Around the app sits the same small **committed Vite project** (`src/` plus the
+config files at the repo root), which does three jobs:
 
-1. It builds and serves `fuvarterv.jsx` for local development and for production.
+1. It builds and serves the app for local development and for production.
 2. It adds a **login screen** in front of the app.
 3. It swaps the app's storage from a browser sandbox store to a **Supabase**
    database, so data is durable and shared across devices.
 
-The key design rule:
+The key design rule survived the split:
 
-> **`fuvarterv.jsx` never imports Supabase, auth, or anything about hosting.**
+> **The app never imports Supabase, auth, or anything about hosting.**
 > It only ever talks to a global object called `window.storage`. The wrapper
 > installs a Supabase-backed `window.storage` before the app mounts. This keeps
-> the big file portable — you could drop it back into the artifact sandbox and it
+> the app portable — you could drop it back into the artifact sandbox and it
 > would still work.
 
 So there are two "sides":
 
 | Side | Files | Knows about |
 |------|-------|-------------|
-| **The app** | `fuvarterv.jsx` | Teams, buses, drivers, routes, the optimizer, the UI. Talks only to `window.storage`. |
-| **The wrapper** | `src/*`, config files | Supabase, login, build, deploy. Provides `window.storage`. |
+| **The app** | `fuvarterv.jsx` (barrel) + `src/App.jsx`, `src/screens/`, `src/ui/`, `src/domain/`, `src/data/` | Teams, buses, drivers, routes, the optimizer, the UI. Talks only to `window.storage`. |
+| **The wrapper** | `src/main.jsx`, `src/AuthGate.jsx`, `src/supabase*.js`, `src/RestorePanel.jsx`, `src/ErrorBoundary.jsx`, config files | Supabase, login, build, deploy. Provides `window.storage`. |
+
+> The rationale behind this shape — and the rules that keep the layering intact —
+> is in [`ARCHITECTURE.md`](ARCHITECTURE.md) §4 and [`DECISIONS.md`](DECISIONS.md)
+> ADR-03/ADR-04.
 
 ---
 
@@ -81,9 +92,9 @@ So there are two "sides":
 - **React 18** — UI library. Function components and hooks only (`useState`,
   `useEffect`, `useMemo`, `useRef`). No Redux, no router library.
 - **Vite 6** — dev server and production bundler.
-- **Tailwind CSS v4** (via the `@tailwindcss/vite` plugin) — used lightly. Most
-  styling is a hand-written CSS string embedded inside `fuvarterv.jsx` (see
-  [§12](#12-the-user-interface)).
+- **Tailwind CSS v4** (via the `@tailwindcss/vite` plugin) — used lightly, for
+  layout utilities. Most styling is hand-written CSS in `src/ui/styles.css` on top
+  of the `src/theme.css` tokens (see [§12](#12-the-user-interface)).
 - **lucide-react** — icon set.
 - **@supabase/supabase-js v2** — client for the Supabase backend (database + auth).
 - **Leaflet + OpenStreetMap** — map, lazy-loaded only when the map picker opens.

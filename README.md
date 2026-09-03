@@ -97,6 +97,17 @@ turns out to need it, adding `'unsafe-inline'` back to `style-src` is a one-line
 When deployed, the full OSM map, the Nominatim search and the OSRM matrix all work — inside
 the artifact preview these are restricted by CSP, which is what the fallbacks are for.
 
+## Documentation
+
+| Document | What it answers |
+|---|---|
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | **Why is it built this way?** Layers and dependency rules, invariants, state and save cycle, concurrency, security model, the optimizer pipeline, known risks. (Hungarian) |
+| [`docs/DECISIONS.md`](docs/DECISIONS.md) | **What was decided, and what was rejected?** 28 short architecture decision records. (Hungarian) |
+| [`docs/MAINTENANCE.md`](docs/MAINTENANCE.md) | **What do I run and check?** Workflow, conventions, review and deploy checklists, troubleshooting. (Hungarian) |
+| [`docs/DEVELOPER.md`](docs/DEVELOPER.md) | **How does it work?** File-by-file, field-by-field reference. (English) |
+
+Start at [`docs/README.md`](docs/README.md) for a suggested reading order.
+
 ## Architecture
 
 Real modules, with the dependencies flowing one way (`screens → ui → domain → data`).
