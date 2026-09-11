@@ -1,20 +1,23 @@
-/* Fuvarterv — Sofőr nézet — nagy betűs napi útvonal
-   Kiemelve a fuvarterv.jsx-ből; a viselkedés változatlan. */
+/* Fuvarterv — the driver view: one day's route, in large type.
+
+   This is the only screen a driver-role user sees, and it is read-only. Designed for
+   a phone propped on a dashboard, so everything is big and the next stop is obvious
+   at a glance. */
 
 import { useState, useEffect, useMemo } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { DAYS, byId } from "../domain/constants.js";
-import { mondayOf, toISO, addDays, weekdayIdx, timeToMin, minToTime, fmtDate } from "../domain/datetime.js";
-import { weekOccurrences, seatSum, venueDepartMin } from "../domain/logic.js";
+import { toISO, addDays, weekdayIdx, timeToMin, minToTime, fmtDate } from "../domain/datetime.js";
+import { seatSum, venueDepartMin } from "../domain/logic.js";
 import { PlateChip, TeamDot, EmptyState, InfoDot } from "../ui/base.jsx";
 import { parseISO } from "../domain/datetime.js";
 import { rideWindow } from "../domain/logic.js";
 
-/* ---------- 4.5 SOFŐR NÉZET ---------- */
+/* ---------- Driver view ---------- */
 
-/* A belépett felhasználóhoz tartozó sofőr: az Adatok fülön a sofőrhöz megadott
-   e-mail-cím köti össze a fiókkal. Egyezés híján az első sofőr — így a nézet
-   e-mail nélkül (adminként böngészve, tesztben) pontosan úgy indul, mint eddig. */
+/* The driver matching the signed-in user, linked by the e-mail address entered on
+   the driver's record. With no match it falls back to the first driver, so browsing
+   as an admin (or in a test, with no e-mail at all) behaves exactly as before. */
 export function defaultDriverId(drivers, myEmail) {
   const em = (myEmail || "").trim().toLowerCase();
   const mine = em && drivers.find((d) => (d.email || "").trim().toLowerCase() === em);
@@ -26,9 +29,9 @@ export function DriverScreen({ state, myEmail }) {
   const driverId = byId(state.drivers, selDriverId) ? selDriverId : (state.drivers[0]?.id || "");
   const [dateISO, setDateISO] = useState(() => toISO(new Date()));
   const todayISO = toISO(new Date());
-  /* Percenként újrarenderelünk: e nélkül a "KÖVETKEZŐ" jelölés és a múltbeli
-     megállók halványítása a képernyő megnyitásának percén ragadt, vagyis a
-     nézet fő funkciója egy letett telefonon sosem lépett tovább. */
+  /* Re-render every minute. Without it the "next stop" marker and the dimming of
+     past stops froze at the minute the screen was opened, so on a phone left on a
+     dashboard the view's whole point never advanced. */
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 60000);

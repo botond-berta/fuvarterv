@@ -1,17 +1,16 @@
-/* Fuvarterv — koordináták, távolság és az üresjárati mátrix
-   Kiemelve a fuvarterv.jsx monolitból; a viselkedés változatlan. */
+/* Fuvarterv — coordinates, distance, and the deadhead matrix.
 
-/* Ez a modul levél a domain gráfban: a logic (rideWindow) és az optimizer
-   (genDayTasks) is a legMin-t használja, így ha bármelyikükben maradna, a
-   kettő körkörösen függene egymástól. */
+   This module is a LEAF in the domain graph, and deliberately so: both logic
+   (rideWindow) and optimizer (genDayTasks) need legMin, so if it lived in either
+   of them the two would depend on each other in a cycle. */
 
 import { byId } from "./constants.js";
 
-/* A klub környéke — alapértelmezett térképközép (Zákányszék), igény szerint átírható */
+/* Default map centre: the club's own area. Change it to suit your club. */
 export const CLUB_CENTER = { lat: 46.2745, lon: 19.889 };
 export const r5 = (n) => Math.round(n * 1e5) / 1e5;
 
-/* Térkép kezdőnézete: az elem koordinátája → utolsó ismert állomás → klubközéppont */
+/* Opening map view: the item's own coordinate, else the last known station, else the club centre. */
 export function defaultMapCenter(state, item) {
   if (item && item.lat != null && item.lon != null) return { lat: item.lat, lon: item.lon, zoom: 16 };
   for (let i = state.stations.length - 1; i >= 0; i--) {
@@ -21,8 +20,9 @@ export function defaultMapCenter(state, item) {
   return { ...CLUB_CENTER, zoom: 13 };
 }
 
-/* A telephely is hely: enélkül a legMin nem tudná kiszámolni a hazautat, és a
-   mátrixból is kimaradna — a fizetett idő pont ezen a távolságon múlik. */
+/* Depots are locations too. Without them legMin could not price the trip home
+   and they would be missing from the matrix — and paid time hangs on exactly
+   that distance. */
 export const locOf = (state, id) => byId(state.stations, id) || byId(state.venues, id) || byId(state.bases, id);
 export const locName = (state, id) => locOf(state, id)?.name || "?";
 
@@ -33,15 +33,16 @@ export function haversineKm(a, b) {
   return 2 * R * Math.asin(Math.sqrt(s));
 }
 
-/* Két pont közti (üresjárati) menetidő percben: mátrix → légvonalas becslés → alapérték */
+/* Deadhead time between two points, in minutes: matrix, else straight-line estimate, else the fallback. */
 export function legMin(state, aId, bId) {
   if (!aId || !bId || aId === bId) return 0;
   const m = state.matrix?.durations?.[`${aId}|${bId}`];
   if (m != null) return m;
   const A = locOf(state, aId), B = locOf(state, bId);
-  // Mindkét koordináta kell. Csak a lat-ot ellenőrizve a haversine NaN-t ad, és a
-  // Math.max(1, NaN) is NaN — az végigfut a menetrenden, minden összehasonlítást
-  // hamissá tesz (nem épül él, nem látszik ütközés), és "NaN:NaN" időket ír ki.
+  // BOTH coordinates are required. Checking only lat lets haversine return NaN,
+  // and Math.max(1, NaN) is NaN too — that then runs through the whole timetable,
+  // makes every comparison false (no edge is built, no clash is visible), and
+  // prints times as "NaN:NaN".
   if (A && B && A.lat != null && A.lon != null && B.lat != null && B.lon != null)
     return Math.max(1, Math.round((haversineKm(A, B) / (state.settings.estSpeedKmh || 30)) * 60) + 2);
   return state.settings.fallbackLegMin ?? 10;
@@ -55,7 +56,7 @@ export const matrixKey = (state) =>
     .map((p) => `${p.id}:${p.lat.toFixed(5)},${p.lon.toFixed(5)}`)
     .join(";");
 
-/* Üresjárati mátrix minden koordinátás pontpárra — OSRM egy kérésben, esésnél becslés */
+/* Deadhead matrix for every pair of located points: one OSRM request, with a straight-line estimate as the fallback. */
 export async function computeMatrix(state) {
   const pts = allPoints(state).filter((p) => p.lat != null && p.lon != null);
   if (pts.length < 2) throw new Error("Legalább két, koordinátával rendelkező pont kell a mátrixhoz.");
@@ -70,7 +71,7 @@ export async function computeMatrix(state) {
     js.durations.forEach((row, i) => row.forEach((sec, j) => {
       if (i !== j && sec != null) durations[`${pts[i].id}|${pts[j].id}`] = Math.max(1, Math.round(sec / 60));
     }));
-  } catch (e) {
+  } catch {
     source = "estimate";
     for (const a of pts) for (const b of pts) {
       if (a.id === b.id) continue;

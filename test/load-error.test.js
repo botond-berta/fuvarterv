@@ -1,5 +1,5 @@
 import { describe, test, expect, vi, beforeEach } from "vitest";
-import { isNotFound } from "../fuvarterv.jsx";
+import { isNotFound } from "../src/data/storage.js";
 
 /*
  * Proves task 1: a read failure that happens *after* the pre-flight read (i.e.

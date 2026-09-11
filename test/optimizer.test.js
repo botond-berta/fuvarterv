@@ -1,7 +1,7 @@
 import { describe, test, expect } from "vitest";
-import {
-  optimizeDay, genDayTasks, mondayOf, minToTime, driverAvailableFor, legMin,
-} from "../fuvarterv.jsx";
+import { mondayOf, minToTime } from "../src/domain/datetime.js";
+import { legMin } from "../src/domain/geo.js";
+import { optimizeDay, genDayTasks, driverAvailableFor } from "../src/domain/optimizer.js";
 
 /*
  * Property tests for optimizeDay over randomly generated states, checking the
@@ -43,9 +43,9 @@ function genState(rng) {
     const stationCounts = {};
     for (const sid of subset) stationCounts[sid] = ri(1, 4);
     const venueId = pick(venues).id;
-    /* Egyes csapatok saját visszaút-listát kapnak, hogy az invariánsok az
-       irányonként eltérő megállókra és az irányonként eltérő buszfelosztásra is
-       fussanak — nem csak a tükrözött esetre. */
+    /* Some teams get their own return list, so the invariants also run against
+       direction-specific stops and direction-specific bus splits, not just the
+       mirrored case. */
     let returnStationIds = null, returnStationCounts = {};
     if (rng() < 0.35) {
       const rk = ri(1, nS);

@@ -1,191 +1,184 @@
-# Fuvarterv — karbantartási kézikönyv
+# Fuvarterv — maintenance handbook
 
-Ez a gyakorlati dokumentum: mit futtass, mit ellenőrizz, és mire figyelj, amikor
-hozzányúlsz a kódhoz. A „miért így van” a [`ARCHITECTURE.md`](ARCHITECTURE.md) és a
-[`DECISIONS.md`](DECISIONS.md) dolga.
+The practical document: what to run, what to check, and what to watch out for when you
+touch the code. The "why is it like this" belongs to
+[`ARCHITECTURE.md`](ARCHITECTURE.md) and [`DECISIONS.md`](DECISIONS.md).
 
 ---
 
-## 1. Fejlesztői környezet
+## 1. Development environment
 
-Node **20+** kell (`engines` a `package.json`-ban; a Vercel is ezt olvassa).
+Node **20 or newer** (`engines` in `package.json`, which Vercel reads too).
 
 ```bash
-cp .env.example .env      # VITE_SUPABASE_URL és VITE_SUPABASE_ANON_KEY
+cp .env.example .env      # VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY
 npm install
 npm run dev               # http://localhost:5173
 ```
 
-Vagy egy lépésben, Node telepítésével együtt: `./run-local.sh`.
+Or in one step, installing Node as well: `./run-local.sh`.
 
-| Parancs | Mit csinál |
+| Command | What it does |
 |---|---|
-| `npm run dev` | Vite fejlesztői szerver |
-| `npm test` | Vitest, egyszeri futás (19 fájl, 168 teszt) |
+| `npm run dev` | the Vite dev server |
+| `npm test` | Vitest, one run (19 files, 168 tests) |
 | `npm run lint` | ESLint (flat config) |
-| `npm run build` | production build a `dist/`-be |
-| `npm run preview` | a buildelt bundle kiszolgálása |
+| `npm run build` | a production build into `dist/`, with sourcemaps |
+| `npm run preview` | serve the built bundle |
 
-A CI (`.github/workflows/ci.yml`) minden ághoz és PR-hez lefuttatja a
-`npm ci → lint → test → build` sort **Node 20-on és 22-n**. Az `npm ci` szigorúan a
-lockfile-ból telepít — ez az a lépés, ami megakadályozza, hogy törött lockfile jusson
-el egy deployig.
+CI (`.github/workflows/ci.yml`) runs `npm ci → lint → test → build` for every branch and
+pull request, on **Node 20 and 22**. `npm ci` installs strictly from the lockfile, which
+is the step that stops a broken lockfile reaching a deployment.
 
-> **Supabase nélkül is fejleszthetsz** korlátozottan: a tesztek hamis `window.storage`
-> tárolót adnak, és az app konfiguráció nélkül a „Hiányzik a beállítás” képernyőt
-> mutatja. Valódi kattintgatáshoz kell egy Supabase-projekt (README, „Supabase setup”).
+> **You can develop without Supabase**, up to a point: the tests supply a stub
+> `window.storage`, and with no configuration the app shows its "missing configuration"
+> screen. Real clicking around needs a Supabase project (see the README).
 
 ---
 
-## 2. Kódkonvenciók
+## 2. Code conventions
 
-**Fájlfej.** Minden modul egy rövid fejléccel kezdődik: mi ez a fájl, és mi a szerepe
-a rendszerben. Új modulnál tartsd a formát.
+**File headers.** Every module opens with a short header: what this file is and what its
+role in the system is. Keep the format for new modules.
 
-**A komment a *miért*.** Ebben a kódbázisban a hosszú kommentek nem magyarázkodás,
-hanem **a kizárt hibás viselkedés leírása**:
+**A comment explains *why*.** In this codebase a long comment is not an apology for
+unclear code. It is **a description of the wrong behaviour that was ruled out**:
 
 ```js
-// Mindkét koordináta kell. Csak a lat-ot ellenőrizve a haversine NaN-t ad, és a
-// Math.max(1, NaN) is NaN — az végigfut a menetrenden, minden összehasonlítást
-// hamissá tesz (nem épül él, nem látszik ütközés), és "NaN:NaN" időket ír ki.
+// BOTH coordinates are required. Checking only lat lets haversine return NaN,
+// and Math.max(1, NaN) is NaN too — that then runs through the whole timetable,
+// makes every comparison false (no edge is built, no clash is visible), and
+// prints times as "NaN:NaN".
 ```
 
-Ha egy hibát javítasz, a javítás mellé kerüljön egy ilyen komment **és** egy teszt.
-Az, hogy „mit csinál a kód”, olvasható a kódból; az, hogy „mi történt, amikor nem így
-volt”, csak innen.
+When you fix a bug, the fix gets a comment like that **and** a test. What the code does is
+readable from the code; what happened when it did not do that is only readable here.
 
-**Nyelv.** Felület és kommentek magyarul, azonosítók angolosan; a domain-szavak
-(`oda`, `vissza`, `telephely`) magyarok maradnak (ADR-26).
+**Language.** The user interface is Hungarian, everything else is English (ADR-25). Two
+Hungarian words stay as stored data values and must not be renamed: the ride directions
+`oda` and `vissza`, and the role `sofor`.
 
-**Stílus.** Kettő szóköz behúzás, pontosvesszők, dupla idézőjel, sorvégi vessző a
-többsoros literálokban — kövesd a környező kódot. Nincs Prettier-konfiguráció, a lint
-csak a valódi hibákat fogja (`no-undef`, `react-hooks/*`).
+**Style.** Two-space indentation, semicolons, double quotes, trailing commas in multi-line
+literals. Follow the surrounding code. There is no Prettier config, and the lint only
+catches real defects.
 
 **React.**
-- Komponenst **modulszinten** definiálj; renderfüggvényen belül definiált komponens
-  minden rendereléskor új típus, és elveszti az állapotát.
-- Szerkesztő űrlap piszkozatát `key` propal újramountolva frissítsd, ne kézi
-  szinkronizálással.
-- Az `update(fn)` mindig **tiszta** transzformáció, nem helyben módosítás.
+- Define components at **module level**. A component defined inside a render function is a
+  new type on every render and loses its state.
+- Refresh an editor form's draft by remounting with a `key` prop, not by hand-syncing.
+- `update(fn)` is always a **pure** transform, never an in-place mutation.
 
-**Domain.** A `src/domain/` maradjon tiszta: nincs `window`, nincs hálózat, nincs
-`Math.random()` a döntési utakon (az optimalizálás determinizmusa ezen áll).
-
----
-
-## 3. Mikor kész egy változtatás
-
-Ellenőrzőlista, mielőtt commitolsz:
-
-- [ ] `npm run lint` és `npm test` zöld.
-- [ ] Új mező esetén az **`ensureShape`** ad neki alapértéket, ami a **korábbi
-      viselkedést** reprodukálja (E8 / ADR-06).
-- [ ] Ha az adat hivatkozható lett: a **`deleteGuard`** számol vele (I10).
-- [ ] Ha új korlát került az optimalizálóba: van hozzá **indoklás** (ADR-25), és ha
-      költségtag, akkor a **`skelCost`-ban is** szerepel (ADR-16 aranyszabály).
-- [ ] Ha hibát javítottál: van **regressziós teszt**, amely leírja a kizárt rossz
-      viselkedést.
-- [ ] Ha új publikus (teszt által használt) függvény keletkezett: rajta van a
-      **barrel** export-listáján (`fuvarterv.jsx`).
-- [ ] Ha új külső hívás van: **CSP** kiegészítve a `vercel.json`-ban, és van
-      visszaesési út (E5).
-- [ ] Ha a mentés/betöltés útját érinted: a `test/load-error.test.js` szellemében
-      **nem születhet mintaadat valós adat fölé** (I11).
+**Domain.** Keep `src/domain/` pure: no `window`, no network, and no `Math.random()` on a
+decision path. The optimizer's determinism rests on that.
 
 ---
 
-## 4. Kód-átvizsgálási szempontok (review)
+## 3. When is a change done?
 
-A leggyakoribb, legdrágább hibafajták ebben a rendszerben — érdemes külön rákérdezni:
+A checklist to run before committing.
 
-| Kérdés | Miért |
+- [ ] `npm run lint` and `npm test` are green.
+- [ ] A new field has a default in **`ensureShape`** that reproduces the **previous**
+      behaviour (E8, ADR-05).
+- [ ] If the data became referenceable, **`deleteGuard`** counts it (I10).
+- [ ] A new optimizer constraint has an **explanation** (ADR-24), and if it is a cost term
+      it is **also in `skelCost`** (the golden rule in ADR-15).
+- [ ] A bug fix comes with a **regression test** describing the wrong behaviour it rules
+      out.
+- [ ] A new external call has a **CSP** directive in `vercel.json` and a fallback path
+      (E5).
+- [ ] If you touched the load or save path, sample data still cannot be seeded over real
+      data (I11, in the spirit of `test/load-error.test.js`).
+
+---
+
+## 4. What to ask in review
+
+The most common and most expensive classes of mistake in this system.
+
+| Question | Why |
 |---|---|
-| Az új mező befolyásolja a menetidőt vagy a költséget? | akkor az optimalizálás minden fázisában konzisztensen kell megjelennie |
-| Új korlát: kemény vagy puha? | kemény korlát az opciólistából zár ki; puha csak drágít — a kettő keverése rossz javaslatot ad |
-| A létszámkezelés megkülönbözteti a `""`-t és a `0`-t? | I4 / ADR-24 — ez a „gyerek marad a megállóban” hibaosztály |
-| A visszaút tükrözés vagy saját lista? | `legFor` az **egyetlen** hely, ahol ez eldől; máshol ne döntsd el újra |
-| A módosítás után is pontosan egy láncba kerül minden feladat? | I5 — az `optimizer.test.js` property-tesztje ezt ellenőrzi |
-| Az írási út továbbra is csak adminnak fut? | ADR-12 — az UI-őr nem védelem, de a felesleges hibaüzenetet ő kerüli el |
-| Új komponens a renderfüggvényen belül van? | állapotvesztés, felesleges újramount |
+| Does the new field affect travel time or cost? | then it has to appear consistently in every optimisation phase |
+| New constraint: hard or soft? | a hard one excludes from the option list, a soft one only raises the price. Mixing them up produces bad proposals |
+| Does the headcount handling distinguish `""` from `0`? | I4, ADR-23. This is the "children left at the stop" class |
+| Return leg: mirrored, or its own list? | `legFor` is the **only** place that decides. Do not decide it again elsewhere |
+| Does every task still land in exactly one chain? | I5, checked by the property test in `optimizer.test.js` |
+| Does the write path still run only for an admin? | ADR-11. The UI guard is not protection, but it is what avoids a pointless error on every session |
+| Is the new component defined inside a render function? | state loss and needless remounting |
 
 ---
 
-## 5. Adatbázis-migrációk
+## 5. The database
 
-1. Új fájl: `supabase/migrations/000N_rövid_név.sql`, sorszám szerint.
-2. **Újrafuttathatóra** írd: `create table if not exists`, és minden `create policy`
-   előtt `drop policy if exists` (a `create policy` nem ismer `if not exists`-et, és
-   a SQL editor nem egyetlen tranzakcióban fut, tehát félúton is megállhat).
-3. Vedd fel a `supabase/migrations/README.md` táblázatába **és** a főoldali README
-   telepítési lépéssorába.
-4. Ha a szabály a munkaterület kulcsára hivatkozik, ügyelj rá, hogy a kulcs az legyen,
-   amit a kliens ténylegesen küld (`fuvarterv:v1`, lásd `src/supabaseClient.js`).
-   A `0005`/`0006` páros pontosan ebből a névváltásból származik.
-5. Éles adatbázison a migrációk a Supabase **SQL editorban** futnak, sorrendben. A
-   migrációs README tartalmaz egy csak-olvasó lekérdezést, amely megmondja, mi van
-   még hátra.
+The whole server side is one file,
+[`supabase/migrations/0001_initial_schema.sql`](../supabase/migrations/0001_initial_schema.sql),
+run in the Supabase **SQL editor**. It is re-runnable.
 
-**Két beállítás, ami nincs a repóban, de a biztonsági modell része** (ADR-12):
+To change the schema, edit that file and re-run it. Write everything to be re-runnable:
+`create table if not exists`, and a `drop policy if exists` before every `create policy`
+(`create policy` has no `if not exists`, and the SQL editor is not one transaction, so a
+re-run can otherwise stop half-way).
+
+The workspace key lives in two places that must agree: `workspace_id()` in the schema, and
+`STORAGE_KEY` in `src/data/storage.js`. If they disagree, the app loads an empty workspace
+and every save is rejected.
+
+**Two settings are not in the repo but are part of the security model** (ADR-11):
 
 - Authentication → Providers → Email → **Enable sign-ups: OFF**.
-- Az első admin sora a `user_roles` táblában (a `0004` fejléce tartalmazza a
-  parancsot; ez egyben a kizárás elleni helyreállítási út is).
+- The first admin's row in `user_roles`. The schema file's footer has the statement, and
+  it doubles as the recovery path if the admins lock themselves out.
+
+`supabase/migrations/README.md` has a read-only query that tells you what is applied.
 
 ---
 
-## 6. Kiadás (Vercel)
+## 6. Releasing (Vercel)
 
-1. Ellenőrizd, hogy az adatbázison **mind a hat** migráció lefutott, és a publikus
-   regisztráció ki van kapcsolva.
-2. `VITE_SUPABASE_URL` és `VITE_SUPABASE_ANON_KEY` a Vercel környezeti változói közt,
-   **Production és Preview** jelöléssel. A Vite ezeket **build időben** építi be: ha
-   utólag adod hozzá, újra kell deployolni.
-3. Preview deploy → kézi ellenőrzés (lásd lent) → merge a `main`-be.
+1. Check that the schema is applied and public sign-ups are off.
+2. `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` are set in Vercel's environment
+   variables, ticked for **Production and Preview**. Vite inlines them **at build time**:
+   adding them afterwards requires a redeploy.
+3. Preview deploy → the manual checks below → merge.
 
-**Kézi ellenőrzési pontok**, amiket az automata tesztek nem fednek:
+**Manual checkpoints the automated tests do not cover:**
 
-- Belépés valós fiókkal; sofőr-fiókkal is (csak a Sofőr fül látszik).
-- Térképválasztó megnyitása a preview deployon, **böngészőkonzol figyelése**: itt
-  derül ki, ha a Leaflet stílusa CSP-be ütközik (R7 az architektúra-dokumentumban).
-- „Mátrix számítása” — a felirat mondja meg, OSRM-ből vagy becslésből jött-e.
-- Egy mentés, majd a „Korábbi mentések” panel: ha üres marad, a `0002` migráció
-  hiányzik.
+- Sign in with a real account, and with a driver account too (only the driver tab shows).
+- Open the map picker on the preview deployment and **watch the browser console**. This is
+  where a CSP conflict with Leaflet's styles would surface (ADR-21).
+- Run "matrix calculation" and read the message: it says whether the result came from OSRM
+  or from an estimate.
+- Save once, then open the snapshot panel. If it stays empty, the history table is missing.
 
 ---
 
-## 7. Hibaelhárítás
+## 7. Troubleshooting
 
-| Tünet | Valószínű ok | Hol nézd |
+| Symptom | Likely cause | Where to look |
 |---|---|---|
-| „Hiányzik a beállítás” képernyő | nincs `.env` / a Vercel változói a build után jöttek | `src/supabaseClient.js` |
-| „Az adatok máshol módosultak” overlay | valaki más mentett, vagy egy elveszett válasz utáni valódi ütközés | `supabaseStorage.doSet` (ADR-07, ADR-08) |
-| Minden mentés elutasítva, üres munkaterület | a `0006` migráció nem futott le (kulcs-eltérés) | `supabase/migrations/README.md` |
-| A „Korábbi mentések” mindig üres | a `0002` migráció nem futott le | `RestorePanel` hibaágazata |
-| Mindenki adminnak látszik | a `user_roles` tábla hiányzik (`0004` nem futott) | `fetchRole` kivételága (ADR-11) |
-| A beosztás láncai eltűntek | megváltoztak a megállók/létszámok → elavult feladatazonosítók | `resolveDay` `droppedChains` (R1) |
-| „Mátrix elavult” jelzés | koordináta változott a mátrix számítása óta | `matrixKey` |
-| Furcsa, túl rövid menetidők | koordináta nélküli pont → `fallbackLegMin` | `legMin`, `MasterForm` koordináta-kényszer |
-| Az optimalizálás „heurisztikus” megjegyzést ír | a keresés elérte a 30 000 iterációs korlátot | `assignResources` (`capped`) |
-| Fehér képernyő helyett hibakártya | `ErrorBoundary` elkapta a renderelési hibát; a konzolon a teljes verem | `src/ErrorBoundary.jsx` |
+| The "missing configuration" screen | no `.env`, or Vercel's variables were added after the build | `src/supabaseClient.js` |
+| The "changed elsewhere" overlay | somebody else saved, or a genuine conflict after a lost response | `supabaseStorage.doSet` (ADR-06, ADR-07) |
+| Every save rejected, empty workspace | the workspace key does not match between client and schema | `supabase/migrations/README.md` |
+| The snapshot list is always empty | the history table is missing | the error branch in `RestorePanel` |
+| Everyone looks like an admin | the `user_roles` table does not exist | `fetchRole`'s exception branch (ADR-10) |
+| The schedule's chains vanished | stops or headcounts changed, so task ids went stale | `resolveDay`'s `droppedChains` (R1) |
+| A "matrix is stale" flag | a coordinate changed since the matrix was computed | `matrixKey` |
+| Oddly short travel times | a point with no coordinate, falling back to `fallbackLegMin` | `legMin`, the coordinate requirement in `MasterForm` |
+| Optimisation prints a "heuristic" note | the search hit its 30,000-iteration cap | `assignResources` (`capped`) |
+| An error card instead of a white screen | the `ErrorBoundary` caught a render error; the full stack is in the console | `src/ErrorBoundary.jsx` |
+
+Production builds ship sourcemaps, so a stack trace from a user's console points at real
+files and lines.
 
 ---
 
-## 8. Adatvédelem
+## 8. Privacy
 
-A `seedState()` mintaadat **valós sofőrneveket és rendszámokat** tartalmaz. Nyilvános
-repó előtt anonimizálni kell (a főoldali README figyelmeztetése). A munkaterület
-tartalmaz sofőr-e-mail-címeket is (a Sofőr nézet ezekkel köti a fiókot a sofőrhöz) —
-exportot, képernyőképet, hibariportot ennek tudatában ossz meg.
+The sample data in `src/data/seed.js` is **fictional**: placeholder driver names and
+plates, with real public places as stations and venues so the distances stay realistic.
+Keep it that way. Real names, phone numbers and plates belong in the running workspace,
+never in the repository.
 
----
-
-## 9. Függőségek
-
-Kis, szándékosan szűk függőségi lista: `react`, `react-dom`, `@supabase/supabase-js`,
-`lucide-react` (ikonok). Build: Vite + Tailwind v4 plugin. Teszt: Vitest + jsdom.
-A Leaflet **nincs** a `package.json`-ban: futásidőben, CDN-ről töltődik (ADR-21).
-
-Frissítésnél `npm ci` után futtasd a teljes `lint + test + build` sort, és nézd meg a
-smoke-tesztet — az fogja meg, ha egy React- vagy Vite-frissítés a renderelési úton tör
-el valamit.
+Driver e-mail addresses live in the workspace blob, which means they are readable by every
+authenticated user. That is intentional (the driver list is not a secret within the club),
+but it is worth knowing before adding anything more sensitive to a driver record.

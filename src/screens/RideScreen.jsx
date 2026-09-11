@@ -1,17 +1,15 @@
-/* Fuvarterv — Fuvar szerkesztő — irány, jármű, sofőr, megállók
-   Kiemelve a fuvarterv.jsx-ből. Egy eltérés az eredetitől: egy már mentett
-   fuvar iránya nem állítható át. */
+/* Fuvarterv — the ride editor: direction, vehicle, driver, stops. */
 
 import { useState, useMemo, useRef } from "react";
 import { ChevronLeft, ChevronRight, GripVertical, ArrowUp, ArrowDown, AlertTriangle, MapPin, Clock, X, Flag, Zap } from "lucide-react";
 import { DAYS, uid, byId } from "../domain/constants.js";
-import { mondayOf, toISO, addDays, timeToMin, minToTime, fmtDate, fmtDateFull, fmtWeekRange } from "../domain/datetime.js";
+import { mondayOf, addDays, timeToMin, minToTime, fmtDate, fmtDateFull, fmtWeekRange } from "../domain/datetime.js";
 import { weekOccurrences, findRides, findConflicts, rideWindow, seatSum, venueDepartMin, legFor, venueNeedsVignette } from "../domain/logic.js";
 import { planOda, planVissza, bestStationOrder } from "../domain/optimizer.js";
-import { Field, DangerBtn, EmptyState, InfoDot } from "../ui/base.jsx";
+import { Field, DangerBtn, EmptyState } from "../ui/base.jsx";
 import { OccCard } from "../ui/OccCard.jsx";
 
-/* ---------- 4.4 FUVAR SZERKESZTŐ ---------- */
+/* ---------- Ride editor ---------- */
 export function RideScreen({ state, update, target, setTarget, onExit }) {
   if (!target) return <RidePicker state={state} onPick={setTarget} />;
   const training = byId(state.trainings, target.trainingId);
@@ -81,13 +79,13 @@ export function RideForm({ state, update, training, dayIdx, dateISO, existing, o
     ? { ...existing, stops: existing.stops.map((s) => ({ ...s })) }
     : { id: "__uj", trainingId: training.id, day: training.type === "weekly" ? dayIdx : null, date: training.type === "once" ? training.date : null, vehicleId: "", driverId: "", dir: "oda", stops: [] });
 
-  /* Irány. A régebbi, irány nélkül mentett fuvarok ODA-ként viselkednek — ezt a
-     rideWindow is így értelmezi (`ride.dir || "oda"`), tehát a kettő nem csúszhat szét. */
+  /* Direction. Older rides saved without one behave as outbound, and rideWindow
+     reads them the same way (`ride.dir || "oda"`), so the two cannot drift apart. */
   const dir = draft.dir || "oda";
   const isBack = dir === "vissza";
-  /* Mentett fuvarnál az irány rögzített. A fuvar neve (a fenti választó chipje),
-     a megállók idői és a csapat iránya szerinti megállólista mind az irányra
-     épül — átkapcsolva egy VISSZA fuvar ODA-ként menne tovább a régi, immár
+  /* On a saved ride the direction is fixed. The ride's name (the chip in the picker
+     above), the stop times and the direction-specific stop list all hang off it, so
+     flipping it would leave a return ride running as an outbound one on the old, now
      értelmetlen időivel, a sofőr pedig a listáján ugyanazt a fuvart látná
      megfordulva. Rossz irány esetén a fuvart törölni kell és újra felvenni. */
   const dirLocked = !!existing;
@@ -101,10 +99,10 @@ export function RideForm({ state, update, training, dayIdx, dateISO, existing, o
   const pax = seatSum(draft.stops);
   const over = vehicle && pax > vehicle.seats;
 
-  /* Az irány saját megállói kerülnek előre — de bármelyik állomás választható,
-     mert egy konkrét fuvar eltérhet az állandó listától (pl. egyszeri kitérő).
-     A lista ezé az EDZÉSÉ, ha van saját listája: egy másik helyszínen tartott
-     edzés megállói másokat kínálnának fel elsőként. */
+  /* The direction's own stops come first, but any station can still be picked: an
+     individual ride may depart from the standing list, for a one-off detour say. The
+     list belongs to the TRAINING when it has its own, since a session held at a
+     different venue would otherwise offer the wrong stops first. */
   const leg = legFor(team, training, dir);
   const used = (id) => draft.stops.some((x) => x.stationId === id);
   const legStations = state.stations.filter((s) => leg.stationIds.includes(s.id) && !used(s.id));
@@ -112,8 +110,8 @@ export function RideForm({ state, update, training, dayIdx, dateISO, existing, o
   const freeStations = [...legStations, ...otherStations];
 
   const addStop = (stationId) => {
-    /* ODA: az edzés kezdete előtt gyűjtünk be; VISSZA: a helyszíni indulás után
-       tesszük le a gyerekeket — a kiinduló idő tehát a két irányban más. */
+    /* Outbound we collect before the training starts; on the return leg we drop
+       children off after leaving the venue. The starting time differs accordingly. */
     const first = isBack ? venueDepartMin(state, training) + 10 : (timeToMin(training.start) ?? 0) - 40;
     const base = draft.stops.length
       ? (timeToMin(draft.stops[draft.stops.length - 1].time) ?? first) + 10
@@ -130,10 +128,11 @@ export function RideForm({ state, update, training, dayIdx, dateISO, existing, o
     setDraft({ ...draft, stops: arr });
   };
 
-  /* Menetrend. ODA: visszafelé számolva az edzéskezdéstől, cél az időben odaérés.
-     VISSZA: előrefelé a helyszíni indulástól. A két irány két külön tervezőt hív —
-     korábban mindkettő planOda-t futtatott, ami a VISSZA fuvarok megállóidejét
-     órákkal elrontotta, és ezt látták a sofőrök. */
+  /* Timetabling. Outbound is computed backwards from the training's start, the goal
+     being to arrive in time; the return leg runs forwards from the departure at the
+     venue. The two directions call two different planners. Both used to run planOda,
+     which put return-leg stop times out by hours — and that is what the drivers
+     saw. */
   const arriveBy = (timeToMin(training.start) ?? 0) - (state.settings.arriveEarlyMin ?? 10);
   const departAt = venueDepartMin(state, training);
   const dwell = state.settings.dwellMin ?? 2;
@@ -147,8 +146,8 @@ export function RideForm({ state, update, training, dayIdx, dateISO, existing, o
     const p = planFor(draft.stops.map((s) => s.stationId));
     setDraft({ ...draft, stops: draft.stops.map((s, i) => ({ ...s, time: minToTime(p.stops[i].arr) })) });
   };
-  /* Sorrend optimalizálása (Held–Karp) + idők kitöltése. VISSZA-nál a helyszín az
-     útvonal ELEJE (pre), nem a vége (post). */
+  /* Optimise the stop order (Held-Karp) and fill in the times. On the return leg the
+     venue is the START of the route (pre), not the end (post). */
   const optimizeStopOrder = () => {
     if (!draft.stops.length) return;
     const ids = draft.stops.map((s) => s.stationId);

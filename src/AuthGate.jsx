@@ -4,7 +4,7 @@ import { supabaseStorage } from "./supabaseStorage.js";
 import { RoleContext } from "./roleContext.js";
 import RestorePanel from "./RestorePanel.jsx";
 import ErrorBoundary from "./ErrorBoundary.jsx";
-import "./theme.css";
+import "./ui/styles.css";
 
 // Install the Supabase-backed KV store the app expects. Assigned at import time
 // so it is in place before <App/> ever mounts (App only renders once a session
@@ -13,10 +13,10 @@ if (typeof window !== "undefined") {
   window.storage = supabaseStorage;
 }
 
-// Fuvarterv app-ikon: kerek cián csempe egy egyszerű útvonal-jellel.
+// The app icon: a rounded cyan tile with a simple route mark.
 function AppIcon() {
   return (
-    <span className="v-appicon" aria-hidden="true">
+    <span className="shell-appicon" aria-hidden="true">
       <svg viewBox="0 0 32 32" fill="none">
         <circle cx="7" cy="24" r="3.4" fill="#fff" />
         <path d="M7 24 C 14 24, 12 11, 20 9" stroke="#fff" strokeWidth="3" strokeLinecap="round" />
@@ -26,15 +26,14 @@ function AppIcon() {
   );
 }
 
-/* A Supabase pontosan megmondja, miért nem sikerült a belépés — a felület viszont
-   korábban minden esetre ugyanazt a "Hibás e-mail vagy jelszó" mondatot írta ki, és
-   az információ elveszett. A klub személyzete fogja ezt használni, nem fejlesztők:
-   ha nem az appból derül ki, mi a teendő, akkor sehonnan.
+/* Supabase says precisely why a sign-in failed, but the UI used to print the same
+   "wrong e-mail or password" sentence for every case and throw that away. Club staff
+   use this, not developers: if the app does not say what to do, nothing will.
 
-   Amit NEM bontunk szét: azt, hogy létezik-e egyáltalán ez az e-mail-cím. A rossz
-   jelszó és a nem létező fiók továbbra is közös üzenetet kap, különben a belépő
-   képernyő felhasználólistát szivárogtatna. Csak a SZERVER állapotáról szóló
-   eseteket különböztetjük meg — azok nem mondanak semmit egyetlen fiókról sem. */
+   What we deliberately do NOT separate is whether an address exists at all. A wrong
+   password and a non-existent account still share one message, or the login screen
+   would leak a user list. Only cases describing the state of the SERVER are
+   distinguished, and those reveal nothing about any individual account. */
 export function loginErrorMessage(error) {
   const code = error?.code || error?.error_code || "";
   const status = error?.status;
@@ -55,25 +54,28 @@ export function loginErrorMessage(error) {
   if (status === 401 || raw.includes("invalid api key"))
     return "A szerver beállítása hibás (érvénytelen API kulcs) — ez nem rajtad múlik. A Vercelen a VITE_SUPABASE_ANON_KEY értékét kell javítani, majd újradeployolni.";
 
-  // Hálózat / CSP: a kérés el sem jutott a szerverig.
+  // Network or CSP: the request never reached the server at all.
   if (error?.name === "AuthRetryableFetchError" || raw.includes("failed to fetch") || raw.includes("networkerror"))
     return "Nem sikerült elérni a szervert. Ellenőrizd az internetkapcsolatot, és próbáld újra.";
 
-  /* Ismeretlen eset. Szándékosan kiírjuk a szerver saját szövegét és kódját: egy
-     nyers azonosító, amit tovább lehet adni, sokkal többet ér, mint egy újabb
-     "valami hiba történt". Pontosan ez hiányzott, amikor egy 422-es válasz okát
-     a böngésző Network fülén kellett keresni. */
+  /* An unknown case. The server's own text and code are printed on purpose: a raw
+     identifier somebody can pass on is worth far more than another "something went
+     wrong". This is exactly what was missing when the reason for a 422 had to be dug
+     out of the browser's network tab. */
   const detail = [status, code, error?.message].filter(Boolean).join(" · ");
   return `Nem sikerült a belépés.${detail ? ` (${detail})` : ""}`;
 }
 
-/* A belépett felhasználó szerepköre a user_roles táblából, e-mail alapján.
-   Nincs sor → sofőr: pontosan az, amit a szerver-oldali szabályok is mondanak
-   (akit nem vettek fel adminnak, az nem írhat semmit). Egy kivétel van, és az
-   szándékos: ha maga a user_roles TÁBLA hiányzik — vagyis a 0004-es migráció
-   még nem futott le —, mindenki admin. Ilyenkor a szerver sem korlátoz semmit,
-   tehát a fülek elrejtése csak színház volna, egy frissen deployolt kliens
-   viszont e nélkül olvasásra némítaná a régi adatbázis minden felhasználóját. */
+/* The signed-in user's role, from user_roles, matched on e-mail.
+
+   No row means driver, which is exactly what the server-side policies say: anyone not
+   entered as an admin may write nothing.
+
+   There is one deliberate exception. If the user_roles TABLE itself is missing (the
+   schema has not been applied yet), everyone is an admin. The server is not
+   restricting anything in that state either, so hiding the tabs would be theatre —
+   and without this a freshly deployed client would silently drop every user of an
+   older database to read-only. */
 export async function fetchRole(email) {
   try {
     const { data, error } = await supabase
@@ -83,8 +85,8 @@ export async function fetchRole(email) {
       .maybeSingle();
     if (error) {
       const raw = `${error.code || ""} ${error.message || ""}`;
-      // 42P01: Postgres "relation does not exist"; PGRST205: a PostgREST
-      // séma-gyorsítótára nem ismeri a táblát. Mindkettő = nincs 0004.
+      // 42P01 is Postgres "relation does not exist"; PGRST205 means PostgREST's
+      // schema cache does not know the table. Either way: the schema is not applied.
       if (raw.includes("42P01") || raw.includes("PGRST205")) return { role: "admin", error: null };
       return { role: null, error };
     }
@@ -116,8 +118,8 @@ function LoginScreen() {
       }
       // On success onAuthStateChange updates the session and the app renders.
     } catch (err) {
-      /* A try/catch nélkül egy DOBOTT hiba (hálózat, CSP) sosem érte el a
-         setStatus-t, így a gomb véglegesen a „Belépés…” feliraton ragadt,
+      /* Without this try/catch a THROWN error (network, CSP) never reached
+         setStatus, so the button was stuck on "signing in" forever,
          üzenet nélkül — a felhasználó számára néma megállás. */
       setErrorMsg(loginErrorMessage(err));
       setStatus("error");
@@ -125,18 +127,18 @@ function LoginScreen() {
   };
 
   return (
-    <div className="v-screen">
-      <form className="v-card v-login" onSubmit={submit}>
-        <div className="v-login-head">
+    <div className="shell-screen">
+      <form className="shell-card shell-login" onSubmit={submit}>
+        <div className="shell-login-head">
           <AppIcon />
           <div>
-            <div className="v-title">Üdv újra!</div>
+            <div className="shell-title">Üdv újra!</div>
             <div className="sub">Lépj be a Fuvartervbe</div>
           </div>
         </div>
 
-        <div className="v-field">
-          <label className="v-label" htmlFor="email">E‑mail</label>
+        <div className="shell-field">
+          <label className="shell-label" htmlFor="email">E‑mail</label>
           <input
             id="email"
             type="email"
@@ -144,28 +146,28 @@ function LoginScreen() {
             placeholder="edzo@klub.hu"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="v-input"
+            className="shell-input"
             required
           />
         </div>
 
-        <div className="v-field">
-          <label className="v-label" htmlFor="password">Jelszó</label>
+        <div className="shell-field">
+          <label className="shell-label" htmlFor="password">Jelszó</label>
           <input
             id="password"
             type="password"
             autoComplete="current-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="v-input"
+            className="shell-input"
             required
           />
         </div>
 
-        <button type="submit" className="v-btn v-btn-primary v-btn-block" disabled={status === "signing"}>
+        <button type="submit" className="shell-btn shell-btn-primary shell-btn-block" disabled={status === "signing"}>
           {status === "signing" ? "Belépés…" : "Bejelentkezés"}
         </button>
-        {status === "error" && <p className="v-error" role="alert">{errorMsg}</p>}
+        {status === "error" && <p className="shell-error" role="alert">{errorMsg}</p>}
       </form>
     </div>
   );
@@ -176,16 +178,16 @@ function LoginScreen() {
 // action is to reload. This covers the whole app and captures clicks.
 function StaleOverlay({ onReload }) {
   return (
-    <div className="v-overlay">
-      <div className="v-dialog">
-        <span className="v-noteic warn">!</span>
-        <div className="v-title">Az adatok máshol módosultak</div>
-        <p className="v-muted">
+    <div className="shell-overlay">
+      <div className="shell-dialog">
+        <span className="shell-noteic warn">!</span>
+        <div className="shell-title">Az adatok máshol módosultak</div>
+        <p className="shell-muted">
           Valaki más időközben mentett, ezért a mentés le van tiltva, hogy ne írd
           felül a módosításait. A nem mentett változtatásaid nem menthetők — tölts
           újra a legfrissebb adatokkal, és onnan dolgozz tovább.
         </p>
-        <button onClick={onReload} className="v-btn v-btn-primary v-btn-block">Újratöltés</button>
+        <button onClick={onReload} className="shell-btn shell-btn-primary shell-btn-block">Újratöltés</button>
       </div>
     </div>
   );
@@ -193,8 +195,8 @@ function StaleOverlay({ onReload }) {
 
 function SaveErrorToast({ onDismiss }) {
   return (
-    <div className="v-toast" role="alert">
-      <span className="v-noteic crit">!</span>
+    <div className="shell-toast" role="alert">
+      <span className="shell-noteic crit">!</span>
       <div className="body">
         <b>A mentés nem sikerült</b>
         <p>
@@ -202,22 +204,22 @@ function SaveErrorToast({ onDismiss }) {
           mentődött — ellenőrizd a netet, és próbáld újra.
         </p>
       </div>
-      <button onClick={onDismiss} aria-label="Bezárás" className="v-toast-x">×</button>
+      <button onClick={onDismiss} aria-label="Bezárás" className="shell-toast-x">×</button>
     </div>
   );
 }
 
 function LoadErrorScreen({ onRetry }) {
   return (
-    <div className="v-screen">
-      <div className="v-card v-pad v-info-card">
+    <div className="shell-screen">
+      <div className="shell-card shell-pad shell-info-card">
         <AppIcon />
-        <div className="v-title">Nem sikerült betölteni</div>
-        <p className="v-muted" style={{ margin: 0 }}>
+        <div className="shell-title">Nem sikerült betölteni</div>
+        <p className="shell-muted" style={{ margin: 0 }}>
           Ez általában hálózati hiba — az adataid biztonságban vannak a szerveren.
           Ellenőrizd a kapcsolatot, és próbáld újra.
         </p>
-        <button onClick={onRetry} className="v-btn v-btn-primary v-btn-block">Újrapróbálkozás</button>
+        <button onClick={onRetry} className="shell-btn shell-btn-primary shell-btn-block">Újrapróbálkozás</button>
       </div>
     </div>
   );
@@ -240,8 +242,8 @@ export default function AuthGate({ children }) {
       setLoading(false);
       return;
     }
-    // A .catch nélkül egy elutasított token-frissítés örökre a "Betöltés…"
-    // képernyőn hagyná a felhasználót, retry lehetőség nélkül.
+    // Without the .catch a rejected token refresh would leave the user on the
+    // loading screen forever, with no way to retry.
     supabase.auth
       .getSession()
       .then(({ data }) => setSession(data?.session ?? null))
@@ -256,8 +258,8 @@ export default function AuthGate({ children }) {
   useEffect(() => {
     const onStale = () => setStale(true);
     const onSaveError = () => setSaveError(true);
-    // The app's header buttons live in fuvarterv.jsx (which never imports auth);
-    // they signal the shell through the same event seam as stale/saveerror.
+    // The app's header buttons live in App.jsx, which never imports auth; they signal
+    // the shell through the same event seam as stale/saveerror.
     const onRestore = () => setShowRestore(true);
     const onSignout = async () => {
       await supabase.auth.signOut();
@@ -279,14 +281,14 @@ export default function AuthGate({ children }) {
   // reachable before mounting <App/>. An empty result (no row yet) is fine —
   // only a real error blocks. This runs before loadState() inside the app, so
   // by the time App mounts the read path is known-good.
-  // A felhasználó azonosítója — NEM a session objektum. Az onAuthStateChange a
-  // TOKEN_REFRESHED eseményre is tüzel (nagyjából óránként), minden alkalommal új
-  // objektummal; ha a preflight arra volna kötve, visszaesne "checking" állapotba,
-  // ami korai visszatéréssel unmountolná az <App/>-ot — elveszítve minden nyitott
-  // űrlapot és piszkozatot. Az azonosító csak valódi felhasználóváltáskor változik.
+  // Keyed on the user's ID, NOT on the session object. onAuthStateChange also fires
+  // for TOKEN_REFRESHED (roughly hourly) with a fresh object each time; keying the
+  // preflight on that would drop it back to "checking", and the early return would
+  // unmount <App/>, losing every open form and draft. The ID only changes on a real
+  // change of user.
   const userId = session?.user?.id ?? null;
   const userEmail = session?.user?.email ?? null;
-  // A szerepkör a preflighttal együtt dől el; amíg nincs meg, az App nem mountol.
+  // The role is settled together with the preflight; App does not mount until it is.
   const [role, setRole] = useState(null);
 
   useEffect(() => {
@@ -315,9 +317,9 @@ export default function AuthGate({ children }) {
     };
   }, [userId, userEmail, retryTick]);
 
-  // Felhasználóváltáskor (ki-, majd bejelentkezés ugyanazon a gépen) a korábbi
-  // munkamenet blokkoló állapota nem öröklődhet át: a stale overlay egyébként a
-  // következő felhasználót is kizárná egy őt nem érintő ütközés miatt.
+  // On a change of user (sign out, then sign in on the same machine) the previous
+  // session's blocking state must not carry over: the stale overlay would otherwise
+  // lock out the next user over a conflict that was never theirs.
   useEffect(() => {
     setStale(false);
     setSaveError(false);
@@ -326,11 +328,11 @@ export default function AuthGate({ children }) {
 
   if (!isConfigured) {
     return (
-      <div className="v-screen">
-        <div className="v-card v-pad v-info-card">
+      <div className="shell-screen">
+        <div className="shell-card shell-pad shell-info-card">
           <AppIcon />
-          <div className="v-title">Hiányzik a beállítás</div>
-          <p className="v-muted" style={{ margin: 0 }}>
+          <div className="shell-title">Hiányzik a beállítás</div>
+          <p className="shell-muted" style={{ margin: 0 }}>
             Másold a <code>.env.example</code> fájlt <code>.env</code> néven, és add meg a{" "}
             <code>VITE_SUPABASE_URL</code> és <code>VITE_SUPABASE_ANON_KEY</code> értékeket,
             majd indítsd újra a szervert.
@@ -341,7 +343,7 @@ export default function AuthGate({ children }) {
   }
 
   if (loading) {
-    return <div className="v-screen v-muted" style={{ fontSize: 18, fontWeight: 700 }}>Betöltés…</div>;
+    return <div className="shell-screen shell-muted" style={{ fontSize: 18, fontWeight: 700 }}>Betöltés…</div>;
   }
 
   if (!session) return <LoginScreen />;
@@ -351,7 +353,7 @@ export default function AuthGate({ children }) {
   }
 
   if (preflight !== "ready") {
-    return <div className="v-screen v-muted" style={{ fontSize: 18, fontWeight: 700 }}>Betöltés…</div>;
+    return <div className="shell-screen shell-muted" style={{ fontSize: 18, fontWeight: 700 }}>Betöltés…</div>;
   }
 
   return (

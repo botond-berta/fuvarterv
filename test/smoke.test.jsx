@@ -1,7 +1,8 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import App, { seedState } from "../fuvarterv.jsx";
+import App from "../src/App.jsx";
+import { seedState } from "../src/data/seed.js";
 import { DATA_CATS } from "../src/screens/DataScreen.jsx";
 
 /*
@@ -82,8 +83,8 @@ describe("App renders end to end", () => {
       .find((b) => b.textContent.includes("Adatok"));
     await act(async () => { dataTab.click(); });
     const cats = [...container.querySelectorAll(".data-cats button")];
-    // A listához kötve, nem beégetett számhoz: egy új kategória (pl. Telephelyek)
-    // így nem "elromlott tesztként" jelentkezik, de a bejárás továbbra is teljes.
+    // Tied to the list rather than a hard-coded number, so adding a category does
+    // not surface as a "broken test" while the walk stays exhaustive.
     expect(cats.length).toBe(DATA_CATS.length);
     for (const c of cats) {
       await act(async () => { c.click(); });

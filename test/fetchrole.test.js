@@ -1,10 +1,10 @@
 import { describe, test, expect, vi, beforeEach } from "vitest";
 
 /*
- * fetchRole dönti el belépés után, mit lát a felhasználó. A tétje kettős:
- * fail-closed (akinek nincs sora, az sofőr), de NEM téglásítja a régi
- * adatbázist — ha a user_roles tábla még nem létezik (nincs 0004-es migráció),
- * mindenki admin marad, mert ilyenkor a szerver sem korlátoz semmit.
+ * fetchRole decides what a user sees after signing in. It carries two obligations
+ * at once: fail closed (no row means driver), while NOT bricking an older database.
+ * If the user_roles table does not exist yet, everyone stays admin, because in that
+ * state the server is not restricting anything either.
  */
 
 const maybeSingle = vi.fn();

@@ -1,14 +1,14 @@
 import { describe, test, expect } from "vitest";
-import {
-  ensureShape, seedState, venueNeedsVignette, taskNeedsVignette, chainNeedsVignette,
-  genDayTasks, optimizeDay, resolveDay, mondayOf,
-} from "../fuvarterv.jsx";
+import { ensureShape, seedState } from "../src/data/seed.js";
+import { mondayOf } from "../src/domain/datetime.js";
+import { venueNeedsVignette, taskNeedsVignette, chainNeedsVignette } from "../src/domain/logic.js";
+import { genDayTasks, optimizeDay, resolveDay } from "../src/domain/optimizer.js";
 
 /*
- * Országos autópálya-matrica. A jelölés a HELYSZÍNEN van, a tény a JÁRMŰVÖN, és
- * a matrica ugyanolyan kemény feltétel, mint a férőhely: az optimalizáló eleve
- * nem javasol matrica nélküli autót matricás helyszínre, tehát nincs mit kézzel
- * visszajavítani. A kézi zárolás továbbra is felülbírál mindent.
+ * The national motorway vignette. The requirement is marked on the VENUE, the fact
+ * is on the VEHICLE, and the vignette is as hard a constraint as capacity: the
+ * optimizer never proposes a bus without one for a venue that needs one, so there is
+ * nothing to correct by hand. A manual lock still overrides everything.
  */
 
 const WEEKDAY = 2;
@@ -33,7 +33,7 @@ function makeState({ vehicles, needsVignette = true }) {
   };
 }
 const bus = (id, hasVignette, seats = 20) => ({ id, name: id, plate: id, seats, hasVignette });
-/* Melyik járművek kerültek beosztásra — a láncok SZÁMA az optimalizáló
+/* Which vehicles ended up scheduled. The NUMBER of chains is the optimizer's
    döntése (egy busz két feladatot is elvihet egymás után), a szabály viszont
    arról szól, hogy melyik jármű kerülhet oda egyáltalán. */
 const vehiclesOf = (out) => [...new Set(out.chains.map((c) => c.vehicleId))].sort();

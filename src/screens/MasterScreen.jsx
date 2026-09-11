@@ -1,16 +1,14 @@
-/* Fuvarterv — Törzsadatok — állomások, helyszínek, járművek, sofőrök
-   Kiemelve a fuvarterv.jsx-ből. Egy eltérés az eredetitől: állomásnál és
-   helyszínnél a koordináta kötelező. */
+/* Fuvarterv — master data: stations, venues, depots, vehicles, drivers. */
 
 import { useState } from "react";
 import { Plus, Pencil, AlertTriangle, MapPin, X } from "lucide-react";
-import { DAYS_SHORT, uid, byId } from "../domain/constants.js";
+import { DAYS_SHORT, uid } from "../domain/constants.js";
 import { normalizePlate, plateExists, deleteGuard } from "../domain/logic.js";
 import { Field, Check, Modal, DangerBtn, PlateChip, EmptyState } from "../ui/base.jsx";
 import { MapPickerModal } from "../ui/MapPicker.jsx";
 import { VignettePill } from "../ui/VignettePill.jsx";
 
-/* ---------- 4.3 TÖRZSADATOK ---------- */
+/* ---------- Master data ---------- */
 export const MASTER_TABS = [
   { key: "stations", label: "Állomások", sing: "állomás" },
   { key: "venues", label: "Helyszínek", sing: "helyszín" },
@@ -88,11 +86,12 @@ export function MasterForm({ kind, state, entity, onSave, onCancel }) {
   const [mapOpen, setMapOpen] = useState(false);
   const meta = MASTER_TABS.find((t) => t.key === kind);
   const singCap = meta.sing.charAt(0).toUpperCase() + meta.sing.slice(1);
-  /* Állomás és helyszín koordináta nélkül nem menthető: a legMin ilyenkor a
-     fallbackLegMin-re esik vissza, a mátrixból pedig kimarad a pont — az
-     optimalizáló órákat tervez rossz menetidőkkel, jelzés nélkül. A régi,
-     koordináta nélküli rekordok a listában figyelmeztetést kapnak, és a
-     szerkesztésük is csak koordinátával zárható le. */
+  /* A station, venue or depot cannot be saved without a coordinate. Without one
+     legMin falls back to fallbackLegMin and the point drops out of the matrix, so the
+     optimizer plans hours of work on wrong travel times, with nothing to show for it.
+
+     Older records that predate this rule are flagged in the list, and editing one
+     cannot be completed until a coordinate is set. */
   const needsCoord = kind === "stations" || kind === "venues" || kind === "bases";
   const hasCoord = f.lat != null && f.lon != null;
 

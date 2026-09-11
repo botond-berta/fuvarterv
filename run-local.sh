@@ -7,10 +7,9 @@
 #      the same floor as "engines" in package.json, which Vercel also reads).
 #   2. npm install + starts the Vite dev server for the committed root project.
 #
-# The project is now a normal committed Vite app (package.json, src/, index.html);
-# App source is fuvarterv.jsx at the repo root. Persistence + login are handled by
-# Supabase — copy .env.example to .env and fill in your project's URL and anon key
-# (see README). Ctrl-C stops the server.
+# The app source lives entirely under src/. Persistence and login are handled by
+# Supabase: copy .env.example to .env and fill in your project's URL and anon key
+# (see the README). Ctrl-C stops the server.
 
 set -euo pipefail
 

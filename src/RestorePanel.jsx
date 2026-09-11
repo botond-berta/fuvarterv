@@ -1,13 +1,14 @@
 import { useEffect, useState } from "react";
 import { supabase, WORKSPACE_ID } from "./supabaseClient.js";
-import "./theme.css";
+import "./ui/styles.css";
 
 /*
- * Korábbi mentések (snapshots) listája és visszaállítása. A snapshotokat a
- * supabaseStorage írja az app_state_history táblába minden sikeres mentéskor
- * (az előző blobot). A visszaállítás a NORMÁL, őrzött íráson megy keresztül
- * (window.storage.set) — így nem kerüli meg a "máshol módosult" ellenőrzést —,
- * majd újratölti az oldalt, hogy az app a visszaállított adatot töltse be.
+ * Lists earlier snapshots and restores one. supabaseStorage writes a snapshot (the
+ * PREVIOUS blob) to app_state_history on every successful save.
+ *
+ * Restoring goes through the NORMAL guarded write (window.storage.set), so it does
+ * not bypass the "changed elsewhere" check, and then reloads the page so the app
+ * boots on the restored data.
  */
 
 function fmtWhen(iso) {
@@ -52,12 +53,12 @@ export default function RestorePanel({ onClose }) {
       .then(({ data, error }) => {
         if (cancelled) return;
         if (error) {
-          // A leggyakoribb ok, hogy a 0002 migráció nem futott le: ilyenkor a
-          // tábla nem létezik, és a felhasználó azt hinné, egyszerűen nincs még
-          // mentése — pedig valójában soha nem is készül egy sem.
+          // The usual cause is that the schema was never applied, so the table does
+          // not exist. Without this the user would assume they simply have no
+          // snapshots yet, when in fact none will ever be created.
           const missing = error.code === "42P01" || /relation .* does not exist/i.test(error.message || "");
           setErr(missing
-            ? "Az előzménytábla hiányzik az adatbázisból — a 0002_app_state_history.sql migráció nem futott le. Amíg ez így van, nem készül biztonsági mentés."
+            ? "Az előzménytábla hiányzik az adatbázisból — az adatbázis-séma (supabase/migrations/0001_initial_schema.sql) nem futott le. Amíg ez így van, nem készül biztonsági mentés."
             : (error.message || "Nem sikerült betölteni az előzményeket."));
           setRows([]);
         } else setRows(data || []);
@@ -74,8 +75,8 @@ export default function RestorePanel({ onClose }) {
     setBusyId(row.id);
     setErr("");
     try {
-      // Normál őrzött írás — ha közben más mentett, ez elbukik és a "máshol
-      // módosult" figyelmeztetés lép életbe (nem írjuk felül vakon).
+      // The normal guarded write. If somebody else saved in the meantime this fails
+      // and the "changed elsewhere" warning takes over; we never overwrite blindly.
       await window.storage.set(WORKSPACE_ID, JSON.stringify(row.data));
       window.location.reload();
     } catch {
@@ -85,11 +86,11 @@ export default function RestorePanel({ onClose }) {
   };
 
   return (
-    <div className="v-overlay" onClick={onClose}>
-      <div className="v-modal" onClick={(e) => e.stopPropagation()}>
-        <div className="v-modal-head">
+    <div className="shell-overlay" onClick={onClose}>
+      <div className="shell-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="shell-modal-head">
           <span className="t">Korábbi mentések</span>
-          <button onClick={onClose} aria-label="Bezárás" className="v-modal-x">×</button>
+          <button onClick={onClose} aria-label="Bezárás" className="shell-modal-x">×</button>
         </div>
         <p className="lead">
           Minden mentés előtti állapotot eltárolunk (az utolsó 20-at). Egy visszaállítás
@@ -97,28 +98,28 @@ export default function RestorePanel({ onClose }) {
           állapot is bekerül az előzmények közé.
         </p>
 
-        {err && <div className="v-errbox">{err}</div>}
+        {err && <div className="shell-errbox">{err}</div>}
 
-        {rows === null && <div className="v-muted">Betöltés…</div>}
+        {rows === null && <div className="shell-muted">Betöltés…</div>}
         {rows !== null && rows.length === 0 && !err && (
-          <div className="v-muted">Még nincs korábbi mentés. Az első mentés után jelennek meg itt a korábbi állapotok.</div>
+          <div className="shell-muted">Még nincs korábbi mentés. Az első mentés után jelennek meg itt a korábbi állapotok.</div>
         )}
 
-        <div className="v-list">
+        <div className="shell-list">
           {(rows || []).map((row) => (
-            <div key={row.id} className="v-snap">
+            <div key={row.id} className="shell-snap">
               <div className="when">{fmtWhen(row.saved_at)}</div>
               <div className="counts">{counts(row.data) || "üres vagy ismeretlen tartalom"}</div>
               {confirmId === row.id ? (
-                <div className="v-snap-actions">
+                <div className="shell-snap-actions">
                   <span className="q">Biztosan visszaállítod?</span>
-                  <button className="v-btn v-btn-primary v-btn-sm" disabled={busyId === row.id} onClick={() => restore(row)}>
+                  <button className="shell-btn shell-btn-primary shell-btn-sm" disabled={busyId === row.id} onClick={() => restore(row)}>
                     {busyId === row.id ? "Visszaállítás…" : "Igen"}
                   </button>
-                  <button className="v-btn v-btn-ghost v-btn-sm" onClick={() => setConfirmId(null)}>Mégse</button>
+                  <button className="shell-btn shell-btn-ghost shell-btn-sm" onClick={() => setConfirmId(null)}>Mégse</button>
                 </div>
               ) : (
-                <button className="v-btn v-btn-ghost v-btn-sm" onClick={() => setConfirmId(row.id)}>Visszaállítás</button>
+                <button className="shell-btn shell-btn-ghost shell-btn-sm" onClick={() => setConfirmId(row.id)}>Visszaállítás</button>
               )}
             </div>
           ))}

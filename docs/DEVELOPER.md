@@ -49,14 +49,9 @@ bus and which driver does which run, at what time, for the lowest cost.
 
 ## 1. The big picture
 
-The app has a history you must understand before anything else.
-
-It was originally built as a "Claude artifact" — a single, self-contained React
-file (`fuvarterv.jsx`, ~2,800 lines) running in a sandbox. That file has since been
-**split into real modules under `src/`**, organized in layers (data → domain → ui →
-screens → App). `fuvarterv.jsx` itself is now a ~40-line **barrel**: it re-exports
-`src/App.jsx` plus the pure functions the tests import, so the split broke no
-imports. Write new code in the right module, never in the barrel.
+The whole application lives under `src/`, organised in layers that depend one way
+only: `data → domain → ui → screens → App`. There is no barrel file and no
+single-file entry point; import from the module that owns the concern.
 
 Around the app sits the same small **committed Vite project** (`src/` plus the
 config files at the repo root), which does three jobs:
@@ -70,20 +65,19 @@ The key design rule survived the split:
 
 > **The app never imports Supabase, auth, or anything about hosting.**
 > It only ever talks to a global object called `window.storage`. The wrapper
-> installs a Supabase-backed `window.storage` before the app mounts. This keeps
-> the app portable — you could drop it back into the artifact sandbox and it
-> would still work.
+> installs a Supabase-backed `window.storage` before the app mounts. Swapping the
+> backend therefore means writing one new object that satisfies the same four-method
+> contract, and touching nothing else.
 
 So there are two "sides":
 
 | Side | Files | Knows about |
 |------|-------|-------------|
-| **The app** | `fuvarterv.jsx` (barrel) + `src/App.jsx`, `src/screens/`, `src/ui/`, `src/domain/`, `src/data/` | Teams, buses, drivers, routes, the optimizer, the UI. Talks only to `window.storage`. |
+| **The app** | `src/App.jsx`, `src/screens/`, `src/ui/`, `src/domain/`, `src/data/` | Teams, buses, drivers, routes, the optimizer, the UI. Talks only to `window.storage`. |
 | **The wrapper** | `src/main.jsx`, `src/AuthGate.jsx`, `src/supabase*.js`, `src/RestorePanel.jsx`, `src/ErrorBoundary.jsx`, config files | Supabase, login, build, deploy. Provides `window.storage`. |
 
-> The rationale behind this shape — and the rules that keep the layering intact —
-> is in [`ARCHITECTURE.md`](ARCHITECTURE.md) §4 and [`DECISIONS.md`](DECISIONS.md)
-> ADR-03/ADR-04.
+> The rationale behind this shape, and the rules that keep the layering intact, is in
+> [`ARCHITECTURE.md`](ARCHITECTURE.md) and [`DECISIONS.md`](DECISIONS.md).
 
 ---
 
@@ -92,9 +86,9 @@ So there are two "sides":
 - **React 18** — UI library. Function components and hooks only (`useState`,
   `useEffect`, `useMemo`, `useRef`). No Redux, no router library.
 - **Vite 6** — dev server and production bundler.
-- **Tailwind CSS v4** (via the `@tailwindcss/vite` plugin) — used lightly, for
-  layout utilities. Most styling is hand-written CSS in `src/ui/styles.css` on top
-  of the `src/theme.css` tokens (see [§12](#12-the-user-interface)).
+- **Tailwind CSS v4** (via the `@tailwindcss/vite` plugin) — used lightly, for layout
+  utilities only. Everything else is hand-written CSS in `src/ui/styles.css`, which is
+  the single stylesheet and owns the design tokens (see [§12](#12-the-user-interface)).
 - **lucide-react** — icon set.
 - **@supabase/supabase-js v2** — client for the Supabase backend (database + auth).
 - **Leaflet + OpenStreetMap** — map, lazy-loaded only when the map picker opens.
@@ -110,8 +104,6 @@ flat config (`npm run lint`). See [§19](#19-tests).
 
 ```
 .
-├── fuvarterv.jsx                ← barrel only (~40 lines): re-exports src/App.jsx
-│                               and the pure functions the tests import
 ├── index.html                ← HTML entry; loads /src/main.jsx + the Nunito font
 ├── package.json              ← deps + scripts (dev / build / preview / test / lint)
 ├── vite.config.js            ← Vite config (React + Tailwind) and the vitest block
@@ -137,7 +129,6 @@ flat config (`npm run lint`). See [§19](#19-tests).
 │   ├── AuthGate.jsx          ← login, session, stale/save-error UI, error boundary
 │   ├── ErrorBoundary.jsx     ← keeps a screen crash from white-screening the app
 │   ├── RestorePanel.jsx      ← the "Korábbi mentések" snapshot list
-│   ├── theme.css             ← the --v-* design tokens (incl. dark mode)
 │   ├── supabaseClient.js     ← creates the Supabase client from env vars
 │   ├── supabaseStorage.js    ← implements window.storage on top of Supabase
 │   ├── data/
@@ -150,7 +141,7 @@ flat config (`npm run lint`). See [§19](#19-tests).
 │   │   ├── logic.js          ← plates, occurrences, ride windows, conflicts
 │   │   └── optimizer.js      ← tasks, routing, chaining, assignment
 │   ├── ui/
-│   │   ├── styles.css        ← the app stylesheet (tokens alias theme.css)
+│   │   ├── styles.css        ← the ONE stylesheet: tokens, shell, and app rules
 │   │   ├── base.jsx          ← Field, NumField, Modal, DangerBtn, …
 │   │   ├── OccCard.jsx       ← one training occurrence (week + ride picker)
 │   │   ├── MapPicker.jsx     ← Leaflet picker + offline SVG fallback
@@ -158,14 +149,8 @@ flat config (`npm run lint`). See [§19](#19-tests).
 │   └── screens/              ← WeekScreen, TeamsScreen, MasterScreen, StopListEditor,
 │                               RideScreen, ScheduleScreen, DriverScreen, DataScreen
 └── supabase/migrations/
-    ├── 0001_app_state.sql        ← the app_state table + RLS policies
-    ├── 0002_app_state_history.sql← snapshot history behind the restore panel
-    ├── 0003_tighten_rls.sql      ← scoped writes, append-only history, server clock
-    ├── 0004_user_roles.sql       ← admin/driver roles; writes become admin-only
-    ├── 0005_rename_workspace_key.sql
-    │                             ← history: 'fuvarterv:v1' → 'vector:v1'
-    └── 0006_rename_workspace_key_back.sql
-                                  ← 'vector:v1' → 'fuvarterv:v1' — today's key
+    └── 0001_initial_schema.sql   ← the entire server side: tables, functions,
+                                    the touch trigger, and every RLS policy
 ```
 
 **Dependency direction.** `screens → ui → domain → data`, and inside `domain`
@@ -178,7 +163,7 @@ would make the two circular.
 
 - **`index.html`** — `lang="hu"`, a `<div id="root">`, and a script tag for
   `/src/main.jsx`. Nothing else.
-- **`src/main.jsx`** — imports `App` from `../fuvarterv.jsx` (Vite can import a file
+- **`src/main.jsx`** — imports `App` from `./App.jsx` (Vite can import a file
   from outside `src/`), wraps it in `AuthGate`, and renders it into `#root`.
 - **`src/supabaseClient.js`** — reads the two `VITE_SUPABASE_*` env vars, and
   exports a Supabase client (or `null` if the vars are missing, so the app can show
@@ -212,7 +197,7 @@ Follow the chain of events from page load to a working app:
    - Once logged in, it does a **pre-flight read** of the database. If that read
      fails (network/permissions) → a retry screen. If it succeeds → it renders the
      app (`children`).
-5. **`App` (inside `fuvarterv.jsx`) mounts.** Its first `useEffect` calls
+5. **`App` mounts.** Its first `useEffect` calls
    `loadState()`, which reads the saved blob through `window.storage.get(...)`. If
    there is saved data, it loads it; if not, it seeds sample data. From here the app
    is running normally.
@@ -261,7 +246,7 @@ This is the heart of the wrapper. Read it carefully.
 
 ### 6.1 The `window.storage` contract
 
-`fuvarterv.jsx` treats persistence as a tiny key-value store on `window.storage`
+The app treats persistence as a tiny key-value store on `window.storage`
 with four async methods:
 
 ```js
@@ -272,8 +257,6 @@ window.storage.list(prefix)      // → { keys: [...] }
 ```
 
 The app uses only **one key**: `STORAGE_KEY = "fuvarterv:v1"`. (It was
-`"vector:v1"` while the app was called Vector;
-`supabase/migrations/0006_rename_workspace_key_back.sql` moves an existing install's
 rows and RLS policies back onto this key, and is required even on a fresh
 database — see that directory's README.) The *entire*
 application state is one JSON object, turned into a string with `JSON.stringify`
@@ -290,7 +273,7 @@ async function loadState() {
 
 async function persistState(state) {
   try { await window.storage.set(STORAGE_KEY, JSON.stringify(state)); }
-  catch (e) { console.error("Mentési hiba:", e); }
+  catch (e) { console.error("Save failed:", e); }
 }
 ```
 
@@ -299,7 +282,7 @@ saves once. Rapid edits collapse into a single save.
 
 ### 6.2 The Supabase table
 
-The whole state is stored as **one row** in one table (`supabase/migrations/0001_app_state.sql`):
+The whole state is stored as **one row** in one table (`supabase/migrations/0001_initial_schema.sql`):
 
 ```sql
 create table public.app_state (
@@ -393,7 +376,7 @@ user's real data — very alarming even though the real data is safe on the serv
 
 ```
 Edit in UI
-  → setState(...)                       (fuvarterv.jsx)
+  → setState(...)                       (src/App.jsx)
   → 300 ms debounce
   → persistState(state)
   → window.storage.set(KEY, JSON)       (== supabaseStorage.set)
@@ -623,7 +606,7 @@ safely.
 ## 9. Domain logic — dates, times, plates, conflicts
 
 All of this is pure, framework-free JavaScript in the "domain" layer of
-`fuvarterv.jsx`. No React, no I/O.
+the UI. No React, no I/O.
 
 ### 9.1 Dates and weeks
 
@@ -970,15 +953,18 @@ Styling is **not** mostly Tailwind. The visual identity lives in
 quick layout (`flex`, `gap-2`, `mt-2`, etc.). When changing appearance, look in
 `styles.css` first.
 
-**One palette.** `src/theme.css` owns the `--v-*` design tokens *and the dark mode*;
-`styles.css` defines the app's own names as aliases onto them
-(`--ink: var(--v-ink)`, `--acc: var(--v-acc)`, …). That is why every rule can stay
-written in the short names while the whole app still follows the OS colour scheme.
-Change a colour in `theme.css`, not in `styles.css`.
+**One palette.** `src/ui/styles.css` defines every design token once, including dark
+mode, which follows the operating system. There is no in-app theme switch; an earlier
+`[data-theme]` override existed for one that was never built and has been removed.
+
+The file has two halves under one token set: `.shell-*` rules for the frames that run
+outside the app proper (login, the error boundary, the restore panel, the save-failure
+toast), and everything else for the application itself. Keep that split when you add a
+rule.
 
 **The one trap.** A few surfaces are *deliberately* dark — the header, the tab bar,
 the driver-view card headers, the active chip. They must use `--surface-inv` with
-`--on-inv` for their text, **never** `--ink` as a background: in dark mode `--v-ink`
+`--on-inv` for their text, **never** `--ink` as a background: in dark mode `--ink`
 is near-white, so `background: var(--ink); color: #fff` renders white on white. The
 licence plate is the same idea in reverse: it keeps `--plate-bg` / `--plate-ink` so
 it stays a real-world white plate with dark lettering in both themes.
@@ -1017,7 +1003,7 @@ persisted.
   OSRM, the app falls back to straight-line estimates (clearly labelled in the UI).
 
 These services all work in the deployed (Vercel) app and in normal local dev. Inside
-the original artifact sandbox they may be blocked by CSP, which is exactly why every
+behind a restrictive CSP they may be blocked, which is exactly why every
 one of them has a fallback.
 
 ---
@@ -1143,7 +1129,7 @@ Add a component, add an entry to the `TABS` array (label + icon), and render it 
 
 ### Change how data is stored
 
-You almost never need to touch `fuvarterv.jsx`. To change the backend, reimplement
+To change the backend, reimplement
 the four methods in **`src/supabaseStorage.js`** (or point `window.storage` at a
 different implementation in `AuthGate.jsx`). As long as `get`/`set` honor the
 contract in [§6.1](#61-the-windowstorage-contract), the app doesn't care.
@@ -1151,8 +1137,7 @@ contract in [§6.1](#61-the-windowstorage-contract), the app doesn't care.
 ### Where to put new code
 
 The split is done — see the tree in [§3](#3-repository-layout--every-file). Put new
-code in the module that owns the concern, not in `fuvarterv.jsx` (that is only a
-barrel now, kept so existing imports and tests keep working).
+code in the module that owns the concern.
 
 - Pure rule, no React → `src/domain/*`. It becomes directly unit-testable.
 - A new reusable control → `src/ui/base.jsx`.

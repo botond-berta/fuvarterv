@@ -1,384 +1,268 @@
-# Fuvarterv — cselekvési terv
+# Fuvarterv — action plan
 
-Ez a dokumentum egy 2026. szeptemberi kódbázis-átvilágítás eredménye: **mit érdemes
-megcsinálni, milyen sorrendben, és miről tudjuk, hogy elkészült.** Nem hibalista — a
-tételek többsége tudatos kompromisszum továbbvitele vagy egy felderített gyenge pont
-lezárása.
+The result of a codebase review: **what is worth doing, in what order, and how you will
+know it is finished.** Not a bug list — most items are either carrying a deliberate
+trade-off forward or closing an identified weak point.
 
-A „miért így van” továbbra is az [`ARCHITECTURE.md`](ARCHITECTURE.md) és a
-[`DECISIONS.md`](DECISIONS.md) dolga, a napi munkafolyamat a
-[`MAINTENANCE.md`](MAINTENANCE.md)-é. Ez a fájl csak a **teendőket** rendezi sorba.
+The "why is it like this" still belongs to [`ARCHITECTURE.md`](ARCHITECTURE.md) and
+[`DECISIONS.md`](DECISIONS.md); the day-to-day workflow to [`MAINTENANCE.md`](MAINTENANCE.md).
+This file only orders the **work**.
 
-Ahol egy tétel az `ARCHITECTURE.md` [16. fejezetének](ARCHITECTURE.md#16-ismert-kockázatok-és-technikai-adósság)
-kockázatát zárja le, ott az `R…` hivatkozás jelzi.
-
----
-
-## 0. Az átvilágítás kiindulópontja
-
-Minden szám a `main` ág állapotára vonatkozik, mért értékek (`npm run lint`,
-`npm test`, `npm run build`):
-
-| Mérőszám | Érték |
-|---|---|
-| Forrás (js/jsx) | 5 015 sor |
-| Tesztek | 2 307 sor, 19 fájl, 168 teszt — mind zöld |
-| Dokumentáció | 2 882 sor |
-| SQL migrációk | 340 sor |
-| Lint | 0 hiba, 20 figyelmeztetés |
-| Production bundle | 523,85 kB (gzip 151,01 kB), egyetlen chunk |
-
-**Ami erős, és amihez NEM nyúlunk:** az egyirányú rétegzés (`constants` →
-`datetime`/`geo` → `logic` → `optimizer` → `ui` → `screens` → `App`, körkörös import
-nélkül), a „komment = a kizárt hibás viselkedés” konvenció, a `test/optimizer.test.js`
-invariáns-alapú property tesztje, a perzisztencia hibaágai (`NOT_FOUND` sentinel,
-elveszett válasz felismerése, írás-sorosítás, 20 elemű előzmény), és a biztonsági
-modell (az RLS a határ, a felület csak UX).
-
-A terv ezeket **nem** bolygatja. Minden alábbi tétel a kimért gyenge pontokra megy.
+Where an item closes a risk from
+[`ARCHITECTURE.md` §15](ARCHITECTURE.md#15-known-risks-and-technical-debt), the `R…`
+reference says which.
 
 ---
 
-## 1. Prioritások egy pillantásra
+## 1. Already done
 
-| # | Teendő | Méret | Kockázat | Zárja |
-|---|---|---|---|---|
-| **P0-1** | Production source map bekapcsolása | 1 sor | nincs | — |
-| **P0-2** | A `taskHardIssues` és az optimalizáló indoklásainak egyesítése | ~1 óra | alacsony | ADR-25 megsértése |
-| **P0-3** | A 20 lint-figyelmeztetés lenullázása | ~1 óra | nincs | — |
-| **P0-4** | A munkaterület-kulcs egyetlen forrásra hozása | ~30 perc | alacsony | — |
-| **P1-1** | Mintaadat anonimizálása | ~1 óra | nincs | R5 |
-| **P1-2** | Stíluskezelés egységesítése | 1–2 nap | közepes | — |
-| **P1-3** | A nagy képernyő-komponensek bontása | 1–2 nap | közepes | — |
-| **P1-4** | Import-határok gépi őrzése | ~2 óra | alacsony | R6 |
-| **P2-1** | Stabil feladatazonosító | 1–2 nap | **magas** | R1 |
-| **P2-2** | Bundle-bontás (Leaflet, Supabase) | ~fél nap | alacsony | — |
-| **P2-3** | Hibabejelentés éles környezetből | ~fél nap | alacsony | — |
-| **P2-4** | Tesztek a modulokra, ne a barrelre | ~fél nap | alacsony | R8 |
+These came out of the same review and are in the code now. They are listed so the plan
+reads honestly, and so nobody re-does them.
 
-**Javasolt sorrend:** a P0 egyetlen PR-ben is elfér. A P1 tételei függetlenek,
-tetszőleges sorrendben mehetnek. A P2-1 előtt a P1-3-nak érdemes kész lennie (a
-`ScheduleScreen` úgyis változik).
-
----
-
-## 2. P0 — azonnali, olcsó, nagy haszon
-
-### P0-1 · Production source map bekapcsolása
-
-**Miért.** Az `ErrorBoundary` a teljes vermet kiírja a konzolra
-(`src/ErrorBoundary.jsx`, `componentDidCatch`), a Vercelen viszont ez a verem
-**minifikált**, tehát használhatatlan. Ha egy klubvezető azt mondja, hogy „hibakártya
-jött”, ma csak helyi reprodukálással lehet elindulni. Ez a kódbázis leggyengébb
-hibakeresési pontja, és egy soros a javítása.
-
-**Mit.** A `vite.config.js`-ben:
-
-```js
-build: { sourcemap: true },
-```
-
-**Ellenőrzés.** `npm run build`, majd a `dist/assets/` alatt legyen `.js.map`. A
-preview deployon idézz elő szándékos hibát (pl. egy képernyőn `throw new Error("x")`),
-és a böngésző konzolján a verem forrásfájlra és sorra mutasson.
-
-**Megjegyzés.** A source map publikus lesz. Ennél az alkalmazásnál ez nem titok: a
-kód amúgy is a böngészőben fut, és nincs benne szerveroldali logika vagy kulcs (az
-anon kulcs szándékosan publikus, a határ az RLS — lásd ADR-12).
-
----
-
-### P0-2 · A `taskHardIssues` és az optimalizáló indoklásainak egyesítése
-
-**Miért.** Két helyen él ugyanaz a megvalósíthatósági vizsgálat, és **már el is
-csúszott egymástól**:
-
-| Ellenőrzés | `optimizeDay` (`src/domain/optimizer.js`) | `taskHardIssues` (`src/screens/ScheduleScreen.jsx:17`) |
+| Item | What changed | Closed |
 |---|---|---|
-| férőhely (`pax > maxSeats`) | van | van |
-| sofőr-elérhetőség | van | van |
-| **országos matrica** | **van** | **nincs** |
+| **Production sourcemaps** | `build.sourcemap` is on, so the error boundary's console stack points at real files instead of minified output | part of R9 |
+| **The barrel is gone** | `fuvarterv.jsx` was deleted; `src/main.jsx` and every test import the real modules. `fs.allow: ['..']` went with it | the old R8 |
+| **One schema file** | six migrations, two of which were a rename and its exact reversal, became one re-runnable `0001_initial_schema.sql`. The workspace key now lives in a `workspace_id()` function instead of being repeated in every policy | — |
+| **One stylesheet** | `theme.css` merged into `src/ui/styles.css`; one token set instead of a `--v-*` namespace aliased onto a second one; the dead `[data-theme]` override removed; the `v-` class prefix (a leftover from an abandoned name) became `shell-` | part of ADR-28 |
+| **Anonymised sample data** | real driver names and plates replaced with placeholders; stations and venues kept, since they are public places and make the distances realistic | the old R5 |
+| **Dead code removed** | nine unused imports and three unused variables; lint warnings went from 20 to 10, and the remainder are all documented as intentional | part of P0-3 |
+| **Everything translated** | code comments, tests and documentation are English. The UI stays Hungarian, as do two stored data values (`oda`/`vissza`, `sofor`) | ADR-25 |
 
-Következmény: egy olyan fedetlen feladat, amit **csak** a matrica hiánya blokkol, a
-„Fedetlen feladatok" listában **indoklás nélkül** jelenik meg. Ez pontosan az, amit az
-[ADR-25](DECISIONS.md#adr-25--minden-kihagyás-indoklást-kap) tilt: néma kihagyás nincs.
+---
 
-**Mit.** A vizsgálat költözzön a domainbe, egyetlen függvénybe, és mindkét hívó azt
-használja:
+## 2. Priorities at a glance
+
+| # | Item | Size | Risk | Closes |
+|---|---|---|---|---|
+| **P0-1** | Merge the duplicated feasibility check | ~1 hour | low | R6, an ADR-24 violation |
+| **P0-2** | Clear the remaining 10 lint warnings | ~1 hour | none | — |
+| **P1-1** | Migrate the inline styles into classes | 1–2 days | medium | part of ADR-28 |
+| **P1-2** | Split up the large screen components | 1–2 days | medium | — |
+| **P1-3** | Machine-enforce the import boundaries | ~2 hours | low | R4 |
+| **P2-1** | Stable task ids | 1–2 days | **high** | R1 |
+| **P2-2** | Bundle splitting (Leaflet, Supabase) | ~half a day | low | — |
+| **P2-3** | Error reporting from production | ~half a day | low | R9 |
+
+**Suggested order.** P0 fits in one pull request. The P1 items are independent and can go
+in any order. P1-2 is worth doing before P2-1, since `ScheduleScreen` will change anyway.
+
+---
+
+## 3. P0 — immediate, cheap, high value
+
+### P0-1 · Merge the duplicated feasibility check
+
+**Why.** The same feasibility test lives in two places, and they have **already drifted**:
+
+| Check | `optimizeDay` (`src/domain/optimizer.js`) | `taskHardIssues` (`src/screens/ScheduleScreen.jsx`) |
+|---|---|---|
+| capacity (`pax > maxSeats`) | yes | yes |
+| driver availability | yes | yes |
+| **motorway vignette** | **yes** | **no** |
+
+The consequence: an uncovered task blocked **only** by a missing vignette appears in the
+uncovered list with **no reason at all**. That is precisely what
+[ADR-24](DECISIONS.md#adr-24--every-skip-gets-a-reason) forbids — there is no silent skip.
+
+**What to do.** Move the check into the domain, into one function, and have both callers
+use it:
 
 ```js
 // src/domain/optimizer.js
-export function taskFeasibility(state, weekday, t) { /* a három ok, egy helyen */ }
+export function taskFeasibility(state, weekday, t) { /* all three reasons, one place */ }
 ```
 
-- `optimizeDay` a „szabad feladatok kemény megvalósíthatósága” blokkban ezt hívja.
-- A `ScheduleScreen` `taskHardIssues`-a megszűnik, helyette `taskFeasibility`.
-- A barrel (`fuvarterv.jsx`) exportálja az újat, a régit ne.
+- `optimizeDay` calls it in its "hard feasibility of the free tasks" block.
+- `taskHardIssues` disappears; `ScheduleScreen` calls `taskFeasibility`.
 
-**Ellenőrzés.** Új teszt: olyan állapot, ahol a helyszín `needsVignette: true`, és
-egyik jármű sem matricás; a feladat kerüljön a fedetlenek közé, és a `reasons` tömbje
-**ne** legyen üres. Ez a teszt a mai kódon bukik — ez a bizonyíték, hogy valódi a hiba.
+**Verification.** A new test: a state where the venue has `needsVignette: true` and no
+vehicle carries one. The task should land among the uncovered, and its `reasons` array
+must **not** be empty. That test fails on today's code, which is the proof the bug is
+real.
 
----
+### P0-2 · Clear the remaining 10 lint warnings
 
-### P0-3 · A 20 lint-figyelmeztetés lenullázása
+**Why.** Every CI run is green with 10 warnings. An eleventh — possibly pointing at a real
+defect — would go unnoticed. Noise cancels out the lint's value.
 
-**Miért.** Ma minden CI-futás 20 figyelmeztetéssel zöld. Egy 21. figyelmeztetés — akár
-egy valódi hibára mutató — így észrevétlen marad. A zaj a lint értékét nullázza.
+**What to do.** All ten are either `react-hooks/exhaustive-deps` or
+`react-hooks/set-state-in-effect`, and all are currently intentional. Two deserve a real
+fix rather than a silence:
 
-**Mit.**
+1. **`UsersPanel.jsx`, `set-state-in-effect`.** The "no server configured" branch should
+   not set state in an effect. `isConfigured` is known before render, so it belongs in the
+   `useState` initialiser.
+2. **`ScheduleScreen.jsx`, `exhaustive-deps`.** `weekMon` is a fresh `new Date()` on every
+   render, so adding it to the dependency array would disable the memo entirely. Today's
+   omission is pragmatic but carries a latent bug: the screen sticks to the week the memo
+   first ran in, so a session left open across Sunday midnight shows the wrong week. Fix
+   it by making `weekMon` a **stable, comparable value** (the ISO string of the Monday) in
+   the dependency array, and deriving the date inside the memo.
 
-1. **Kihasználatlan importok törlése** (9 db, mechanikus): `byId`
-   (`MasterScreen.jsx:7`), `toISO` és `InfoDot` (`RideScreen.jsx:8,11`), `InfoDot` és
-   `notice` (`TeamsScreen.jsx:11,91`), `InfoDot` (`WeekScreen.jsx:9`), `e`
-   (`MapPicker.jsx:266`).
-2. **`UsersPanel.jsx:26` `set-state-in-effect`:** a „nincs beállítva a szerver” ág ne
-   effektben állítson állapotot, hanem a `useState` kezdőértékében dőljön el
-   (`isConfigured` a renderelés előtt is ismert).
-3. **`ScheduleScreen.jsx:253` `exhaustive-deps`:** lásd lent, külön alpont.
-4. **`MapPicker.jsx:254` `exhaustive-deps`:** a `c0`/`item` szándékosan csak a
-   megnyitáskori kezdőnézetet adja. Ezt `eslint-disable-next-line`-nal **és egy
-   mondatos indoklással** némítsd — a néma kivétel rosszabb, mint a figyelmeztetés.
-5. Ha mind elfogyott: a `no-unused-vars` menjen `warn`-ról `error`-ra az
-   `eslint.config.js`-ben, hogy vissza se szivároghasson.
+The rest should be silenced individually with `eslint-disable-next-line` **and a
+one-sentence reason**. A silent exception is worse than a warning.
 
-**A `ScheduleScreen` esete külön figyelmet érdemel.** A `weekMon` minden
-rendereléskor új `new Date()`, ezért a `useMemo` függőségei közé betenni annyi, mint
-kikapcsolni a memoizációt. A mai kihagyás pragmatikus, de latens hibát hordoz: a
-képernyő ahhoz a héthez tapad, amelyikben a memo először lefutott, tehát egy vasárnap
-éjfélen át nyitva hagyott munkamenet rossz hetet mutat. Javítás: a `weekMon` legyen
-**stabil, összehasonlítható érték** (pl. `toISO(mondayOf(new Date()))` stringként a
-függőségi tömbben), a `mondayOf` pedig ebből számoljon a memón belül.
+Once the list is empty, consider promoting `no-unused-vars` from `warn` to `error` so dead
+code cannot creep back.
 
-**Ellenőrzés.** `npm run lint` → `0 problems`. A `npm test` maradjon 168/168.
+**Verification.** `npm run lint` reports `0 problems`, and `npm test` stays at 168.
 
 ---
 
-### P0-4 · A munkaterület-kulcs egyetlen forrásra hozása
+## 4. P1 — real debt
 
-**Miért.** A `"fuvarterv:v1"` szó szerint három helyen szerepel: `src/data/storage.js`
-(`STORAGE_KEY`), `src/supabaseClient.js` (`WORKSPACE_ID`) és az RLS-szabályok
-törzsében. A kliensoldali kettősség fölösleges, és pont ez az, ami a 0005/0006
-migrációpárt megdrágította: egy átnevezés ma **négy** fájlt érint.
+### P1-1 · Migrate the inline styles into classes
 
-**Mit.** A `WORKSPACE_ID` ne önálló literál legyen, hanem a `STORAGE_KEY`
-újraexportálása (vagy fordítva — a lényeg, hogy egy literál maradjon a kliensben). Az
-SQL-oldali duplikáció marad: azt a `supabase/migrations/README.md` már kezeli, és
-migrációt utólag átírni tilos.
+**Why.** The two parallel stylesheets are gone, but **146 inline `style={{…}}` objects**
+remain across 16 files, alongside roughly 510 `className` attributes. Changing one colour
+still depends on which mechanism a given component happened to use.
 
-**Ellenőrzés.** `grep -rn '"fuvarterv:v1"' src` pontosan **egy** találatot adjon.
-A `test/login.test.jsx`, `test/fetchrole.test.js` és `test/load-error.test.js`
-mockjai maradhatnak — azok szándékosan rögzítik a szerződést.
+| File | Inline styles |
+|---|---|
+| `ScheduleScreen.jsx` | 25 |
+| `RideScreen.jsx` | 16 |
+| `TeamsScreen.jsx` | 15 |
+| `DriverScreen.jsx` | 15 |
+| `MapPicker.jsx` | 14 |
 
----
+**What to do.** Not a single sweep. Start with the top files; anything that appears twice
+becomes a class. What is genuinely unique and computed (a team's colour, for instance) may
+stay inline — an inline style is not wrong in itself, its **arbitrariness** is.
 
-## 3. P1 — valódi adósság
+Keep the rule Tailwind is held to: layout utilities only, never colour, size, typography
+or state.
 
-### P1-1 · Mintaadat anonimizálása (R5)
+**Verification.** No automated measure; the count is the measure. Get
+`grep -ro 'style={{' src | wc -l` from 146 to under 50. After each pull request, `npm test`
+(the smoke test renders every tab) plus a look at a preview deployment.
 
-**Miért.** A `src/data/seed.js` **valódi sofőrneveket** (`Sipos Zsolti`,
-`Habenyák Alex`, …) és **valódi rendszámokat** (`PAK-543`, …) tartalmaz, egy
-verziókövetett repóban. A `README` figyelmeztet rá, de a figyelmeztetés nem intézkedés.
+### P1-2 · Split up the large screen components
 
-**Mit.** A mintaadat neve és rendszáma legyen kitalált (`Sofőr 1`, `AAA-001`), a
-megállók, helyszínek és koordináták maradhatnak — azok közérdekű helyadatok. A
-`note` mezőkből is ki kell venni a neveket (ma pl. „váltásban Csomor Tamással”).
+**Why.** Five components carry the weight of the screen layer.
 
-**Fontos.** Ez a Git-előzményből nem tünteti el az adatot. Ha ez elvárás, az külön
-döntés (history-átírás), és nem ennek a tételnek a része — de a döntést ki kell
-mondani.
-
-**Ellenőrzés.** `npm test` zöld (a tesztek nem támaszkodnak konkrét mintanevekre —
-ezt a futtatás igazolja). A `test/smoke.test.jsx` mintaadatról indul, tehát az a
-tényleges regressziós háló.
-
----
-
-### P1-2 · Stíluskezelés egységesítése
-
-**Miért.** Ma **három, párhuzamos** rendszer él egymás mellett:
-
-| Rendszer | Hol | Mennyiség |
+| Component | Lines | What it mixes |
 |---|---|---|
-| Tailwind utility osztályok | mindenhol | ~510 `className` |
-| Saját szemantikus CSS, `ft-*` / `.btn` / `.card` | `src/ui/styles.css` | 127 sor |
-| Saját szemantikus CSS, `v-*` | `src/theme.css` | 140 sor |
-| Beágyazott `style={{…}}` objektum | 16 fájl | **146 db** |
-
-Egy gombszín megváltoztatása ma nem egy helyen történik, hanem attól függ, melyik
-komponens melyik rendszert használta. Ez a kódbázis legdrágább karbantartási pontja.
-
-**Mit.** Ne nagytakarítás legyen, hanem **kimondott tulajdonos + fokozatos behúzás**:
-
-1. **Döntés (ADR!):** a `theme.css` (`v-*`) szolgálja a **belépés előtti héjat** —
-   `AuthGate`, `LoginScreen`, `ErrorBoundary`, `RestorePanel`, `UsersPanel` —, a
-   `styles.css` pedig a **belépés utáni alkalmazást**. Ez ma is majdnem így van; a
-   szabályt csak ki kell mondani, és az `UsersPanel`-t egyértelműsíteni. Rögzítsd
-   `DECISIONS.md`-ben.
-2. **Tailwind szerepe:** kizárólag elrendezés (`flex`, `gap-*`, `mt-*`, `w-full`).
-   Szín, méret, tipográfia és állapot **soha** — az CSS-osztály.
-3. **A 146 inline stílus behúzása.** Kezdd a top 3 fájllal (`ScheduleScreen` 25,
-   `RideScreen` 16, `TeamsScreen`/`DriverScreen` 15-15). Ami kétszer előfordul, az
-   osztály lesz; ami tényleg egyedi és számított (pl. csapatszín), az maradhat inline
-   — az inline stílus önmagában nem hiba, a **véletlenszerűsége** az.
-
-**Ellenőrzés.** Nincs automatikus mérce; a mérőszám maga a darabszám:
-`grep -ro 'style={{' src | wc -l` menjen 146-ról 50 alá. Minden PR után `npm test`
-(a smoke teszt minden fület renderel) és **szemrevételezés** a preview deployon.
-
----
-
-### P1-3 · A nagy képernyő-komponensek bontása
-
-**Miért.** Öt komponens hordja a képernyő-réteg terhét:
-
-| Komponens | Sor | Mit kever |
-|---|---|---|
-| `RideForm` (`RideScreen.jsx`) | 267 | piszkozat-állapot, validáció, megállószerkesztés, elrendezés |
-| `ScheduleScreen` | 251 | 8 useState, mátrixhívás, optimalizálás, modálok, elrendezés |
-| `MasterForm` (`MasterScreen.jsx`) | 161 | 5 entitástípus űrlapja egyetlen függvényben |
-| `UsersPanel` | 153 | hálózati állapotgép + lista + űrlap |
+| `RideForm` (`RideScreen.jsx`) | 267 | draft state, validation, stop editing, layout |
+| `ScheduleScreen` | 251 | eight `useState`s, the matrix call, optimisation, modals, layout |
+| `MasterForm` (`MasterScreen.jsx`) | 161 | five entity types' forms in one function |
+| `UsersPanel` | 153 | a network state machine, a list, and a form |
 | `StopListEditor` | 147 | — |
 
-**Mit.** A cél nem a sorszám, hanem hogy **egy komponens egy dolgot csináljon**.
-Konkrétan:
+**What to do.** The goal is not a line count but that **one component does one thing**.
 
-- `ScheduleScreen`: a modálok (`MoveModal`, beállítások, generálás-megerősítés) már
-  külön komponensek — a maradék állapotot vidd egy `useScheduleActions` hookba
-  (mátrix, optimalizálás, fuvargenerálás), hogy a komponens elrendezés maradjon.
-- `MasterForm`: az entitásonkénti mezőkészlet legyen adatvezérelt (kind → mezőleírás),
-  ne ág.
-- `RideForm`: a megállólista-szerkesztés külön komponens, a `StopListEditor` mintájára.
+- `ScheduleScreen`: the modals are already separate components. Move the remaining
+  behaviour into a `useScheduleActions` hook (matrix, optimisation, ride generation) so
+  the component is layout.
+- `MasterForm`: make the per-entity field set data-driven (kind → field descriptors)
+  rather than branching.
+- `RideForm`: pull the stop-list editing into its own component, following
+  `StopListEditor`.
 
-**Ellenőrzés.** A `test/smoke.test.jsx` minden fület renderel, a
-`test/training-stops-ui.test.jsx`, `test/master-coord.test.jsx`,
-`test/ride-direction.test.jsx` és `test/vignette-ui.test.jsx` a konkrét viselkedést —
-ez a háló a refaktorhoz. **Ha egy bontás közben tesztet kell átírni, az jelzés:
-viselkedés változott, nem csak forma.**
+**Verification.** `smoke.test.jsx` renders every tab, and `training-stops-ui`,
+`master-coord`, `ride-direction` and `vignette-ui` pin the specific behaviour. That is the
+net for this refactor. **If a split forces you to change a test, that is the signal:
+behaviour moved, not just shape.**
 
----
+### P1-3 · Machine-enforce the import boundaries (R4)
 
-### P1-4 · Import-határok gépi őrzése (R6)
+**Why.** The layering is a **convention**, not a rule. An import from `screens` into
+`supabaseClient`, or from `domain` into `ui`, fails no check. It surfaces only if somebody
+notices in review.
 
-**Miért.** A rétegzés ma **konvenció**, nem szabály. Egy `import` a `screens`-ből a
-`supabaseClient`-be, vagy a `domain`-ből a `ui`-ba, semmilyen ellenőrzésen nem bukik
-el — csak akkor derül ki, ha valaki észreveszi a review-ban.
+**What to do.** `eslint-plugin-import` (or `eslint-plugin-boundaries`) with zone rules:
 
-**Mit.** `eslint-plugin-import` (vagy `eslint-plugin-boundaries`) zóna-szabállyal:
-
-| Réteg | Mit importálhat |
+| Layer | May import |
 |---|---|
-| `src/domain/**` | csak `src/domain/**` (se `window`, se hálózat, se React) |
+| `src/domain/**` | only `src/domain/**` (no `window`, no network, no React) |
 | `src/data/**` | `src/domain/**` |
 | `src/ui/**` | `src/domain/**`, React |
 | `src/screens/**` | `src/domain/**`, `src/data/**`, `src/ui/**` |
-| `src/App.jsx` | bármelyik fenti |
+| `src/App.jsx` | any of the above |
 
-**Ellenőrzés.** A szabály bevezetése után **szándékosan** írj be egy tiltott importot,
-és a `npm run lint` bukjon el rá. Ez a lépés nélkül a szabály csak dísz.
-
----
-
-## 4. P2 — strukturális, ha az idő engedi
-
-### P2-1 · Stabil feladatazonosító (R1)
-
-**Miért.** A feladat azonosítója ma `${trainingId}:${suffix}:${dir}${tag}`, és a `tag`
-a **kapacitásbontás indexe**. Ha a megállók vagy a létszámok változnak, a `…:vissza`
-azonosítóból `…:vissza#1` lehet — és a mentett lánc a benne tárolt sofőrrel, járművel
-és zárolással együtt kiesik. A `resolveDay` ma ezt **számolja és megmondja**
-(`droppedChains`), ami korrekt kármentés, de a beosztás így is elveszett.
-
-**Mit.** Az azonosító identitása legyen felosztástól független (edzés + irány +
-nap), a felosztás pedig külön mező (`part: 1/2`). A `resolveDay` a mentett láncot
-akkor is fel tudja oldani, ha a feladat közben kettévált — a kettévált részeket vagy
-ugyanahhoz a lánchoz köti, vagy explicit kérdést tesz fel a felhasználónak.
-
-**Kockázat.** Ez **adatformátum-változás**: a mentett `assignments` `taskIds` mezője
-ma a régi alakot tárolja. Kell hozzá `ensureShape`-beli felokosítás, és **nem lehet
-visszafelé törni** — egy régi kliens ugyanazt a blobot olvassa. Ez a terv egyetlen
-magas kockázatú tétele; csak akkor kezdj bele, ha a P1-3 kész, és van idő a
-tesztekre.
-
-**Ellenőrzés.** Új teszt: mentett lánc + a létszámok olyan módosítása, ami felosztást
-vált ki → a lánc sofőrje, járműve és zárolása **maradjon meg**. A mai kódon a lánc
-eltűnik, tehát a teszt előbb bukik.
+**Verification.** After adding the rule, write a forbidden import **on purpose** and check
+that `npm run lint` fails on it. Without that step the rule is decoration.
 
 ---
 
-### P2-2 · Bundle-bontás
+## 5. P2 — structural, when there is time
 
-**Miért.** Egyetlen 523,85 kB-os chunk (gzip 151 kB) tölt be minden oldalnyitásnál,
-benne a Leaflet térképpel és a teljes Supabase klienssel, olyan felhasználóknak is,
-akik sofőrként **csak a napi tervüket** nézik meg telefonon.
+### P2-1 · Stable task ids (R1)
 
-**Mit.** A `MapPicker` már lustán tölti a Leafletet (ADR-21) — ezt a mintát terjeszd
-ki: a `screens/` route-szintű `React.lazy`, és `manualChunks` a `@supabase/supabase-js`
-és a `lucide-react` számára.
+**Why.** A task's id is `${trainingId}:${suffix}:${dir}${tag}`, where `tag` is the
+**capacity-split index**. Change the stops or the headcounts and a `...:vissza` id can
+become `...:vissza#1` — at which point the saved chain drops out, taking its driver,
+vehicle and locks with it. `resolveDay` counts this and says so (`droppedChains`), which
+is correct damage control, but the schedule is still lost.
 
-**Ellenőrzés.** `npm run build` ne írjon ki chunk-méret figyelmeztetést, és a belépési
-chunk menjen 250 kB alá. Sofőr-szerepkörrel a térképkód ne töltődjön be (Network fül).
+**What to do.** Make the identity split-independent (training, direction, day) and carry
+the split separately (`part: 1/2`). `resolveDay` can then resolve a saved chain even when
+its task has since divided, either binding both halves to the same chain or asking the
+user explicitly.
+
+**Risk.** This is a **data format change**: `assignments`' `taskIds` currently stores the
+old shape. It needs an `ensureShape` upgrade, and it must not break backwards — an older
+client reads the same blob. This is the only high-risk item in the plan. Do not start it
+until P1-2 is done and there is time for the tests.
+
+**Verification.** A new test: a saved chain, then a headcount change that triggers a
+split. The chain's driver, vehicle and locks must **survive**. The test fails on today's
+code first.
+
+### P2-2 · Bundle splitting
+
+**Why.** A single 524 kB chunk (151 kB gzipped) loads on every page open, containing
+Leaflet and the whole Supabase client — including for drivers who only check their day
+plan on a phone.
+
+**What to do.** `MapPicker` already lazy-loads Leaflet (ADR-20); extend the pattern.
+Route-level `React.lazy` for `screens/`, and `manualChunks` for `@supabase/supabase-js`
+and `lucide-react`.
+
+**Verification.** `npm run build` emits no chunk-size warning and the entry chunk is under
+250 kB. Signed in as a driver, the map code should not load at all (check the network
+tab).
+
+### P2-3 · Error reporting from production (R9)
+
+**Why.** There are four `console` calls in the whole source and no reporting. A production
+error only surfaces if somebody telephones. Sourcemaps (now shipping) were the
+prerequisite; without them a reported stack was unreadable anyway.
+
+**What to do.** The smallest useful step is not an external service but keeping the error
+**inside the system**: have the error boundary and `persistState`'s failure branch write a
+row to an `app_errors` table (timestamp, e-mail, message, stack, app version), with RLS on
+the `user_roles` pattern — insert for anyone, select for admins only. The admin then sees
+from the UI what happened to the drivers.
+
+**Alternative.** Sentry or similar: more capability, but a new external dependency, a new
+`connect-src` directive, and a privacy question. A judgement call; record it as an ADR.
+
+**Verification.** A deliberate error on a preview deployment appears in the table, and a
+driver-role user **cannot** see the list.
 
 ---
 
-### P2-3 · Hibabejelentés éles környezetből
+## 6. Deliberately not doing this now
 
-**Miért.** A teljes forrásban **négy** `console` hívás van, hibabejelentő szolgáltatás
-nincs. Egy éles hiba csak akkor derül ki, ha valaki telefonál. A P0-1 (source map)
-ennek az előfeltétele — enélkül a bejelentett verem is olvashatatlan.
-
-**Mit.** A legkisebb hasznos lépés nem egy külső szolgáltatás, hanem hogy a hiba
-**bent maradjon a rendszerben**: az `ErrorBoundary` és a `persistState` hibaága írjon
-egy sort egy `app_errors` táblába (időbélyeg, e-mail, üzenet, verem, app-verzió), a
-`user_roles` mintájára RLS-szel (insert bárkinek, select csak adminnak). Így az admin
-a felületről látja, mi történt a sofőröknél.
-
-**Alternatíva.** Sentry vagy hasonló — több képesség, de új külső függőség, új CSP-ág
-(`connect-src`) és adatvédelmi kérdés. Döntés kérdése; rögzítsd ADR-ként.
-
-**Ellenőrzés.** Szándékos hiba a preview deployon → megjelenik a táblában, és a
-sofőr-szerepkörű felhasználó **ne** lássa a listát.
-
----
-
-### P2-4 · Tesztek a modulokra, ne a barrelre (R8)
-
-**Miért.** 19 tesztfájlból **13** a gyökérben lévő `fuvarterv.jsx` barrelből importál.
-Ez volt a modulbontás célja (egyetlen import se törjön el), de mellékhatása, hogy a
-tesztek a **re-export felületre** vannak rögzítve: egy új domain-függvény addig nem
-tesztelhető, amíg a barrelbe be nem kerül, és a barrel elfelejtése csendes hiba.
-
-**Mit.** Az új tesztek a **valódi modulból** importáljanak
-(`../src/domain/optimizer.js`), és maradjon **egy** dedikált szerződéstesztje a
-barrelnek, ami azt ellenőrzi, hogy minden publikus domain-függvény exportálva van.
-A meglévő teszteket nem kell mind átírni — az érték a szabályban van, nem a
-migrációban.
-
-**Ellenőrzés.** A szerződésteszt bukjon el, ha egy `export function`-t kiveszel a
-barrelből.
-
----
-
-## 5. Amit tudatosan NEM csinálunk most
-
-| Ötlet | Miért nem |
+| Idea | Why not |
 |---|---|
-| **Több párhuzamos szerkesztő (CRDT/merge)** | R2 tudatos kompromisszum. Az egyszerkesztős modell dokumentált, látható, és a klub valós használatát fedi. Nagy lépés, valós igény nélkül. |
-| **TypeScript-migráció** | A domain már ma is erősen tesztelt, és a `ensureShape` a futásidejű alakvédelem. A migráció ára (teljes fa + a barrel + a tesztek) ma nagyobb, mint a haszon. Ha mégis: `checkJS` + JSDoc a `src/domain/`-on, fokozatosan. |
-| **Saját backend** | ADR-10. A Supabase + Vercel pont azt adja, amire szükség van, üzemeltetés nélkül. |
-| **Optimalizálás Web Workerbe** | R10. Előbb **mérni** kell: ma a legrosszabb mért eset másfél másodperc. Optimalizálás mérés nélkül találgatás. |
-| **Prettier bevezetése** | A kódstílus ma is egységes, kézzel. Egy formázó-PR az egész fa `git blame`-jét elmossa — ez a kódbázisban, ahol a kommentek hordozzák a tudást, valódi veszteség. |
+| **Multiple concurrent editors (CRDT or merge)** | R3 is a conscious trade-off. The single-editor model is documented, visible, and matches how the club actually works. A large step with no demonstrated need. |
+| **A TypeScript migration** | The domain is already heavily tested and `ensureShape` is the runtime shape defence. The cost today (the whole tree plus the tests) exceeds the benefit. If it ever happens: `checkJS` plus JSDoc on `src/domain/` first, incrementally. |
+| **Our own backend** | ADR-09. Supabase and Vercel give exactly what is needed with nothing to operate. |
+| **Moving the optimizer into a Web Worker** | R8. **Measure first.** The worst case measured today is about a second and a half. Optimising without measuring is guessing. |
+| **Adding Prettier** | The style is already consistent, by hand. A formatting pull request would flatten `git blame` across the whole tree — a real loss in a codebase where the comments carry the knowledge. |
 
 ---
 
-## 6. Hogyan tartsuk karban ezt a dokumentumot
+## 7. Keeping this document honest
 
-- Egy tétel akkor kerül ki innen, ha **kész és ellenőrizve** van — nem akkor, ha
-  elkezdtük.
-- Ha egy tétel egy `R…` kockázatot zár le, az `ARCHITECTURE.md` 16. fejezetéből is
-  vegyük ki, ugyanabban a PR-ben.
-- Ha egy tétel **döntést** igényel (P1-2 tulajdonos-szabály, P2-3 saját tábla vs.
-  Sentry), a döntés a `DECISIONS.md`-be megy ADR-ként, és ez a fájl csak hivatkozik rá.
-- Ha egy tételről kiderül, hogy nem éri meg, ne töröljük: kerüljön az
-  [5. fejezetbe](#5-amit-tudatosan-nem-csinálunk-most) az indokkal. Az elvetett út
-  tudása is tudás.
+- An item leaves this file when it is **done and verified**, not when it is started. Move
+  it to §1 with a line saying what changed.
+- If an item closes an `R…` risk, remove that risk from `ARCHITECTURE.md` §15 in the same
+  pull request.
+- If an item needs a **decision** (P2-3's own table versus Sentry, say), the decision goes
+  into `DECISIONS.md` as an ADR and this file just links to it.
+- If an item turns out not to be worth doing, do not delete it: move it to
+  [§6](#6-deliberately-not-doing-this-now) with the reason. Knowing which road was
+  rejected is knowledge too.

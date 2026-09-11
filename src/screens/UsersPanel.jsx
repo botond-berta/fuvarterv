@@ -1,4 +1,4 @@
-/* Fuvarterv — Felhasználók — admin/sofőr szerepkörök kiosztása e-mail szerint.
+/* Fuvarterv — Users: granting the admin and driver roles by e-mail address.
    A lista a Supabase user_roles tábláját mutatja (nem az app-állapot része,
    ezért nem a window.storage-on át jön). Csak admin éri el: sofőr az Adatok
    fülre el sem jut, és a tábla írását a szerver (RLS) is csak adminnak engedi. */
@@ -78,7 +78,7 @@ export function UsersPanel({ myEmail }) {
       <div className="px-4 pb-4">
         <div className="banner banner-warn mt-3"><AlertTriangle size={18} />
           A szerepkör-tábla még nincs létrehozva a szerveren. Futtasd le a{" "}
-          <code>supabase/migrations/0004_user_roles.sql</code> fájlt a Supabase SQL editorban
+          <code>supabase/migrations/0001_initial_schema.sql</code> fájlt a Supabase SQL editorban
           (a pontos lépések a <code>supabase/migrations/README.md</code>-ben), aztán térj vissza ide.
         </div>
       </div>

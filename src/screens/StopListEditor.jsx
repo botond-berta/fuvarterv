@@ -1,13 +1,13 @@
-/* Fuvarterv — megállólista-szerkesztő: megállók, létszámok, útvonal, visszaút.
+/* Fuvarterv — the stop list editor: stops, headcounts, routing, return leg.
  *
- * Egy komponens két szinten: a CSAPAT állandó listájához és az EDZÉS saját
- * listájához. Azért működik adapter nélkül, mert a két forrás mezőnevei
- * azonosak (stationIds, stationCounts, routeMode, routeAnchorId, return*) — és
- * ezért adható át a `value` úgy is a legFor/legRouteOrder/legPax hívásoknak,
- * mintha csapat lenne.
+ * One component serving two levels: a TEAM's standing list and a TRAINING's own
+ * list. It needs no adapter because both sources use the same field names
+ * (stationIds, stationCounts, routeMode, routeAnchorId, return*), which is also why
+ * `value` can be handed straight to legFor / legRouteOrder / legPax as if it were a
+ * team.
  *
- * Kontrollált komponens: minden módosítás egy `onChange(patch)` hívás, a
- * beírás helyét (csapat vagy edzés) a szülő tudja.
+ * A controlled component: every change is one `onChange(patch)` call, and the parent
+ * knows where the patch should land.
  */
 
 import { byId } from "../domain/constants.js";
@@ -26,9 +26,9 @@ export function StopListEditor({ state, value, onChange, venueId, venueName }) {
   const setCount = (key, sid, val) =>
     onChange({ [key]: { ...(v[key] || {}), [sid]: val === "" ? "" : Math.max(0, Number(val) || 0) } });
 
-  /* A visszaút saját listája: null = tükrözze az odautat (a korábbi viselkedés).
-     Bekapcsoláskor az odaút megállóival indulunk, hogy legyen mit szerkeszteni,
-     kikapcsoláskor null-ra állunk vissza. */
+  /* The return leg's own list. null means mirror the outbound one (the original
+     behaviour). Switching it on seeds from the outbound stops so there is something
+     to edit; switching it off returns to null. */
   const setReturnOwn = (own) => onChange(own
     ? { returnStationIds: [...stationIds], returnStationCounts: { ...(v.stationCounts || {}) } }
     : { returnStationIds: null, returnRouteAnchorId: null });
@@ -43,9 +43,9 @@ export function StopListEditor({ state, value, onChange, venueId, venueName }) {
         {ids.map((sid) => {
           const st = byId(state.stations, sid);
           const raw = (v[countsKey] || {})[sid];
-          /* A beírt 0 kihagyja a megállót az útvonalból; az üresen hagyott mező
-             nem — ott csak "még nincs megadva" a létszám. A különbség enélkül
-             láthatatlan lenne, pedig a busz útja múlik rajta. */
+          /* A typed 0 drops the stop from the route; an empty field does not, it
+             only means the headcount has not been entered yet. The difference would
+             otherwise be invisible, and the bus's route depends on it. */
           const zeroed = raw != null && raw !== "" && Number(raw) === 0;
           return (
             <div key={sid} className="flex items-center gap-2">

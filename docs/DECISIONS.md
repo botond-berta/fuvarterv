@@ -1,545 +1,462 @@
-# Fuvarterv — döntésnapló (ADR)
+# Fuvarterv — decision log
 
-Ez a napló a **tervezési döntéseket** rögzíti: mi volt a helyzet, mit választottunk,
-mi ennek az ára, és mit vetettünk el. A cél, hogy egy későbbi módosítás ne írjon
-felül tudatos döntést véletlenül — és hogy ha mégis felül kell írni, tudjuk, mibe
-nyúlunk bele.
+This log records the **design decisions**: what the situation was, what was chosen, what
+it costs, and what was rejected. The point is that a later change should not overwrite a
+deliberate decision by accident — and when one does need overwriting, that we know what we
+are reaching into.
 
-A döntések a kódból és a kód kommentjeiből visszafejtve, utólag lettek leírva; a
-státusz azt jelenti, hogy a döntés **ma is érvényes**, hacsak más nem szerepel.
+Format: **context → decision → consequence → rejected alternative → where it lives.**
 
-Formátum: **kontextus → döntés → következmény → elvetett alternatíva → hol él**.
+Unless a record says otherwise, the decision is **still in force**.
 
-| # | Döntés | Terület |
+| # | Decision | Area |
 |---|---|---|
-| [ADR-01](#adr-01--az-egész-állapot-egyetlen-json-blob) | Egyetlen JSON blob | perzisztencia |
-| [ADR-02](#adr-02--a-windowstorage-kv-varrat-megtartása) | `window.storage` varrat | perzisztencia |
-| [ADR-03](#adr-03--fuvartervjsx-barrelként-marad) | Barrel-fájl | modulszerkezet |
-| [ADR-04](#adr-04--egyirányú-rétegzés-a-geo-levélmodullal) | Rétegzés, `geo` levél | modulszerkezet |
-| [ADR-05](#adr-05--nincs-globális-állapotkezelő) | Nincs store | állapot |
-| [ADR-06](#adr-06--kliensoldali-alaknormalizálás-ensureshape-verziószám-nélkül) | `ensureShape` | migráció |
-| [ADR-07](#adr-07--egyszerkesztős-modell-optimista-őrrel) | Optimista őr | konkurencia |
-| [ADR-08](#adr-08--az-elveszett-válasz-megkülönböztetése-a-valódi-ütközéstől) | Elveszett válasz | konkurencia |
-| [ADR-09](#adr-09--mentési-előzmény-best-effort-20-pillanatkép) | Előzmény | perzisztencia |
-| [ADR-10](#adr-10--nincs-saját-backend-supabase--vercel) | Nincs backend | infrastruktúra |
-| [ADR-11](#adr-11--szerepkörök-e-mail-alapján-fail-closed) | Szerepkörök | biztonság |
-| [ADR-12](#adr-12--az-rls-a-határ-a-felület-csak-ux) | RLS a határ | biztonság |
-| [ADR-13](#adr-13--háromfázisú-optimalizálás-egyetlen-egzakt-modell-helyett) | 3 fázis | optimalizálás |
-| [ADR-14](#adr-14--heldkarp-10-megállóig) | Held–Karp | optimalizálás |
-| [ADR-15](#adr-15--a-fizetett-idő-telephelytől-telephelyig-tart) | Telephely, műszak | optimalizálás |
-| [ADR-16](#adr-16--kemény-korlátok-és-egyetlen-puha-tag) | Kemény/puha korlát | optimalizálás |
-| [ADR-17](#adr-17--kapacitásbontás-megállónként-first-fit-decreasing) | Feladatfelosztás | optimalizálás |
-| [ADR-18](#adr-18--a-beosztás-a-fuvarok-forrása) | Beosztás → fuvarok | domain |
-| [ADR-19](#adr-19--a-koordináta-kötelező) | Kötelező koordináta | domain |
-| [ADR-20](#adr-20--üresjárati-mátrix-egyetlen-osrm-hívásból-kulccsal-invalidálva) | Mátrix | külső szolgáltatás |
-| [ADR-21](#adr-21--leaflet-lusta-betöltés--offline-tartalék) | Térkép + tartalék | felület |
-| [ADR-22](#adr-22--csp-unsafe-inline-nélkül) | CSP | biztonság |
-| [ADR-23](#adr-23--eseményalapú-varrat-az-app-és-a-shell-között) | Esemény-varrat | architektúra |
-| [ADR-24](#adr-24--explicit-0-és-üres-létszám-megkülönböztetése) | 0 vs. üres | domain |
-| [ADR-25](#adr-25--minden-kihagyás-indoklást-kap) | Indoklások | domain/UX |
-| [ADR-26](#adr-26--magyar-felület-és-kommentek-angolos-azonosítók) | Nyelv | konvenció |
-| [ADR-27](#adr-27--tesztek-a-barrelen-keresztül-vitest--jsdom) | Tesztstratégia | tesztelés |
-| [ADR-28](#adr-28--hibahatár-a-shellen-belül) | ErrorBoundary | hibakezelés |
+| [ADR-01](#adr-01--the-whole-state-is-one-json-blob) | One JSON blob | persistence |
+| [ADR-02](#adr-02--keep-the-windowstorage-key-value-seam) | The `window.storage` seam | persistence |
+| [ADR-03](#adr-03--one-way-layering-with-geo-as-a-leaf) | Layering, `geo` as a leaf | module structure |
+| [ADR-04](#adr-04--no-global-state-manager) | No store | state |
+| [ADR-05](#adr-05--client-side-shape-normalisation-with-no-version-number) | `ensureShape` | migration |
+| [ADR-06](#adr-06--single-editor-model-with-an-optimistic-guard) | Optimistic guard | concurrency |
+| [ADR-07](#adr-07--telling-a-lost-response-apart-from-a-real-conflict) | Lost response | concurrency |
+| [ADR-08](#adr-08--save-history-best-effort-20-snapshots) | History | persistence |
+| [ADR-09](#adr-09--no-backend-of-our-own-supabase--vercel) | No backend | infrastructure |
+| [ADR-10](#adr-10--roles-by-e-mail-fail-closed) | Roles | security |
+| [ADR-11](#adr-11--row-level-security-is-the-boundary-the-ui-is-only-ux) | RLS is the boundary | security |
+| [ADR-12](#adr-12--three-phase-optimisation-instead-of-one-exact-model) | Three phases | optimisation |
+| [ADR-13](#adr-13--heldkarp-up-to-ten-stops) | Held-Karp | optimisation |
+| [ADR-14](#adr-14--paid-time-runs-depot-to-depot) | Depots, shifts | optimisation |
+| [ADR-15](#adr-15--hard-constraints-and-exactly-one-soft-term) | Hard vs. soft | optimisation |
+| [ADR-16](#adr-16--capacity-splitting-by-stop-first-fit-decreasing) | Task splitting | optimisation |
+| [ADR-17](#adr-17--the-schedule-is-the-source-of-rides) | Schedule → rides | domain |
+| [ADR-18](#adr-18--the-coordinate-is-mandatory) | Mandatory coordinate | domain |
+| [ADR-19](#adr-19--one-osrm-call-invalidated-by-a-key) | The matrix | external service |
+| [ADR-20](#adr-20--leaflet-lazy-loaded-with-an-offline-fallback) | Map and fallback | UI |
+| [ADR-21](#adr-21--a-csp-with-no-unsafe-inline) | CSP | security |
+| [ADR-22](#adr-22--an-event-based-seam-between-the-app-and-the-shell) | Event seam | architecture |
+| [ADR-23](#adr-23--telling-an-explicit-zero-apart-from-an-empty-headcount) | Zero vs. empty | domain |
+| [ADR-24](#adr-24--every-skip-gets-a-reason) | Explanations | domain, UX |
+| [ADR-25](#adr-25--hungarian-ui-english-everything-else) | Language | convention |
+| [ADR-26](#adr-26--vitest-and-jsdom-tests-against-the-real-modules) | Tests | testing |
+| [ADR-27](#adr-27--an-error-boundary-inside-the-shell) | Error boundary | resilience |
+| [ADR-28](#adr-28--one-stylesheet-os-driven-dark-mode) | One stylesheet | UI |
 
 ---
 
-## ADR-01 — Az egész állapot egyetlen JSON blob
+## ADR-01 — The whole state is one JSON blob
 
-**Kontextus.** Néhány tucat entitás (csapatok, állomások, járművek, sofőrök, edzések,
-fuvarok), erősen összefüggő olvasási mintákkal: a beosztás és az ütközésvizsgálat
-lényegében mindent egyszerre néz. Az app egy Claude-artifactból nőtt ki, ahol csak
-egy kulcs-érték tároló volt.
+**Context.** A few dozen entities, one club, one workspace. Every derived view (weekly
+occurrences, daily tasks, chains) is computed from several collections at once.
 
-**Döntés.** A teljes munkaterület egyetlen JSON objektum, amely egyetlen
-`app_state` sorban él.
+**Decision.** The whole workspace is one plain object, stored as JSON in one database row.
 
-**Következmény.** Atomi mentés és triviális visszaállítás; nincs join, nincs
-szerveroldali séma, nincs migrációs futtató. Cserébe nincs részleges mentés, nincs
-valós idejű együttszerkesztés, és a blob mérete gyakorlati korlát.
+**Consequence.** Saves are atomic and rollback is trivial. There are no server-side schema
+migrations. Every derived view is computed from one consistent snapshot. The costs are no
+partial saves, no real-time co-editing, and a practical size ceiling of a few megabytes.
 
-**Elvetve.** Relációs séma entitásonkénti táblákkal — több nagyságrenddel több
-infrastruktúra ahhoz a haszonhoz képest, amit ekkora adaton adna.
+**Rejected.** Per-entity tables with foreign keys. That would buy concurrent editing and
+server-side validation at the price of a schema, migrations, queries and joins — a great
+deal of machinery for data this small.
 
-**Hol.** `src/data/storage.js`, `supabase/migrations/0001_app_state.sql`.
+**Where.** `src/data/storage.js`, `src/supabaseStorage.js`, `supabase/migrations/`.
 
----
+## ADR-02 — Keep the `window.storage` key-value seam
 
-## ADR-02 — A `window.storage` KV varrat megtartása
+**Context.** The app needs to persist, but the storage backend is a deployment concern,
+not a domain one.
 
-**Kontextus.** Az eredeti artifact a sandbox `window.storage` API-ját használta. A
-committolt Vite-projektben Supabase-re volt szükség.
+**Decision.** The app talks only to `window.storage`, a four-method contract (`get`,
+`set`, `delete`, `list`). `AuthGate` installs the Supabase-backed implementation before
+`App` mounts; tests install a stub.
 
-**Döntés.** A varrat megmarad: az app továbbra is `window.storage.get/set`-et hív, és
-az `AuthGate` import-időben egy Supabase-alapú implementációt tesz a helyére.
+**Consequence.** Changing backend means writing one object. Nothing in `domain`, `ui` or
+`screens` knows Supabase exists, and the full load-and-save cycle is testable without a
+network.
 
-**Következmény.** A perzisztencia **egyetlen, szűk ponton** cserélhető (teszt, más
-backend, offline mód), és az app-kód nem tud semmit az adatbázisról. Ára: a szerződés
-nem típusos, és a `set` már stringgé alakított értéket vár.
+**Rejected.** Importing the Supabase client directly where it is needed. Faster to write,
+and it would have welded hosting into the domain.
 
-**Elvetve.** A Supabase kliens közvetlen hívása a képernyőkről — az minden képernyőt
-az adatbázishoz kötött volna.
+**Where.** `src/data/storage.js`, `src/supabaseStorage.js`, `src/AuthGate.jsx`.
 
-**Hol.** `src/supabaseStorage.js`, `src/AuthGate.jsx`, `src/data/storage.js`.
+## ADR-03 — One-way layering, with `geo` as a leaf
 
----
+**Context.** Both `logic` (`rideWindow`) and `optimizer` (`genDayTasks`) need to compute
+travel time between two points.
 
-## ADR-03 — `fuvarterv.jsx` barrelként marad
+**Decision.** Dependencies flow one way, `App → screens → ui → domain → data`, and
+`legMin` lives in its own leaf module, `domain/geo.js`.
 
-**Kontextus.** A monolit szétvágásakor a `src/main.jsx` és az összes teszt ebből a
-fájlból importált.
+**Consequence.** No cycles. Inside `domain` the order is also strict: `constants →
+datetime → geo → logic → optimizer`.
 
-**Döntés.** A fájl megmarad, de csak újraexportál: az `App`-ot és a tesztek által
-használt tiszta függvényeket.
+**Rejected.** Keeping `legMin` in `logic` and importing it from `optimizer`. That works
+until `logic` needs something from `optimizer`, at which point the cycle is already there.
 
-**Következmény.** A szétvágás egyetlen importot sem tört el, és a tesztek függetlenek
-a belső modulhatároktól. Ára: új publikus függvényt fel kell venni az export-listára,
-és a fájl szerepét minden új fejlesztőnek el kell magyarázni (a fájl fejléce megteszi).
+**Status note.** The rule is enforced by reading, not by a tool. See risk R4 and
+`ACTION_PLAN.md` P1-4.
 
-**Elvetve.** A fájl törlése és minden import átírása — a tesztek egyszerre változtak
-volna a kóddal, elveszítve a biztonsági hálót pont a legkockázatosabb átalakításkor.
+## ADR-04 — No global state manager
 
-**Hol.** `fuvarterv.jsx`.
+**Context.** One state object, one editor, a handful of screens.
 
----
+**Decision.** `App.jsx` holds the state in a `useState` and passes it down as props.
+Mutation goes through `update(fn)`, which must be a pure transform.
 
-## ADR-04 — Egyirányú rétegzés, a `geo` levélmodullal
+**Consequence.** Less machinery to understand, and every change is traceable by reading.
+The cost is prop drilling and a whole-tree re-render on every edit — imperceptible at this
+scale (risk R8).
 
-**Kontextus.** A `logic.rideWindow` és az `optimizer.genDayTasks` is menetidőt számol.
+**Rejected.** Redux, Zustand, or a reducer. At this size the ceremony would exceed the
+benefit.
 
-**Döntés.** `screens → ui → domain → data`, és a `legMin` külön levélmodulba
-(`domain/geo.js`) kerül.
+## ADR-05 — Client-side shape normalisation, with no version number
 
-**Következmény.** Nincs körkörös függés `logic` és `optimizer` között, és a domain
-tesztelhető böngésző nélkül. Ára: a szabályt ma nem gép őrzi (lásd R6 az
-architektúra-dokumentumban).
+**Context.** The blob has no schema, and an older client may read a blob written by a
+newer one and vice versa.
 
-**Hol.** `src/domain/geo.js` fejléce.
+**Decision.** `ensureShape(s)` runs on every load and defaults every field
+**independently**. There is no version number and no migration chain.
 
----
+**Consequence.** Tolerant in both directions: an old client ignores what it does not know,
+a new one fills in what is missing. The requirement this places on every new field is
+ADR-driven: its default must reproduce the **previous** behaviour (principle E8).
 
-## ADR-05 — Nincs globális állapotkezelő
+**Rejected.** A numbered schema with a migration chain. That needs a migration runner and
+a policy for downgrades, for a blob only this app ever writes.
 
-**Kontextus.** Minden képernyő az egész állapotot olvassa, a mentés blob-alapú.
+**Where.** `src/data/seed.js`.
 
-**Döntés.** Egyetlen `useState` az `App`-ban, `state` és `update(fn)` propokként lefelé.
+## ADR-06 — Single-editor model with an optimistic guard
 
-**Következmény.** Nincs kitalálandó absztrakció, a mentés triviálisan összeköthető az
-állapottal (blob-összehasonlítás), és minden képernyő ugyanabból a pillanatképből
-számol. Ára: minden módosítás újrarendereli a fát — a klub léptékében észrevehetetlen.
+**Context.** In practice one person edits, but two browser tabs or two people on the same
+evening are entirely possible.
 
-**Elvetve.** Redux/Zustand/Context-store — a valódi problémát (perzisztencia,
-ütközés, optimalizálás) egyik sem oldotta volna meg.
+**Decision.** `get` remembers the row's `updated_at`; `set` only updates where it still
+matches. A mismatch blocks and asks the user to reload.
 
-**Hol.** `src/App.jsx`.
+**Consequence.** Nobody's work is silently overwritten. The cost is that the second editor
+loses their unsaved edits and must reload. Writes are also serialised, so two overlapping
+saves cannot make the guard misfire.
 
----
+**Rejected.** Last-write-wins (silent data loss) and CRDT merging (a large step, no
+demonstrated need — risk R3).
 
-## ADR-06 — Kliensoldali alaknormalizálás (`ensureShape`), verziószám nélkül
+**Where.** `src/supabaseStorage.js`.
 
-**Kontextus.** A blobnak nincs szerveroldali sémája, viszont a mezőkészlet fejlődik.
+## ADR-07 — Telling a lost response apart from a real conflict
 
-**Döntés.** Betöltéskor minden állapot átmegy az `ensureShape`-en, amely minden felső
-szintű gyűjteményt normalizál, és az **új mezők alapértéke pontosan a korábbi
-viselkedést adja**. Nincs verziószám és nincs lépcsős migrációs lánc.
+**Context.** If a write commits but its response is lost, the client's `lastSeen` still
+points at the pre-write timestamp. The next save's guard then matches nothing and looks
+exactly like somebody else having saved.
 
-**Következmény.** Régi mentés mindig betölthető, és egy új mező bevezetése nem
-igényel adatmigrációt. Ára: az `ensureShape` idővel hosszú lesz, és a „mi volt a
-korábbi viselkedés” tudás a kommentjeiben él — ezért vannak ott hosszú kommentek.
+**Decision.** On a zero-row guard result, re-read the row. If the server already holds
+exactly what we last tried to write, that write did commit: adopt its timestamp and retry
+once, rather than blocking.
 
-**Hol.** `src/data/seed.js`.
+**Consequence.** A flaky network no longer locks a workspace. The comparison uses a stable
+stringify, because `jsonb` normalises key order on the round trip and a plain
+`JSON.stringify` would never match.
 
----
+**Rejected.** Treating every zero-row result as a conflict, which meant a dropped response
+locked the user out until they reloaded.
 
-## ADR-07 — Egyszerkesztős modell optimista őrrel
+**Where.** `src/supabaseStorage.js`, `doSet`.
 
-**Kontextus.** A klubban gyakorlatilag egy ember szerkeszt, de két böngészőlap
-könnyen előfordul.
+## ADR-08 — Save history: best-effort, 20 snapshots
 
-**Döntés.** A tároló megjegyzi a legutóbb olvasott `updated_at`-et, és csak akkor ír,
-ha a sor még mindig ugyanaz. Ütközéskor blokkoló overlay, ami újratöltésre kényszerít.
+**Context.** One blob means one bad overwrite can lose everything, and there is no
+server-side validation to stop it.
 
-**Következmény.** Senki adata nem vész el csendben. Ára: a vesztes fél elveszíti a nem
-mentett módosításait — ezt az overlay ki is mondja.
+**Decision.** On every successful overwrite, archive the **previous** blob to
+`app_state_history` and prune to the newest 20. It is fire-and-forget and swallows its own
+errors.
 
-**Elvetve.** Utolsó írás nyer (adatvesztés), illetve mezőszintű merge (megoldhatatlan
-blobon, és kezelhetetlen felület ennek a felhasználói körnek).
+**Consequence.** There is always a way back, reachable from inside the app, including from
+the error boundary. History failures never fail a save. An unchanged blob is never
+archived, or 20 identical copies would destroy exactly the restore points a user goes
+looking for.
 
-**Hol.** `src/supabaseStorage.js` (`doSet`), `AuthGate` `StaleOverlay`.
+**Rejected.** A transactional history write. It would mean a history problem could block
+saving, which is the wrong trade for an audit convenience.
 
----
+**Where.** `src/supabaseStorage.js` (`archivePrevious`), `src/RestorePanel.jsx`.
 
-## ADR-08 — Az elveszett válasz megkülönböztetése a valódi ütközéstől
+## ADR-09 — No backend of our own: Supabase + Vercel
 
-**Kontextus.** Ha egy írás a szerveren lefut, de a válasz elvész (hálózat), az őr
-0 sort talál — pontosan úgy, mintha más mentett volna. A munkaterület indokolatlanul
-blokkolódott.
+**Context.** One club, a handful of users, no operations staff, no budget for servers.
 
-**Döntés.** A tároló megjegyzi az utoljára **megkísérelt** blobot; ütközéskor
-visszaolvassa a sort, és ha a szerveren pont az áll, akkor a saját írása landolt:
-átveszi az időbélyeget és újrapróbálja (egyszer).
+**Decision.** A static single-page app on Vercel, with Supabase for auth, storage and
+access control. All computation happens in the browser.
 
-**Következmény.** A hamis riasztás megszűnik, a valódi ütközés továbbra is blokkol.
-Ára: egy extra olvasás ütközéskor, és a `jsonb` kulcssorrend miatt `stableStr`
-összehasonlítás kell.
+**Consequence.** Nothing to operate and nothing to patch. The costs are that the anon key
+is public (hence ADR-11), there is no server-side validation, and the optimizer is bounded
+by one browser tab.
 
-**Hol.** `src/supabaseStorage.js` — `lastAttempt`, `stableStr`.
+**Rejected.** A small Node or Python backend. It would buy validation and server-side
+computation, at the price of hosting, deployment and monitoring for a workload this size.
 
----
+## ADR-10 — Roles by e-mail, fail-closed
 
-## ADR-09 — Mentési előzmény: best-effort, 20 pillanatkép
+**Context.** An admin should be able to grant roles without opening the Supabase
+dashboard.
 
-**Kontextus.** Egy rossz felülírás (vagy „mintaadat visszaállítása”) az egész
-munkaterületet elviheti.
+**Decision.** `user_roles` is keyed by **e-mail address**, not user id. The e-mail is
+verified by Supabase auth and arrives in the JWT, which the policies read back. An account
+with **no row is a driver**.
 
-**Döntés.** Minden sikeres felülíráskor az **előző** blob bekerül az
-`app_state_history`-ba; a kliens 20 pillanatképre nyes. Az előzmény írása minden
-hibát elnyel, és azonos blobot nem archivál.
+**Consequence.** Roles are manageable from inside the app, and a forgotten account can
+read the schedule but touch nothing. A role change takes effect on the affected user's
+next sign-in or reload.
 
-**Következmény.** Van visszaút, és az előzmény sosem buktat el egy mentést. Ára: ha a
-`0002` migráció nem futott le, a felület „nincs mentés”-t mutatna — ezért a
-`RestorePanel` külön felismeri és megnevezi ezt az esetet.
+**One deliberate exception.** If the `user_roles` table does not exist at all, everyone is
+an admin. In that state the server is not restricting anything either, so hiding tabs
+would be theatre — and without the exception a freshly deployed client would silently drop
+every user of an older database to read-only.
 
-**Hol.** `src/supabaseStorage.js` (`archivePrevious`), `src/RestorePanel.jsx`.
+**Where.** `supabase/migrations/0001_initial_schema.sql`, `src/AuthGate.jsx` (`fetchRole`).
 
----
+## ADR-11 — Row level security is the boundary; the UI is only UX
 
-## ADR-10 — Nincs saját backend: Supabase + Vercel
+**Context.** The anon key ships in the JS bundle. Anything the client "forbids" is a
+suggestion.
 
-**Kontextus.** Egyetlen fejlesztő, klubméretű felhasználószám, nulla üzemeltetési
-kapacitás.
+**Decision.** Every real rule lives in RLS policies. Hiding tabs and disabling buttons is
+purely so the interface matches what the server will actually permit.
 
-**Döntés.** Statikus SPA a Vercelen, adat és belépés Supabase-ből, minden logika a
-kliensben.
+**Consequence.** A modified client cannot write. The UI guards are belt and braces, which
+is why `App` also refuses to schedule a save for a driver: not for security, but so an
+error does not flash on every session.
 
-**Következmény.** Nincs üzemeltetendő szerver és nincs deploy-koreográfia. Ára:
-minden védelemnek az adatbázisban kell lennie (ADR-12), és nincs hely szerveroldali
-validációnak (R9).
+**Corollary.** Turning off public sign-ups is part of the security model, not optional
+hardening. Without it anyone can become an authenticated user.
 
-**Hol.** `vercel.json`, `supabase/`.
+## ADR-12 — Three-phase optimisation instead of one exact model
 
----
+**Context.** Resource-constrained scheduling with chaining, shift merging and a minimum
+shift length is NP-hard. It has to run in a browser, in about a second.
 
-## ADR-11 — Szerepkörök e-mail alapján, fail-closed
+**Decision.** Three phases, each on a more accurate cost function: min-cost flow for
+chaining, exact backtracking for assignment, then a local-improvement loop on the true
+cost.
 
-**Kontextus.** Két felhasználótípus kell: admin (mindent) és sofőr (csak a saját napi
-tervét olvassa). Az adminnak a dashboard megnyitása nélkül kell szerepet osztania.
+**Consequence.** Good schedules, fast, with an explanation when something cannot be
+covered. The result is not provably optimal, and the assignment search says so when it
+hits its iteration cap.
 
-**Döntés.** `user_roles` tábla **e-mail** kulccsal; a jogosultságot az `is_admin()`
-SQL-függvény dönti el a JWT e-mailjéből. Akinek nincs sora, az sofőr.
+**Rejected.** A single MILP model. Exact, and not runnable in a browser without a solver
+dependency an order of magnitude larger than this app.
 
-**Következmény.** Szerepet olyan címnek is lehet adni, amely még nem lépett be, és egy
-elfelejtett fiók nem tud írni. Ára: e-mail-változtatás új sort igényel.
+**Where.** `src/domain/optimizer.js`.
 
-**Egy szándékos kivétel.** Ha a `user_roles` tábla nem létezik (a `0004` nem futott
-le), a kliens mindenkit adminnak vesz — ilyenkor a szerver sem korlátoz, tehát az
-elrejtés csak színház lenne, viszont e nélkül egy új kliens olvasásra némítana egy
-régi adatbázist.
+## ADR-13 — Held-Karp up to ten stops
 
-**Hol.** `supabase/migrations/0004_user_roles.sql`, `src/AuthGate.jsx` (`fetchRole`).
+**Context.** Stop ordering is a travelling-salesman problem with fixed endpoints.
 
----
+**Decision.** Exact dynamic programming over `2^n × n` states, up to ten stops. Above
+that, keep the given order.
 
-## ADR-12 — Az RLS a határ, a felület csak UX
+**Consequence.** Optimal routes in every real case, with a hard ceiling instead of a
+performance cliff. A real run is not longer than ten stops; if one ever is, the route is
+merely unoptimised, never wrong.
 
-**Kontextus.** A teljes alkalmazás a böngészőben fut, az anon kulcs a bundle-ben
-utazik.
+**Rejected.** A heuristic (nearest neighbour plus 2-opt) everywhere. Cheaper, and it would
+give up optimality in exactly the cases that are easy to solve exactly.
 
-**Döntés.** Minden jogosultsági szabály az adatbázisban él (RLS + `is_admin()`); a
-felületi szerepkör-őrök kizárólag azért vannak, hogy a sofőr ne kapjon értelmetlen
-gombokat és tiltott írásokat. A modell másik fele egy konzolbeállítás: a **publikus
-regisztráció kikapcsolása**.
+## ADR-14 — Paid time runs depot to depot
 
-**Következmény.** A kliens megkerülése nem ad többletjogot. Ára: a beállítás nem
-verziókezelhető — ezért szerepel a README-ben, a migrációk README-jében és a `0003`
-fejlécében is.
+**Context.** A driver is paid from leaving the depot to getting back, not for the duration
+of the ride. Between two runs at a distant venue they cannot go home.
 
-**Hol.** `supabase/migrations/0003_tighten_rls.sql`, `0004_user_roles.sql`.
+**Decision.** A chain's span is measured depot to depot, and overlapping spans **merge
+into one shift**. The call-out fee is charged per shift.
 
----
+**Consequence.** "Can the driver go home in between" is answered with no special rule at
+all: if there is no time, the spans overlap, so it is one shift with the waiting paid.
+With no depot configured, the span equals the tasks' own, which is exactly the arithmetic
+used before depots existed (principle E8).
 
-## ADR-13 — Háromfázisú optimalizálás egyetlen egzakt modell helyett
+**Where.** `spanOf`, `mergeShifts`, `driverPay`, `onSiteWait`.
 
-**Kontextus.** Az ütemezés (ki, mivel, mikor, milyen sorrendben) NP-nehéz, és a
-böngészőben, másodperc alatt kell lefutnia.
+## ADR-15 — Hard constraints, and exactly one soft term
 
-**Döntés.** (1) láncolás min-költségű folyammal átlagbéren, (2) egzakt visszalépéses
-(sofőr, jármű) hozzárendelés a valódi költségen, iterációkorláttal, (3) lokális
-javítás összevonásokkal, szigorú javulási feltétellel.
+**Context.** Capacity, availability, the vignette and physical reachability are absolute.
+A driver's usual bus is a preference.
 
-**Következmény.** Gyakorlati optimumközeli megoldás, magyarázható lépésekkel; ha a
-keresés a korlátba ütközik, azt a rendszer **kimondja** (`capped` → „heurisztikus”).
-Ára: nincs optimumgarancia, és a fázisok költségfüggvényeit szinkronban kell tartani
-(lásd ADR-16 aranyszabálya).
+**Decision.** Everything absolute is a hard filter. The only soft term is the
+preferred-vehicle bias, a forint penalty.
 
-**Elvetve.** MILP/CP-SAT megoldó — böngészőben nem futtatható ésszerű mérettel és
-függőségekkel.
+**Consequence.** The optimizer never proposes an impossible plan, so there is nothing to
+correct by hand. Keeping the soft terms to one keeps the cost function readable.
 
-**Hol.** `src/domain/optimizer.js` — `minCostChains`, `assignResources`, `optimizeDay`.
+**The golden rule.** A soft term must also go into `skelCost`. Leave it out and the
+improvement loop compares a biased cost against an unbiased one, and the displayed daily
+cost can go **up** after optimising. That actually happened.
 
----
+## ADR-16 — Capacity splitting by stop (first-fit-decreasing)
 
-## ADR-14 — Held–Karp 10 megállóig
+**Context.** Real teams are 10 to 14 children; the buses seat 8.
 
-**Kontextus.** A megállósorrend egy kis TSP-változat, rögzíthető első/utolsó
-megállóval és a helyszínnel mint végponttal.
+**Decision.** When a team exceeds the largest vehicle, split the task **by stop**: a
+stop's whole headcount goes on one bus, packed into the fewest buses that fit.
 
-**Döntés.** Egzakt dinamikus programozás (`2^n × n`) legfeljebb 10 megállóig; felette
-a beadott sorrend marad.
+**Consequence.** Each part is an independent parallel run with its own route, timetable
+and crew, and the two directions may split differently. Splitting requires per-stop
+headcounts; a single stop larger than every bus cannot be split, and that is reported with
+an exact reason.
 
-**Következmény.** A valós körökre (3–8 megálló) bizonyítottan optimális sorrend,
-azonnal. Ára: 10 fölött nincs optimalizálás — ez ma nem fordul elő, de ha mégis, a
-következő lépés egy beszúrásos heurisztika + 2-opt, nem a korlát emelése.
+**Rejected.** Splitting a stop's headcount across buses. It would be tidier arithmetic and
+nonsense in practice: those children are standing in one place.
 
-**Hol.** `bestStationOrder`.
+## ADR-17 — The schedule is the source of rides
 
----
+**Context.** Chains and rides described the same reality twice, and could disagree.
 
-## ADR-15 — A fizetett idő telephelytől telephelyig tart
+**Decision.** Generating from the schedule replaces **every** ride of the day's affected
+trainings. The schedule becomes the single source for that day.
 
-**Kontextus.** Korábban a fizetett idő a feladatoktól számított, így egy távoli
-helyszínen várakozó sofőrről a rendszer hallgatólagosan feltételezte, hogy hazament.
-A valóságban ott várt — fizetve.
+**Consequence.** The week and driver views show the optimised plan. A manual edit to a
+generated ride is overwritten by the next regeneration, which is why the button asks for
+confirmation and says so.
 
-**Döntés.** A sáv a telephelytől a telephelyig tart (`spanOf`), az egymásba érő sávok
-egy műszakká olvadnak (`mergeShifts`), és a **kiszállási díj műszakonként** jár. A
-telephely járművenként állítható, `null` esetén a klubé (`settings.defaultBaseId`).
+## ADR-18 — The coordinate is mandatory
 
-**Következmény.** A „hazamehet-e két fuvar között?” kérdésre nem kell külön szabály:
-ha nincs idő rá, a sávok átfednek, tehát egy műszak van, benne a fizetett várakozással
-(`onSiteWait`). Telephely hiányában a számítás a korábbi (E8).
+**Context.** Without a coordinate `legMin` falls back to `fallbackLegMin` and the point
+drops out of the matrix, so the optimizer plans hours of work on invented travel times.
 
-**Hol.** `spanOf`, `mergeShifts`, `driverPay`, `onSiteWait`; `test/base-shift.test.js`.
+**Decision.** A station, venue or depot cannot be saved without one. Older records are
+flagged, and editing one cannot be completed until a coordinate is set.
 
----
+**Consequence.** Slightly more friction on entry, in exchange for the optimizer's output
+meaning something. The map picker has an offline fallback precisely so this rule is always
+satisfiable (ADR-20).
 
-## ADR-16 — Kemény korlátok és egyetlen puha tag
+## ADR-19 — One OSRM call, invalidated by a key
 
-**Kontextus.** A férőhely és a matrica fizikai korlát; a „a sofőr a szokott buszát
-vigye” viszont preferencia.
+**Context.** Real road times are far better than straight-line estimates, but a request
+per pair would be slow and rude.
 
-**Döntés.** Kemény korlát kizárja az opciót (kapacitás, matrica, elérhetőség,
-erőforrás-ütközés, zárolás); a preferált jármű **puha**, forintban kifejezett
-büntetés (`settings.preferredBias`, 0 = kikapcsolva).
+**Decision.** One OSRM `table` call for every located point, stored in the blob. Staleness
+is detected by `matrixKey`: every point's id plus its coordinate to five decimals.
 
-**Következmény.** Az optimalizálás eleve nem ad olyan javaslatot, amit kézzel vissza
-kellene javítani, a preferencia mégis felülírható, ha valódi megtakarítás áll vele
-szemben.
+**Consequence.** One request, and the UI can say the matrix is out of date. If OSRM is
+unreachable, a haversine estimate fills in and `matrix.source` records that it did.
 
-> **Aranyszabály.** Aki új költségtagot vezet be, ugyanazt a tagot a csontváz-láncok
-> árába (`skelCost`) is tegye bele. Amikor ez elcsúszott, a javítóciklus torzított és
-> torzítatlan költséget hasonlított össze, és az optimalizálás *után* nőtt a kijelzett
-> napi költség.
+## ADR-20 — Leaflet lazy-loaded, with an offline fallback
 
-**Hol.** `assignResources`, `skelCost` az `optimizeDay`-ben; `test/vignette.test.js`.
+**Context.** The map is needed on a few screens, weighs a lot, and can be blocked by a
+CSP or a missing network — while the coordinate is mandatory (ADR-18).
 
----
+**Decision.** Load Leaflet from a CDN on first use. If the script, the global, or the
+tiles fail, fall back to a built-in SVG picker: a grid with the known points drawn on it.
 
-## ADR-17 — Kapacitásbontás megállónként (first-fit-decreasing)
+**Consequence.** The map stays out of the main bundle, and a coordinate can always be
+entered: by pin, or by pasting one.
 
-**Kontextus.** Egy 12–14 fős csapat nem fér egy 8 személyes buszba.
+## ADR-21 — A CSP with no `'unsafe-inline'`
 
-**Döntés.** Ha a létszám meghaladja a legnagyobb jármű férőhelyét, a feladat
-**megállónként** bomlik buszokra: egy megálló teljes létszáma egy buszba kerül, a
-csomagolás first-fit-decreasing a lehető legkevesebb buszba. Minden rész önálló,
-párhuzamos fuvar, saját optimális útvonallal és menetrenddel.
+**Context.** A public app holding a club's data, with an anon key in the bundle.
 
-**Következmény.** Nincs „fél megálló”: a gyerekek nem oszlanak szét ugyanannál a
-megállónál két busz között, ami a gyakorlatban kezelhetetlen lenne. Ára: nem osztható
-az a feladat, ahol egyetlen megálló önmagában nagyobb egy busznál, vagy ahol nincs
-megállónkénti bontás — ezeket a rendszer **pontos indoklással** hagyja ki (ADR-25).
+**Decision.** `vercel.json` lists exactly the origins used, and omits `'unsafe-inline'`.
 
-**Hol.** `splitStationsByCapacity`, `genDayTasks`.
+**Consequence.** The built `index.html` must stay free of inline script and style. React
+and Leaflet set styles through the CSSOM, which CSP does not govern. Adding an external
+service requires a matching directive, or the browser blocks it silently.
 
----
+**Caveat.** Verify the Leaflet path on a preview deployment with the real headers. If it
+turns out to need it, adding `'unsafe-inline'` back to `style-src` is a one-line change.
 
-## ADR-18 — A beosztás a fuvarok forrása
+## ADR-22 — An event-based seam between the app and the shell
 
-**Kontextus.** A beosztás (láncok) és a fuvarok (`rides`) sokáig két külön világ volt:
-az optimalizált beosztás nem látszott a Hét és a Sofőr nézetben.
+**Context.** `App` needs to trigger sign-out and open the snapshot panel, both of which
+live in `AuthGate`. Importing upward would break the layering (ADR-03).
 
-**Döntés.** A javaslat alkalmazása (és a külön gomb) **materializálja** a láncokat
-fuvarokká: feladatonként egy fuvar, iránnyal (`dir`) és `source: "schedule"`
-jelöléssel. A generálás lecseréli az adott nap érintett edzéseinek **összes** fuvarját.
+**Decision.** `App` dispatches `fuvarterv:signout` and `fuvarterv:restore` on `window`;
+`AuthGate` listens. The role travels the other way through `RoleContext`.
 
-**Következmény.** Egy forrás van, tehát nincs két, egymásnak ellentmondó igazság; a
-beosztás megjelenik minden nézetben, és részt vesz az ütközésvizsgálatban. Ára: a
-generált fuvar kézi módosítása a következő generáláskor felülíródik — ezt a felület
-megerősítéssel kérdezi meg.
+**Consequence.** `App` knows nothing about authentication. The cost is a seam a reader has
+to find by grepping for the event name, which is why both ends carry a comment.
 
-**Részlet, ami könnyen elromlik.** ODA-nál a megálló kiírt ideje az **indulás**
-(felszállás után), VISSZA-nál az **érkezés** (leszállás). Amíg mindkét irányban az
-érkezés került ki, a Hét nézet ütközésablaka `dwellMin` percet csúszott a beosztáshoz
-képest.
+## ADR-23 — Telling an explicit zero apart from an empty headcount
 
-**Hol.** `ridesFromChains`, `withGeneratedRides`; `test/ride-direction.test.jsx`.
+**Context.** A coach filling in per-stop numbers may enter `0` ("nobody there this time")
+or leave the field blank ("I do not know yet"). Treating both as zero leaves children
+behind.
 
----
+**Decision.** The editor stores a cleared field as `""` and a typed zero as a number.
+`zeroed()` only drops the explicit zero, and `legPax` returns the **maximum** of the
+breakdown and the stated total.
 
-## ADR-19 — A koordináta kötelező
+**Consequence.** A half-filled breakdown can never shrink a team. This is principle E6,
+and it exists because the alternative failure is the worst one this system can produce.
 
-**Kontextus.** Koordináta nélküli pontnál a `legMin` a `fallbackLegMin`-re esik
-vissza, és a pont kimarad a mátrixból — az optimalizáló órákat tervez rossz
-menetidőkkel, jelzés nélkül.
+## ADR-24 — Every skip gets a reason
 
-**Döntés.** Állomás, helyszín és telephely **nem menthető** koordináta nélkül; a régi,
-koordináta nélküli rekordok figyelmeztetést kapnak, és a szerkesztésük is csak
-koordinátával zárható le. A koordináta térképen jelölhető, vagy beilleszthető
-(Google Maps formátum, tizedesvessző elfogadva).
+**Context.** The users are club staff. "Something went wrong" is useless to them, and so
+is a task that quietly does not appear.
 
-**Következmény.** A menetidők megbízhatóak. Ára: egy plusz lépés minden új pont
-felvételekor — a térképválasztó és a beillesztés ezt olcsóvá teszi.
+**Decision.** Every skipped or uncovered item carries a sentence naming the cause and,
+where possible, the fix. When a new constraint is added, the explanation is part of the
+feature.
 
-**Hol.** `MasterForm` (`needsCoord`); `test/master-coord.test.jsx`.
+**Consequence.** More code on the failure branches than on the happy path in places, and
+that is the right ratio here. `optimizeDay` even reports when its search hit the iteration
+cap rather than claiming an optimum.
 
----
+**Known violation.** `taskHardIssues` in `ScheduleScreen` duplicates part of the
+feasibility check and omits the vignette case, so a task blocked only by that shows no
+reason. See risk R6 and `ACTION_PLAN.md` P0-2.
 
-## ADR-20 — Üresjárati mátrix egyetlen OSRM hívásból, kulccsal invalidálva
+## ADR-25 — Hungarian UI, English everything else
 
-**Kontextus.** Pontpáronkénti útvonalkérés több száz hívás lenne, és a Nominatim/OSRM
-demószolgáltatások korlátozottak.
+**Context.** The users are Hungarian club staff and drivers. Contributors may not be.
 
-**Döntés.** Egyetlen OSRM `table` hívás minden koordinátás pontra; az eredmény a
-blobban tárolódik `key`, `source`, `computedAt`, `n` mezőkkel. A `key` az összes pont
-id-jét és kerekített koordinátáját tartalmazza, így a felület jelezni tudja, ha a
-mátrix elavult.
+**Decision.** Every user-visible string is Hungarian. Code, comments, documentation and
+commit messages are English.
 
-**Következmény.** Egy kérés, gyors ismételt számítás, és látható „elavult” állapot.
-Ára: a mátrix csak kézi gombnyomásra frissül (szándékosan — ADR-25 szellemében a
-felület jelzi, ha kellene).
+**Consequence.** Two Hungarian words remain in the code as **stored data values**, and are
+not translated: a ride's direction (`oda`, `vissza`) and the driver role (`sofor`).
+Renaming them would be a data migration, not a translation, and would break every saved
+blob. They are listed in the architecture glossary.
 
-**Hol.** `computeMatrix`, `matrixKey`; `ScheduleScreen` mátrixgombja.
+## ADR-26 — Vitest and jsdom, tests against the real modules
 
----
+**Context.** The domain is pure and easy to test; the UI rules (roles, mandatory
+coordinate, fixed direction) are exactly the ones worth pinning down on screen.
 
-## ADR-21 — Leaflet lusta betöltés + offline tartalék
+**Decision.** Vitest with jsdom. Domain tests import the real modules directly; UI tests
+mount components. `window.storage` is filled with a stub.
 
-**Kontextus.** A térkép csak a koordinátaválasztáshoz kell, a könyvtár CDN-ről jön, és
-a futtatókörnyezet (artifact-előnézet, szigorú CSP, hálózat nélküli sandbox) blokkolhatja.
+**Consequence.** The whole suite runs in about ten seconds without a network or a
+database. Not covered: the real Supabase round trip, the Leaflet path, and CSP behaviour
+under production headers. Those are manual checkpoints in `MAINTENANCE.md`.
 
-**Döntés.** A Leaflet és a CSS a modál **első** megnyitásakor töltődik be, egyszer
-befűzött `<link>`-kel és hibaágon takarított `<script>`-tel. Ha nem tölthető be, egy
-beépített SVG-választó jelenik meg a meglévő pontokkal, rácssal, közeli pontra
-snappeléssel.
+## ADR-27 — An error boundary inside the shell
 
-**Következmény.** A koordináta-megadás **soha nem lehetetlen**, csak kényelmetlenebb.
-Ára: két választó felület karbantartása.
+**Context.** One throw on any screen produced a white page the user could not even
+navigate away from to fix the data that caused it.
 
-**Hol.** `src/ui/MapPicker.jsx` — `loadLeaflet`, `OfflinePicker`.
+**Decision.** An error boundary inside the shell, offering the two useful exits: reload,
+or open the earlier snapshots. The full stack goes to the console; the text shown to the
+user stays short.
 
----
+**Consequence.** A screen crash stays a screen crash. Deliberately a class component,
+since that is still the only way to write a boundary in React.
 
-## ADR-22 — CSP `'unsafe-inline'` nélkül
+**Follow-up.** Production sourcemaps now ship, so a console stack from a real user is
+readable. Reporting them anywhere is still open — risk R9.
 
-**Kontextus.** Statikus hosting, külső CDN-ek, térképcsempék.
+## ADR-28 — One stylesheet, OS-driven dark mode
 
-**Döntés.** A `vercel.json` CSP-je pontosan a használt origókat engedi, és nincs benne
-`'unsafe-inline'`: a production `index.html`-ben nincs inline script/stílus, a React és
-a Leaflet pedig CSSOM-on át állít stílust, amit a CSP nem szabályoz.
+**Context.** The styling had grown into two parallel systems with two token namespaces,
+one aliasing the other, plus Tailwind utilities and inline styles.
 
-**Következmény.** Szigorú védelem XSS ellen. Ára: minden új külső szolgáltatás
-kötelezően CSP-módosítást igényel, különben a böngésző **némán** blokkol — ez a
-legkönnyebben elfelejthető lépés az egész projektben.
+**Decision.** One stylesheet, `src/ui/styles.css`, defining every token once. It keeps two
+class namespaces with a stated boundary: `.shell-*` for the frames outside the app proper
+(login, error boundary, restore panel, toast) and unprefixed for the app itself. Tailwind
+is for layout only.
 
-**Hol.** `vercel.json`.
+**Consequence.** Changing a colour is one edit. The `[data-theme]` override was removed:
+nothing ever set that attribute, and dead theming is worse than none. Dark mode follows
+the operating system.
 
----
-
-## ADR-23 — Eseményalapú varrat az app és a shell között
-
-**Kontextus.** Az `App` (artifact-örökség) nem importálhat auth-kódot, a
-`supabaseStorage` viszont modul-szintű objektum, nem komponens — mégis kell, hogy
-felületet tudjon vezérelni (ütközés, mentési hiba), és az appnak is el kell érnie a
-shell funkcióit (kijelentkezés, korábbi mentések).
-
-**Döntés.** Négy `CustomEvent` a `window`-on: `fuvarterv:stale`,
-`fuvarterv:saveerror`, `fuvarterv:restore`, `fuvarterv:signout`.
-
-**Következmény.** A két rész függetlensége megmarad, és a shell bármikor kicserélhető.
-Ára: a kapcsolat nem típusos és nem követhető statikusan — ezért van a négy név
-táblázatba szedve az architektúra-dokumentum 5.1 pontjában.
-
-**Hol.** `src/AuthGate.jsx`, `src/supabaseStorage.js`, `src/App.jsx`, `src/ErrorBoundary.jsx`.
-
----
-
-## ADR-24 — Explicit `0` és üres létszám megkülönböztetése
-
-**Kontextus.** A megállónkénti létszámmezőnél két, teljesen különböző dolgot jelenthet
-az „üresség”: *ide most nem kell menni* vagy *még nem adtuk meg*.
-
-**Döntés.** A szerkesztő a kiürített mezőt `""`-ként, a beírt nullát számként tárolja.
-A `0` fős megálló kimarad az útvonalból; az üres mező nem. A szállítandó létszám a
-bontás és az összlétszám **maximuma**, tehát egy félig kitöltött bontás nem
-rövidítheti le a csapatot.
-
-**Következmény.** Nem marad gyerek a megállóban egy félig kitöltött táblázat miatt, és
-a fölösleges kör is elkerülhető. Ára: a `""` vs. `0` különbséget minden új
-létszámkezelő kódnak tiszteletben kell tartania.
-
-**Hol.** `genDayTasks` (`zeroed`), `legPax`; `test/zero-count-stops.test.js`.
-
----
-
-## ADR-25 — Minden kihagyás indoklást kap
-
-**Kontextus.** A felhasználók nem fejlesztők; egy hiányzó fuvar okát nem tudják
-kikövetkeztetni. A rendszer korábban némán hagyott ki feladatokat.
-
-**Döntés.** Minden kihagyás és minden fedetlen feladat konkrét, magyar nyelvű
-indoklást kap: nincs állomás, minden megállónál 0 fő, nincs létszámadat, nincs
-elegendő férőhelyű (vagy matricás) jármű, nincs elérhető sofőr, erőforrás-ütközés,
-elavult lánc. Ezek nem naplóüzenetek, hanem a modell kimenetének részei.
-
-**Következmény.** A hiba a felhasználó számára javítható lesz. Ára: minden új korlát
-kötelezően indoklással jár — ez a feature része, nem külön feladat.
-
-**Hol.** `genDayTasks().skipped`, `optimizeDay().uncovered[].reasons`,
-`contentionReasons`, `resolveDay` `issues` és `droppedChains`.
-
----
-
-## ADR-26 — Magyar felület és kommentek, angolos azonosítók
-
-**Kontextus.** A felhasználók magyar klubszemélyzet; a karbantartó is magyarul
-gondolkodik a domainről (fuvar, telephely, matrica, lánc).
-
-**Döntés.** A felület és a kódkommentek magyarul, az azonosítók angolosan (`legMin`,
-`rideWindow`), a domain-szavak megtartott magyarsággal (`dir: "oda" | "vissza"`).
-A kommentek **miért**-kommentek: a rossz viselkedést írják le, amit a kód kizár.
-
-**Következmény.** A kód olvasható annak, aki a domaint ismeri; a kommentek egy része
-gyakorlatilag a regressziók dokumentációja. Ára: kevert nyelvű kódbázis — a
-szószedet a `DEVELOPER.md` végén oldja fel.
-
----
-
-## ADR-27 — Tesztek a barrelen keresztül, Vitest + jsdom
-
-**Kontextus.** A modulbontás közben a tesztek nem törhettek el, és a felület
-renderelését is ellenőrizni kellett (a build nem veszi észre a hiányzó azonosítót).
-
-**Döntés.** Vitest + jsdom; a tesztek a barrelből importálnak; a `window.storage`
-varratot hamis tároló tölti ki; a smoke-teszt ténylegesen mountolja az `<App/>`-ot és
-végigjárja a füleket; az optimalizálót property-tesztek fedik magvas PRNG-vel.
-
-**Következmény.** A modulhatárok szabadon mozgathatók, a regressziók pedig
-elmagyarázott tesztekként rögzülnek. Ára: a barrel export-listáját karban kell tartani.
-
-**Hol.** `test/`, `vite.config.js` (`test` blokk), `.github/workflows/ci.yml`.
-
----
-
-## ADR-28 — Hibahatár a shellen belül
-
-**Kontextus.** Hibahatár nélkül egyetlen dobás bármelyik képernyőn fehér oldalt adott,
-ahonnan a felhasználó el sem tudott navigálni, hogy a hibát okozó adatot kijavítsa.
-
-**Döntés.** `ErrorBoundary` (osztálykomponens — React-ben csak így lehet), amely a
-`RoleContext`-en **belül**, de a shell funkciói **fölött** áll: hiba esetén megmarad
-az újratöltés és a „Korábbi mentések” gomb.
-
-**Következmény.** Egy hibás adatrekord nem zárja ki a felhasználót a saját adataiból.
-Ára: a határ csak a rendereléskor dobott hibát fogja el, az eseménykezelőkben
-dobottakat nem.
-
-**Hol.** `src/ErrorBoundary.jsx`, `src/AuthGate.jsx`.
+**Still open.** 146 inline style objects remain and should migrate into classes over time.
+See `ACTION_PLAN.md` P1-2.

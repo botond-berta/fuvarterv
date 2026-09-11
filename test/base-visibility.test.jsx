@@ -2,13 +2,14 @@ import { describe, test, expect, beforeEach, afterEach } from "vitest";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { ScheduleScreen } from "../src/screens/ScheduleScreen.jsx";
-import { baseOf } from "../fuvarterv.jsx";
+import { baseOf } from "../src/domain/logic.js";
 
 /*
- * A telephely akkor sem szól, ha nincs — pedig olyankor a beosztás a régi módon
- * számol: minden rést fizetetlen szabadidőnek vesz. A csapda, amibe bele lehet
- * esni: felvenni egy telephelyet az Adatok fülön ATTÓL MÉG nem lesz kiválasztva
- * sem a klubnál, sem a járműveknél — a baseOf null marad, és semmi nem változik.
+ * A missing depot says nothing about itself, yet without one the schedule reverts to
+ * the old arithmetic and treats every gap as unpaid free time.
+ *
+ * The trap: adding a depot on the Data tab does NOT by itself select it, either on
+ * the club or on the vehicles. baseOf stays null and nothing changes.
  */
 
 const settings = { arriveEarlyMin: 10, departAfterMin: 10, calloutFee: 1500, dwellMin: 2,

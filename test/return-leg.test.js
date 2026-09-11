@@ -1,8 +1,8 @@
 import { describe, test, expect } from "vitest";
-import {
-  teamLeg, teamPax, teamRouteOrder, genDayTasks, deleteGuard, ensureShape,
-  mondayOf, minToTime,
-} from "../fuvarterv.jsx";
+import { ensureShape } from "../src/data/seed.js";
+import { mondayOf, minToTime } from "../src/domain/datetime.js";
+import { teamLeg, deleteGuard } from "../src/domain/logic.js";
+import { teamPax, teamRouteOrder, genDayTasks } from "../src/domain/optimizer.js";
 
 /*
  * The return leg may have a stop list of its own, independent of the outbound.

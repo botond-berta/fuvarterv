@@ -1,37 +1,46 @@
-/* Fuvarterv — mintaadatok és a mentett állapot alakjának normalizálása
-   Kiemelve a fuvarterv.jsx monolitból; a viselkedés változatlan. */
+/* Fuvarterv — sample data, and shape normalisation for a loaded state.
+
+   The sample data is FICTIONAL. Names, plates and headcounts are placeholders; the
+   stations and venues are real public places, kept because they make the distances
+   and therefore the optimiser's output realistic. Replace the whole thing with your
+   own club's data, or delete the rows from inside the app. */
 
 import { DEFAULT_SETTINGS } from "./storage.js";
 
-/* Régebbi mentett állapotok felokosítása az új mezőkkel. MINDEN felső szintű
-   gyűjteményt normalizál: a hiányzó tömbök különben `TypeError`-t dobnak render
-   közben (team.stationIds.filter, ride.stops.some, …), error boundary nélkül,
-   fehér képernyővel. A `seats` coercion azért fontos, mert az `undefined < pax`
-   hamis — egy férőhely nélküli jármű korlátlan kapacitásúnak látszana. */
+/* Upgrade an older saved state with newer fields. This normalises EVERY top-level
+   collection: a missing array otherwise throws a TypeError mid-render
+   (team.stationIds.filter, ride.stops.some, and so on).
+
+   The `seats` coercion matters for a subtler reason: `undefined < pax` is false, so
+   a vehicle with no seat count would look like it had unlimited capacity.
+
+   There is no schema version number. Every field is defaulted independently, which
+   makes this forward- and backward-tolerant: an older client reading a newer blob
+   ignores what it does not know, and a newer client fills in what is missing. */
 export function ensureShape(s) {
   s.settings = { ...DEFAULT_SETTINGS, ...(s.settings || {}) };
   s.stations = (s.stations || []).map((x) => ({ ...x, lat: x.lat ?? null, lon: x.lon ?? null }));
-  /* needsVignette: a helyszín csak országos autópálya-matricás autóval érhető el.
-     A jelölés szándékosan csak a helyszíneken van, a megállókon nem — a matricát
-     a célpont kényszeríti ki, és egy mezőt kell csak karbantartani. */
+  /* needsVignette: the venue is only reachable with a national motorway vignette.
+     Marked on venues only, never on stops: the destination is what forces it, and
+     this way there is one field to maintain. */
   s.venues = (s.venues || []).map((x) => ({ ...x, lat: x.lat ?? null, lon: x.lon ?? null, needsVignette: !!x.needsVignette }));
-  /* Telephely: ahol a busz éjszakázik. Járművenként állítható, mert a sofőr
-     gyakran a lakcímén tartja a kocsit; null = a klub telephelye
-     (settings.defaultBaseId). Ha egyik sincs megadva, a fizetett idő a mai
-     módon a feladatoktól számít — a meglévő adat viselkedése nem változik. */
+  /* Depot: where the bus spends the night. Settable per vehicle, because a driver
+     often keeps theirs at home; null means the club depot (settings.defaultBaseId).
+     With neither set, paid time is measured from the tasks, so existing data behaves
+     exactly as it did before depots existed. */
   s.bases = (s.bases || []).map((x) => ({ ...x, lat: x.lat ?? null, lon: x.lon ?? null }));
   s.vehicles = (s.vehicles || []).map((v) => ({ ...v, seats: Number(v.seats) || 0, plate: v.plate || "", hasVignette: !!v.hasVignette, baseId: v.baseId ?? null }));
-  /* email: a sofőr belépési e-mail-címe (kisbetűsen) — sofőr-szerepkörű
-     felhasználónál ez alapján nyílik alapból a saját napiterve. */
+  /* email: the driver's sign-in address, lower-cased. A user with the driver role
+     opens on their own day plan, matched on this. */
   s.drivers = (s.drivers || []).map((d) => ({ ...d, wage: d.wage ?? 3000, minShiftMin: d.minShiftMin ?? 120, availability: d.availability || [], preferredVehicleId: d.preferredVehicleId ?? null, email: d.email || "" }));
-  /* returnStationIds === null azt jelenti: a visszaút tükrözze az odautat (ez a
-     korábbi, egyetlen listás viselkedés). Tömb esetén a visszaútnak saját
-     megállói vannak. A mezők szándékosan laposak, nem egy beágyazott objektumban:
-     a csapat-felület tömbkapcsoló segédfüggvénye felső szintű mezőnévvel dolgozik. */
+  /* returnStationIds === null means the return leg mirrors the outbound one (the
+     original single-list behaviour). An array means the return leg has its own stops.
+     The fields are deliberately flat rather than nested: the team screen's array
+     toggle helper works on top-level field names. */
   s.teams = (s.teams || []).map((t) => ({ ...t, stationIds: t.stationIds || [], venueIds: t.venueIds || [], passengerCount: t.passengerCount ?? null, stationCounts: t.stationCounts || {}, routeMode: t.routeMode || "auto", routeAnchorId: t.routeAnchorId ?? null, returnStationIds: t.returnStationIds ?? null, returnStationCounts: t.returnStationCounts || {}, returnRouteAnchorId: t.returnRouteAnchorId ?? null }));
-  /* stops === null azt jelenti: az edzés a csapat megállólistáját használja (ez
-     a korábbi, egyetlen listás viselkedés). Objektum esetén az edzésnek saját,
-     teljes listája van — ugyanazokkal a mezőnevekkel, mint a csapatnak. */
+  /* stops === null means the training uses the team's stop list (the original
+     single-list behaviour). An object means the training has its own complete list,
+     using the same field names the team uses. */
   s.trainings = (s.trainings || []).map((t) => ({ ...t, type: t.type || "weekly", days: t.days || [], date: t.date ?? null, stops: t.stops ?? null }));
   s.rides = (s.rides || []).map((r) => ({ ...r, dir: r.dir || "oda", stops: r.stops || [] }));
   s.matrix = s.matrix || null;
@@ -41,10 +50,8 @@ export function ensureShape(s) {
 
 export function seedState() {
   return {
-    /* Források: 2025–26 terembeosztás (edzések), sofőrök lap (sofőrök, rendszámok),
-       csütörtöki fuvarlista (megállók, létszámok, indulási idők). */
-    /* A klub telephelye. A járművek baseId-je null, vagyis mind innen indul —
-       ha egy busz a sofőr lakcímén áll, ott állítható át. */
+    /* The club depot. Every vehicle's baseId is null, so they all start here; a bus
+       kept at a driver's home gets its own depot on the vehicle. */
     bases: [
       { id: "hZAK", name: "Klub telephely", address: "Zákányszék", note: "", lat: 46.2745, lon: 19.889 },
     ],
@@ -88,34 +95,33 @@ export function seedState() {
     venues: [
       { id: "vZAK", name: "Zákányszék spcs.", address: "Sportcsarnok, Zákányszék", note: "", lat: 46.2745, lon: 19.889 },
       { id: "vKIS", name: "Kistelek spcs.", address: "Sportcsarnok, Kistelek", note: "", lat: 46.4703, lon: 19.9793 },
-      /* Példa a matricakötelezettségre: Algyő az autópályán át közelíthető meg
-         kényelmesen, ezért ide csak országos matricás autót szabad beosztani.
-         A valós adatban a helyszíneknél állítható. */
+      /* An example of the vignette rule: this venue is most easily reached via the
+         motorway, so only a bus with a national vignette may be scheduled to it. */
       { id: "vALG", name: "Algyő spcs.", address: "Sportcsarnok, Algyő", note: "", lat: 46.3327, lon: 20.2069, needsVignette: true },
       { id: "vGEL", name: "Újszeged Gellért", address: "Újszeged, Szeged", note: "Pontosítsd a térképen", lat: 46.245, lon: 20.1745 },
       { id: "vMORA", name: "Mórahalom spcs.", address: "Sportcsarnok, Mórahalom", note: "", lat: 46.2172, lon: 19.883 },
       { id: "vBAL", name: "Balástya terem", address: "Iskola tornaterme, Balástya", note: "", lat: 46.4262, lon: 20.0046 },
     ],
     vehicles: [
-      { id: "jPAK543", name: "Kisbusz 1", plate: "PAK-543", seats: 8, hasVignette: true, note: "Országos engedély · Sipos Zsolti" },
-      { id: "jPAK544", name: "Kisbusz 2", plate: "PAK-544", seats: 8, hasVignette: false, note: "Megyei engedély · Vincze Gábor" },
-      { id: "jPAK545", name: "Kisbusz 3", plate: "PAK-545", seats: 8, hasVignette: false, note: "Megyei engedély · Habenyák/Csomor" },
-      { id: "jPPC574", name: "Kisbusz 4", plate: "PPC-574", seats: 8, hasVignette: true, note: "Országos engedély · Nagy Ferenc" },
-      { id: "jPWF852", name: "Kisbusz 5", plate: "PWF-852", seats: 8, hasVignette: true, note: "Országos engedély · Gera Józsi" },
-      { id: "jSLP752", name: "Kisbusz 6", plate: "SLP-752", seats: 8, hasVignette: true, note: "Országos engedély · Kolumbán Józsi" },
-      { id: "jSLP753", name: "Kisbusz 7", plate: "SLP-753", seats: 8, hasVignette: false, note: "Megyei engedély · Zámbó Zsolti" },
+      { id: "b1", name: "Kisbusz 1", plate: "ABC-101", seats: 8, hasVignette: true, note: "Országos engedély" },
+      { id: "b2", name: "Kisbusz 2", plate: "ABC-102", seats: 8, hasVignette: false, note: "Megyei engedély" },
+      { id: "b3", name: "Kisbusz 3", plate: "ABC-103", seats: 8, hasVignette: false, note: "Megyei engedély" },
+      { id: "b4", name: "Kisbusz 4", plate: "ABC-104", seats: 8, hasVignette: true, note: "Országos engedély" },
+      { id: "b5", name: "Kisbusz 5", plate: "ABC-105", seats: 8, hasVignette: true, note: "Országos engedély" },
+      { id: "b6", name: "Kisbusz 6", plate: "ABC-106", seats: 8, hasVignette: true, note: "Országos engedély" },
+      { id: "b7", name: "Kisbusz 7", plate: "ABC-107", seats: 8, hasVignette: false, note: "Megyei engedély" },
     ],
     drivers: [
-      { id: "dSIP", name: "Sipos Zsolti", phone: "", note: "Állandó busz: PAK-543", wage: 3000, minShiftMin: 120, availability: [], preferredVehicleId: "jPAK543" },
-      { id: "dVIN", name: "Vincze Gábor", phone: "", note: "Állandó busz: PAK-544", wage: 3000, minShiftMin: 120, availability: [], preferredVehicleId: "jPAK544" },
-      { id: "dHAB", name: "Habenyák Alex", phone: "", note: "PAK-545, váltásban Csomor Tamással", wage: 3000, minShiftMin: 120, availability: [], preferredVehicleId: "jPAK545" },
-      { id: "dCSO", name: "Csomor Tamás", phone: "", note: "PAK-545, váltásban Habenyák Alexszel", wage: 3000, minShiftMin: 120, availability: [], preferredVehicleId: "jPAK545" },
-      { id: "dNAG", name: "Nagy Ferenc", phone: "", note: "Állandó busz: PPC-574", wage: 3000, minShiftMin: 120, availability: [], preferredVehicleId: "jPPC574" },
-      { id: "dGER", name: "Gera Józsi", phone: "", note: "Állandó busz: PWF-852", wage: 3000, minShiftMin: 120, availability: [], preferredVehicleId: "jPWF852" },
-      { id: "dKOL", name: "Kolumbán Józsi", phone: "", note: "Állandó busz: SLP-752", wage: 3000, minShiftMin: 120, availability: [], preferredVehicleId: "jSLP752" },
-      { id: "dZAM", name: "Zámbó Zsolti", phone: "", note: "Állandó busz: SLP-753", wage: 3000, minShiftMin: 120, availability: [], preferredVehicleId: "jSLP753" },
+      { id: "d1", name: "Sofőr 1", phone: "", note: "Állandó busz: ABC-101", wage: 3000, minShiftMin: 120, availability: [], preferredVehicleId: "b1" },
+      { id: "d2", name: "Sofőr 2", phone: "", note: "Állandó busz: ABC-102", wage: 3000, minShiftMin: 120, availability: [], preferredVehicleId: "b2" },
+      { id: "d3", name: "Sofőr 3", phone: "", note: "ABC-103, váltásban Sofőr 4-gyel", wage: 3000, minShiftMin: 120, availability: [], preferredVehicleId: "b3" },
+      { id: "d4", name: "Sofőr 4", phone: "", note: "ABC-103, váltásban Sofőr 3-mal", wage: 3000, minShiftMin: 120, availability: [], preferredVehicleId: "b3" },
+      { id: "d5", name: "Sofőr 5", phone: "", note: "Állandó busz: ABC-104", wage: 3000, minShiftMin: 120, availability: [], preferredVehicleId: "b4" },
+      { id: "d6", name: "Sofőr 6", phone: "", note: "Állandó busz: ABC-105", wage: 3000, minShiftMin: 120, availability: [], preferredVehicleId: "b5" },
+      { id: "d7", name: "Sofőr 7", phone: "", note: "Állandó busz: ABC-106", wage: 3000, minShiftMin: 120, availability: [], preferredVehicleId: "b6" },
+      { id: "d8", name: "Sofőr 8", phone: "", note: "Állandó busz: ABC-107", wage: 3000, minShiftMin: 120, availability: [], preferredVehicleId: "b7" },
     ],
-    /* Napok: 0=H, 1=K, 2=Sze, 3=Cs, 4=P */
+    /* Weekday indices, Monday first: 0=Mon, 1=Tue, 2=Wed, 3=Thu, 4=Fri. */
     trainings: [
       { id: "trLU12K_k", teamId: "tLU12K", venueId: "vZAK", type: "weekly", days: [1], date: null, start: "16:30", end: "18:30" },
       { id: "trLU12K_sze", teamId: "tLU12K", venueId: "vMORA", type: "weekly", days: [2], date: null, start: "16:00", end: "17:30" },
@@ -126,9 +132,9 @@ export function seedState() {
       { id: "trLU14_p", teamId: "tLU14", venueId: "vMORA", type: "weekly", days: [4], date: null, start: "17:00", end: "18:30" },
       { id: "trFU12_hsze", teamId: "tFU12", venueId: "vKIS", type: "weekly", days: [0, 2], date: null, start: "16:00", end: "17:30" },
       { id: "trFU12_cs", teamId: "tFU12", venueId: "vALG", type: "weekly", days: [3], date: null, start: "15:30", end: "17:00" },
-      /* Példa edzésenkénti megállólistára: a péntek Balástyán van, ahol a helyi
-         gyerekek gyalog is odaérnek — ehhez az edzéshez tehát a csapat állandó
-         listájából kimarad Balástya, és kevesebben is utaznak. */
+      /* An example of a per-training stop list. This Friday session is held in a
+         village whose own children can walk there, so that stop drops out of the
+         team's standing list and fewer people travel. */
       { id: "trFU12_p", teamId: "tFU12", venueId: "vBAL", type: "weekly", days: [4], date: null, start: "15:00", end: "16:30",
         stops: { stationIds: ["sZSOM", "sKIISK", "sSAND"], stationCounts: { sZSOM: 1, sKIISK: 4, sSAND: 2 },
           routeMode: "auto", routeAnchorId: null,
@@ -139,58 +145,58 @@ export function seedState() {
       { id: "trFU16_kcs", teamId: "tFU16", venueId: "vGEL", type: "weekly", days: [1, 3], date: null, start: "15:30", end: "17:00" },
       { id: "trNB2", teamId: "tNB2", venueId: "vKIS", type: "weekly", days: [0, 2, 3, 4], date: null, start: "18:00", end: "20:00" },
     ],
-    /* Csütörtöki fuvarkörök a fuvarlistából; a sofőrök a 2025–26-os beosztás szerint */
+    /* A worked example: one Thursday's rides, already assigned to drivers and buses. */
     rides: [
-      { id: "rFU16a", trainingId: "trFU16_kcs", day: 3, date: null, vehicleId: "jPWF852", driverId: "dGER",
+      { id: "rFU16a", trainingId: "trFU16_kcs", day: 3, date: null, vehicleId: "b5", driverId: "d6",
         stops: [
           { id: "x1", stationId: "sSAND", time: "14:25", count: 2 },
           { id: "x2", stationId: "sALGISK", time: "14:45", count: 2 },
           { id: "x3", stationId: "sSHELL", time: "14:55", count: 3 },
         ] },
-      { id: "rFU16b", trainingId: "trFU16_kcs", day: 3, date: null, vehicleId: "jPAK543", driverId: "dSIP",
+      { id: "rFU16b", trainingId: "trFU16_kcs", day: 3, date: null, vehicleId: "b1", driverId: "d1",
         stops: [
           { id: "x4", stationId: "sZSOM", time: "14:40", count: 1 },
           { id: "x5", stationId: "sDORO", time: "14:55", count: 2 },
           { id: "x6", stationId: "sGD", time: "15:10", count: 4 },
         ] },
-      { id: "rFU12a", trainingId: "trFU12_cs", day: 3, date: null, vehicleId: "jPPC574", driverId: "dNAG",
+      { id: "rFU12a", trainingId: "trFU12_cs", day: 3, date: null, vehicleId: "b4", driverId: "d5",
         stops: [
           { id: "x7", stationId: "sZSOM", time: "14:20", count: 1 },
           { id: "x8", stationId: "sKIISK", time: "14:40", count: 4 },
           { id: "x9", stationId: "sBALA", time: "14:50", count: 3 },
           { id: "x10", stationId: "sSAND", time: "15:05", count: 2 },
         ] },
-      { id: "rLU12a", trainingId: "trLU12K_cs", day: 3, date: null, vehicleId: "jPAK545", driverId: "dHAB",
+      { id: "rLU12a", trainingId: "trLU12K_cs", day: 3, date: null, vehicleId: "b3", driverId: "d3",
         stops: [
           { id: "x11", stationId: "sGD", time: "14:30", count: 1 },
           { id: "x12", stationId: "sDORO", time: "14:45", count: 1 },
           { id: "x13", stationId: "sROSZ1", time: "15:00", count: 1 },
           { id: "x14", stationId: "sMORA", time: "15:15", count: 3 },
         ] },
-      { id: "rLU12b", trainingId: "trLU12K_cs", day: 3, date: null, vehicleId: "jPAK545", driverId: "dHAB",
+      { id: "rLU12b", trainingId: "trLU12K_cs", day: 3, date: null, vehicleId: "b3", driverId: "d3",
         stops: [
           { id: "x15", stationId: "sZSOM", time: "15:35", count: 2 },
           { id: "x16", stationId: "sBORD", time: "15:45", count: 3 },
         ] },
-      { id: "rFU14a", trainingId: "trFU14_cs", day: 3, date: null, vehicleId: "jPWF852", driverId: "dGER",
+      { id: "rFU14a", trainingId: "trFU14_cs", day: 3, date: null, vehicleId: "b5", driverId: "d6",
         stops: [
           { id: "x17", stationId: "sKISPCS", time: "15:45", count: 2 },
           { id: "x18", stationId: "sBALA", time: "15:55", count: 1 },
           { id: "x19", stationId: "sSAND", time: "16:10", count: 1 },
           { id: "x20", stationId: "sZSOM", time: "16:25", count: 3 },
         ] },
-      { id: "rFU14b", trainingId: "trFU14_cs", day: 3, date: null, vehicleId: "jPAK543", driverId: "dSIP",
+      { id: "rFU14b", trainingId: "trFU14_cs", day: 3, date: null, vehicleId: "b1", driverId: "d1",
         stops: [
           { id: "x21", stationId: "sROSZ2", time: "16:25", count: 2 },
           { id: "x22", stationId: "sGD", time: "16:40", count: 3 },
         ] },
-      { id: "rLU14a", trainingId: "trLU14_cs", day: 3, date: null, vehicleId: "jSLP752", driverId: "dKOL",
+      { id: "rLU14a", trainingId: "trLU14_cs", day: 3, date: null, vehicleId: "b6", driverId: "d7",
         stops: [
           { id: "x23", stationId: "sKISPCS", time: "16:00", count: 2 },
           { id: "x24", stationId: "sSAND", time: "16:15", count: 3 },
           { id: "x25", stationId: "sBORD", time: "16:35", count: 1 },
         ] },
-      { id: "rLU14b", trainingId: "trLU14_cs", day: 3, date: null, vehicleId: "jPPC574", driverId: "dNAG",
+      { id: "rLU14b", trainingId: "trLU14_cs", day: 3, date: null, vehicleId: "b4", driverId: "d5",
         stops: [
           { id: "x26", stationId: "sPETO", time: "16:10", count: 3 },
           { id: "x27", stationId: "sZSOM", time: "16:35", count: 5 },

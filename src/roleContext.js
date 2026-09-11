@@ -1,11 +1,13 @@
-/* Fuvarterv — szerepkör-kontextus: az AuthGate tölti fel, az App olvassa.
-   Külön, apró modul: az App nem importálhat az AuthGate-ből (a varrat köztük
-   eddig is eseményalapú volt), egy közös kontextus viszont mindkettőnek jár.
+/* Fuvarterv — the role context: AuthGate fills it, App reads it.
 
-   Az alapérték szándékosan admin: csak provider NÉLKÜL él — tesztekben és a
-   window.storage-shimmel futó fejlesztői környezetben, ahol nincs belépés és
-   nincs mit korlátozni. Az éles útvonalon az AuthGate mindig providert ad, és
-   ott a szerver dönt: akinek nincs user_roles sora, azt sofőrként engedi be. */
+   Its own tiny module because App must not import from AuthGate (the seam
+   between them is event-based), but both are entitled to a shared context.
+
+   The default is admin on purpose. It only ever applies with NO provider above
+   it: in tests, and in a dev environment running on a window.storage shim, where
+   there is no sign-in and nothing to restrict. On the real path AuthGate always
+   supplies a provider, and there the server decides: an account with no
+   user_roles row is admitted as a driver. */
 
 import { createContext } from "react";
 

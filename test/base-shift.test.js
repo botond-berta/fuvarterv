@@ -1,15 +1,27 @@
 import { describe, test, expect } from "vitest";
+import { ensureShape, seedState } from "../src/data/seed.js";
+import { mondayOf } from "../src/domain/datetime.js";
+import { legMin } from "../src/domain/geo.js";
+import { baseOf, deleteGuard } from "../src/domain/logic.js";
 import {
-  ensureShape, seedState, baseOf, spanOf, mergeShifts, driverPay, onSiteWait,
-  chainUse, mkChain, genDayTasks, optimizeDay, dayStats, deleteGuard, mondayOf, legMin,
-} from "../fuvarterv.jsx";
+  spanOf,
+  mergeShifts,
+  driverPay,
+  onSiteWait,
+  chainUse,
+  mkChain,
+  genDayTasks,
+  optimizeDay,
+  dayStats,
+} from "../src/domain/optimizer.js";
 
 /*
- * Telephely és fizetett idő. A sofőr akkor lép munkába, amikor elindul a
- * telephelyről, és akkor végez, amikor visszaért — a láncok telephely–telephely
- * sávjai pedig összeolvadnak, ha nincs köztük idő hazamenni. Ebből következik a
- * javított viselkedés: távoli helyszínnél a köztes idő fizetett várakozás, egy
- * kiszállási díjjal, nem pedig két külön műszak.
+ * Depots and paid time. A driver starts work on leaving the depot and finishes on
+ * getting back, and two chains' depot-to-depot spans merge when there is no time to
+ * go home in between.
+ *
+ * The corrected behaviour follows from that: with a distant venue, the time between
+ * two rides is paid waiting under ONE call-out fee, not two separate shifts.
  */
 
 const WEEKDAY = 2;
@@ -17,7 +29,7 @@ const WEEK_MON = mondayOf(new Date(2025, 0, 6));
 const settings = { arriveEarlyMin: 10, departAfterMin: 10, calloutFee: 1500, dwellMin: 2,
   estSpeedKmh: 60, fallbackLegMin: 12, preferredBias: 0, defaultBaseId: "hZAK" };
 
-/* Zákányszék a telephely; a helyszín távolsága paraméterezhető. */
+/* The depot sits at the club; the venue's distance from it is a parameter. */
 function makeState({ venue, base = "hZAK", vehicleBase = null } = {}) {
   return {
     stations: [{ id: "sZAK", name: "Zákányszék", lat: 46.2745, lon: 19.889 }],

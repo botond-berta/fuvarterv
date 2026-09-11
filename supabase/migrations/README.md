@@ -1,48 +1,23 @@
-# Database migrations
+# Database setup
 
-Run these in the Supabase **SQL editor**, in numerical order. All six are
-**re-runnable** — every `create policy` is preceded by a `drop policy if exists`, and
-tables, indexes and triggers are guarded — so if you are unsure what has already been
-applied, running them all in order is safe.
+One file, `0001_initial_schema.sql`. Paste it into the Supabase **SQL editor** and
+run it. That is the entire server side of Fuvarterv.
 
-| File | What it does |
-|---|---|
-| `0001_app_state.sql` | The `app_state` table (one shared workspace row) + RLS. |
-| `0002_app_state_history.sql` | `app_state_history` — the snapshot list behind the **Korábbi mentések** panel. |
-| `0003_tighten_rls.sql` | Scopes writes to the workspace row, makes history append-only, moves `updated_at` onto the server clock. |
-| `0004_user_roles.sql` | Admin/driver roles: the `user_roles` table + `is_admin()`, and writes become admin-only. |
-| `0005_rename_workspace_key.sql` | Historical: renamed the workspace key `fuvarterv:v1` → `vector:v1` when the app was called Vector (rows + the policies that hard-code it). Superseded by `0006`. |
-| `0006_rename_workspace_key_back.sql` | Renames the workspace key back, `vector:v1` → `fuvarterv:v1`, after the app returned to the name Fuvarterv. Has the last word on the workspace-scoped policies. |
+It is **re-runnable**: tables, indexes and triggers are guarded, and every
+`create policy` is preceded by a `drop policy if exists`, so running it again after a
+partial failure is safe.
 
-**Order matters.** `0003` and `0004` reference tables the earlier files create.
-`drop policy if exists` tolerates a missing *policy*, but not a missing *table*, so
-running `0003` before `0002` fails with `relation "public.app_state_history" does not
-exist`.
+## Two steps you must not skip
 
-## 0005 and 0006: the workspace key round trip
+**1. Turn off public sign-ups.** Authentication → Providers → Email → uncheck
+**Enable sign-ups**. Every policy grants access to any *authenticated* user, and the
+anon key ships in the public JS bundle. While sign-ups are open, anyone who reads
+that key out of the bundle can register and then read, overwrite and delete
+everything. Create staff logins by hand under Authentication → Users → Add user.
 
-The app was called Fuvarterv, was renamed to Vector, and has now been renamed back
-to Fuvarterv. The workspace key the client sends followed it each time, so there are
-two rename migrations: `0005` moved `fuvarterv:v1` → `vector:v1`, and `0006` moves it
-back, `vector:v1` → `fuvarterv:v1`. Each one moves the `app_state` row and its
-`app_state_history` snapshots, and re-creates the four workspace-scoped policies with
-the key of the day.
-
-**`0006` is the one that matters today** — it is what leaves the database on the key
-`src/data/storage.js` and `src/supabaseClient.js` actually send (`fuvarterv:v1`). Skip
-it and the app loads an empty workspace and every save is rejected by RLS.
-
-`0005` is kept as history rather than rewritten: it is what was really run against
-live databases during the Vector period, and `0001`–`0004` still spell the key
-`vector:v1` for the same reason. That costs nothing — on a database you are creating
-now `0005` has no data to move, and `0006` re-creates every policy it touched — but
-it does mean **`0006` is not optional on a fresh database either**: it is the only
-file that scopes the policies to the key the client sends.
-
-## After 0004: create the first admin
-
-`0004` makes every write admin-only, and a user with no `user_roles` row is a driver
-(read-only) — **including you**, until you run this once with your own address:
+**2. Create the first admin.** Writes are admin-only and a user with no `user_roles`
+row is a driver, read-only — including you, until you run this once with your own
+address:
 
 ```sql
 insert into public.user_roles (email, role)
@@ -51,45 +26,58 @@ on conflict (email) do update set role = 'admin';
 ```
 
 From then on roles are managed inside the app (Adatok → Felhasználók). The SQL editor
-runs as `postgres` and bypasses row level security, so this same line is also the
-recovery path if the admins ever lock themselves out. Role changes take effect the
-next time the affected user logs in or reloads the app.
+runs as `postgres` and bypasses row level security, so this same statement is also the
+recovery path if the admins ever lock themselves out. A role change takes effect the
+next time that user logs in or reloads.
 
-> **`0003` is only half of the security model.** The other half is a console setting:
-> **Authentication → Providers → Email → turn off "Enable sign-ups"**. Every policy
-> grants access to any *authenticated* user, and the anon key ships in the public JS
-> bundle — so while sign-ups are open, anyone can register and read, overwrite and
-> delete everything.
+## What the end state looks like
 
-## Which migrations have been applied?
+| Object | Kind | Purpose |
+|---|---|---|
+| `app_state` | table | One row holding the whole application state as `jsonb`. |
+| `app_state_history` | table | The previous blob on every save, newest 20 kept per workspace. |
+| `user_roles` | table | E-mail → `admin` or `sofor`. No row means driver. |
+| `workspace_id()` | function | The workspace key, in one place instead of every policy. |
+| `is_admin()` | function | True when the caller's JWT e-mail has an admin row. `security definer`, so the roles policies cannot recurse. |
+| `app_state_touch` | trigger | Sets `updated_at := now()` on update, so the concurrency timestamp comes from the server rather than the browser clock. |
 
-This query is **read-only** and safe to run at any time, including on an empty database
-(it deliberately avoids `::regclass`, which throws when a table is missing). It lists
-the objects that *should* exist and tells you which migration is still outstanding.
+Reads are open to every authenticated user, because drivers must see the schedule.
+Writes are admin-only and scoped to the one workspace row.
+
+Two omissions are deliberate. There is **no delete policy on `app_state`**: nothing in
+the app deletes the workspace row, and losing it would drop the entire dataset in one
+request. There is **no update policy on `app_state_history`**: an audit trail every
+client can rewrite is not an audit trail. Delete exists there only because the client
+prunes to the newest 20.
+
+These map exactly onto `src/supabaseStorage.js`: `get` → select, `set` → insert or
+guarded update on that one id, history write → insert, pruning → delete. The
+`delete(key)` method on the storage contract is never called by the app, which is why
+no policy grants it.
+
+## Checking what is applied
+
+Read-only, and safe on an empty database. It deliberately avoids `::regclass`, which
+throws when a table is missing.
 
 ```sql
-with expected(step, kind, name) as (
-  values ('0001'::text, 'table'::text,  'app_state'::text),
-         ('0002',       'table',        'app_state_history'),
-         ('0003',       'policy',       'app_state select'),
-         ('0003',       'policy',       'app_state insert'),
-         ('0003',       'policy',       'app_state update'),
-         ('0003',       'policy',       'history select'),
-         ('0003',       'policy',       'history insert'),
-         ('0003',       'policy',       'history prune'),
-         ('0003',       'trigger',      'app_state_touch'),
-         ('0004',       'table',        'user_roles'),
-         ('0004',       'function',     'is_admin'),
-         ('0004',       'policy',       'roles select'),
-         ('0004',       'policy',       'roles insert'),
-         ('0004',       'policy',       'roles update'),
-         ('0004',       'policy',       'roles delete')
-),
-superseded(kind, name) as (
-  values ('policy'::text, 'authenticated read'::text),
-         ('policy',       'authenticated write'),
-         ('policy',       'authenticated read history'),
-         ('policy',       'authenticated write history')
+with expected(kind, name) as (
+  values ('table'::text,  'app_state'::text),
+         ('table',        'app_state_history'),
+         ('table',        'user_roles'),
+         ('function',     'workspace_id'),
+         ('function',     'is_admin'),
+         ('trigger',      'app_state_touch'),
+         ('policy',       'app_state select'),
+         ('policy',       'app_state insert'),
+         ('policy',       'app_state update'),
+         ('policy',       'history select'),
+         ('policy',       'history insert'),
+         ('policy',       'history prune'),
+         ('policy',       'roles select'),
+         ('policy',       'roles insert'),
+         ('policy',       'roles update'),
+         ('policy',       'roles delete')
 ),
 present as (
   select 'table'::text as kind, tablename::text as name
@@ -105,7 +93,7 @@ present as (
   select 'function', p.proname::text
     from pg_proc p
     join pg_namespace n on n.oid = p.pronamespace
-   where n.nspname = 'public' and p.proname = 'is_admin'
+   where n.nspname = 'public' and p.proname in ('is_admin', 'workspace_id')
   union all
   select 'trigger', t.tgname::text
     from pg_trigger t
@@ -113,45 +101,23 @@ present as (
     join pg_namespace n on n.oid = c.relnamespace
    where n.nspname = 'public' and c.relname = 'app_state' and not t.tgisinternal
 )
-select e.step, e.kind, e.name,
-       case when p.name is null
-            then 'MISSING -- run migration ' || e.step
-            else 'OK' end as status
+select e.kind, e.name,
+       case when p.name is null then 'MISSING' else 'OK' end as status
   from expected e left join present p on p.kind = e.kind and p.name = e.name
-union all
-select '0003', s.kind, s.name,
-       case when p.name is null
-            then 'not present (fine)'
-            else 'STALE -- migration 0003 will remove it' end
-  from superseded s left join present p on p.kind = s.kind and p.name = s.name
-order by 1, 2, 3;
+ order by 1, 2;
 ```
 
-When everything is applied, the fifteen `expected` rows all read `OK` and the four
-`superseded` rows all read `not present (fine)`. (The query checks object *names*, so
-the write policies show `OK` from `0003` onwards even before `0004` re-created them
-with the admin condition — the six `0004` rows are what tell you whether `0004` ran.)
+All sixteen rows should read `OK`.
 
-## What the end state should look like
+## Changing the workspace key
 
-- **Tables:** `app_state`, `app_state_history`, `user_roles`, all with RLS enabled.
-- **Function:** `is_admin()` — true when the caller's JWT e-mail has an `admin` row in
-  `user_roles`. `security definer`, so the roles table's own policies cannot recurse.
-- **Policies on `app_state`:** `app_state select` (read for every authenticated user),
-  `app_state insert` and `app_state update` (scoped to `id = 'fuvarterv:v1'` **and
-  admin-only**). Deliberately **no delete policy** — nothing in the app deletes the
-  workspace row, and losing it would drop the entire dataset in one request.
-- **Policies on `app_state_history`:** `history select` (every authenticated user),
-  `history insert` and `history prune` (admin-only, scoped to the workspace).
-  Append-only apart from the client's 20-snapshot pruning; an audit trail every client
-  can rewrite is not an audit trail.
-- **Policies on `user_roles`:** `roles select` (own row, or everything for admins),
-  `roles insert` / `roles update` / `roles delete` (admin-only). A user with no row is
-  a driver — fail-closed.
-- **Trigger:** `app_state_touch` sets `updated_at := now()` on update, so the optimistic
-  concurrency timestamp comes from the server rather than the browser clock.
+The key lives in two places that must agree: `workspace_id()` in the schema file, and
+`STORAGE_KEY` in `src/data/storage.js`. If they disagree the app loads an empty
+workspace and every save is rejected by row level security.
 
-These map exactly onto what `src/supabaseStorage.js` does: `get` → select, `set` →
-insert or guarded update on that one id, history write → insert, pruning → delete. The
-`delete(key)` method on the storage contract is never called by the app, which is why no
-policy grants it.
+To rename it, change both, then move the existing rows:
+
+```sql
+update public.app_state         set id           = 'new-key' where id           = 'old-key';
+update public.app_state_history set workspace_id = 'new-key' where workspace_id = 'old-key';
+```

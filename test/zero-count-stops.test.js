@@ -1,13 +1,17 @@
 import { describe, test, expect } from "vitest";
-import { genDayTasks, mondayOf, seedState, ensureShape } from "../fuvarterv.jsx";
+import { seedState, ensureShape } from "../src/data/seed.js";
+import { mondayOf } from "../src/domain/datetime.js";
+import { genDayTasks } from "../src/domain/optimizer.js";
 
 /*
- * A 0 fős megálló kimarad az útvonalból — de csak a KIFEJEZETT nulla.
- * Az üresen hagyott mező mást jelent: "még nincs megadva". Egy félig kitöltött
- * bontásnál (az edző csak két megállóhoz írt létszámot) a többit kihagyni annyi
- * lenne, mint ottfelejteni a gyerekeket, ezért azokhoz a busz továbbra is elmegy.
- * A szerkesztő a kiürített mezőt ""-ként, a beírt nullát számként tárolja, így a
- * két eset megkülönböztethető.
+ * A stop with zero people drops out of the route — but only an EXPLICIT zero.
+ *
+ * An empty field means something else: "not entered yet". With a half-filled
+ * breakdown (the coach has written counts for only two stops), skipping the rest
+ * would mean leaving children behind, so the bus still goes to those.
+ *
+ * The editor stores a cleared field as "" and a typed zero as a number, which is what
+ * makes the two cases distinguishable.
  */
 
 const WEEKDAY = 2;
@@ -94,7 +98,7 @@ describe("ha minden megálló 0", () => {
 });
 
 describe("0 fős feladat egyáltalán nem készül", () => {
-  /* Enélkül az optimalizáló sofőrt és buszt rendelt egy üres fuvarhoz,
+  /* Without this the optimizer assigned a driver and a bus to an empty ride,
      kiszállási díjjal és fizetett órával — a mintaadat NB2 csapata minden
      edzésnapon két ilyen feladatot adott. */
   test("se megállónkénti, se összlétszám: nincs feladat, csak indoklás", () => {

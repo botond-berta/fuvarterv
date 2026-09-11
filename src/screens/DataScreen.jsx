@@ -1,5 +1,7 @@
-/* Fuvarterv — Adatok — csapatok és törzsadatok egy fül alatt
-   Kiemelve a fuvarterv.jsx-ből; a viselkedés változatlan. */
+/* Fuvarterv — the Data tab: teams and master data under one heading.
+
+   A thin router: it owns the category selection and delegates every category to its own
+   screen. */
 
 import { useState } from "react";
 import { DangerBtn } from "../ui/base.jsx";
@@ -7,7 +9,7 @@ import { TeamsScreen } from "./TeamsScreen.jsx";
 import { MasterScreen } from "./MasterScreen.jsx";
 import { UsersPanel } from "./UsersPanel.jsx";
 
-/* ---------- 4.x ADATOK — csapatok + törzsadatok egy helyen ---------- */
+/* ---------- Data: teams and master data in one place ---------- */
 export const DATA_CATS = [
   { key: "teams", label: "Csapatok" },
   { key: "stations", label: "Állomások" },

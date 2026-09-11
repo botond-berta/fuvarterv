@@ -1,5 +1,7 @@
-/* Fuvarterv — Beosztás — láncok, optimalizálás, fuvargenerálás
-   Kiemelve a fuvarterv.jsx-ből; a viselkedés változatlan. */
+/* Fuvarterv — the Schedule tab: chains, optimisation, ride generation.
+
+   The optimizer itself lives in src/domain/optimizer.js. This screen only drives it
+   and renders the result. */
 
 import { useState, useMemo } from "react";
 import { Plus, AlertTriangle, X, ChevronsRight, Lock, Unlock, Zap, ArrowLeftRight, Settings2, Table, ClipboardCheck } from "lucide-react";
@@ -12,7 +14,7 @@ import { fmtFt, fmtH } from "../ui/format.js";
 import { Field, NumField, Modal, PlateChip, TeamDot, EmptyState, InfoDot } from "../ui/base.jsx";
 import { VignettePill } from "../ui/VignettePill.jsx";
 
-/* ---------- 4.45 BEOSZTÁS — ütemezés-optimalizáló ---------- */
+/* ---------- Schedule ---------- */
 
 export function taskHardIssues(state, weekday, t) {
   const out = [];
@@ -71,9 +73,9 @@ export function TaskRow({ state, task: t, locked, inChain, onLock, onMove, reaso
 }
 
 export function ChainCard({ state, chain: c, onLock, onMove }) {
-  /* Ugyanaz a képlet, mint a napi összesítőben: a fizetett idő a telephelytől
-     telephelyig tartó műszak, nem a feladatok sávja. Külön számolva a kártya és
-     a nap összege elcsúszna egymástól. */
+  /* The same formula the daily summary uses: paid time is the depot-to-depot shift,
+     not the span of the tasks. Computed separately, the card and the day's total
+     would drift apart. */
   const { paid, cost, shifts } = driverPay(state, c.driver, [chainUse(c, c.driverId, c.vehicleId)]);
   const span = shifts[0];
   const fromBase = span && (span.start !== c.start || span.end !== c.end);
@@ -266,9 +268,10 @@ export function ScheduleScreen({ state, update }) {
     setBusyMx(false);
   };
 
-  /* Az optimalizálás szinkron és a nap méretétől függően pár tized–másfél
-     másodperc; a böngésző addig nem rajzol. Egy képkockányi késleltetéssel
-     előbb kirajzoljuk a "Számítás…" állapotot, hogy a gomb ne tűnjön halottnak. */
+  /* Optimisation is synchronous and takes anywhere from a fraction of a second to
+     about a second and a half, during which the browser paints nothing. Yielding for
+     one frame first lets the "calculating" state render, so the button does not look
+     dead. */
   const doOptimize = () => {
     setBusyOpt(true);
     requestAnimationFrame(() => setTimeout(() => {
@@ -297,7 +300,7 @@ export function ScheduleScreen({ state, update }) {
     setMsg("A beosztás alkalmazva és a menetrend rögzítve — a fuvarok a Hét és a Sofőr nézetben is megjelennek.");
   };
 
-  /* Fuvarok (újra)generálása a jelenlegi napi beosztásból, kézi módosítások után. */
+  /* (Re)generate rides from the day's current schedule, after any manual edits. */
   const rideCount = res.chains.reduce((a, c) => a + c.tasks.length, 0);
   const doGenerate = () => {
     update((s) => ({ ...s, rides: withGeneratedRides(s, weekday, weekMon, res.chains) }));
@@ -335,7 +338,7 @@ export function ScheduleScreen({ state, update }) {
   const setSetting = (k, v) => update((s) => ({ ...s, settings: { ...s.settings, [k]: v } }));
 
   const moveChainId = moveTask ? (res.chains.find((c) => c.tasks.some((t) => t.id === moveTask.id))?.id || null) : null;
-  /* Melyik járműnek nincs feloldható telephelye (sem sajátja, sem klubszintű). */
+  /* Vehicles with no resolvable depot: neither their own nor the club's. */
   const baseless = state.vehicles.filter((v) => !baseOf(state, v.id));
 
   return (
