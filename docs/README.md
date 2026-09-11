@@ -1,21 +1,23 @@
-# Fuvarterv — dokumentáció
+# Fuvarterv — documentation
 
-| Dokumentum | Mire válaszol | Kinek |
+| Document | What it answers | Who for |
 |---|---|---|
-| [`ARCHITECTURE.md`](ARCHITECTURE.md) | **Miért így van felépítve?** Rétegek, invariánsok, adatáramlás, az ütemező pipeline, biztonsági modell, kockázatok. | aki módosítani vagy bővíteni fog |
-| [`DECISIONS.md`](DECISIONS.md) | **Mit döntöttünk el, és mi volt a másik út?** 28 rövid döntésrekord (ADR). | aki egy meglévő döntést kérdőjelez meg |
-| [`MAINTENANCE.md`](MAINTENANCE.md) | **Mit futtassak, mit ellenőrizzek?** Munkafolyamat, konvenciók, review- és deploy-ellenőrzőlisták, hibaelhárítás. | aki napi szinten dolgozik a kóddal |
-| [`DEVELOPER.md`](DEVELOPER.md) | **Hogyan működik?** Fájlról fájlra, mezőről mezőre haladó referencia (angolul). | aki egy konkrét részletet keres |
-| [`../README.md`](../README.md) | Mit tud a termék, hogyan kell beüzemelni (Supabase, futtatás, deploy). | aki telepíti vagy használja |
-| [`../supabase/migrations/README.md`](../supabase/migrations/README.md) | Migrációk sorrendje, az első admin létrehozása, diagnosztika. | aki az adatbázist állítja be |
+| [`ARCHITECTURE.md`](ARCHITECTURE.md) | **Why is it built this way?** Layers, invariants, data flow, the scheduling pipeline, the security model, known risks. | anyone about to change or extend it |
+| [`DECISIONS.md`](DECISIONS.md) | **What was decided, and what was the alternative?** 28 short decision records. | anyone questioning an existing decision |
+| [`ACTION_PLAN.md`](ACTION_PLAN.md) | **What should be done next, and in what order?** Prioritised work with verification steps. | anyone planning the next piece of work |
+| [`MAINTENANCE.md`](MAINTENANCE.md) | **What do I run and check?** Workflow, conventions, review and release checklists, troubleshooting. | anyone working on the code day to day |
+| [`DEVELOPER.md`](DEVELOPER.md) | **How does it work?** A file-by-file, field-by-field reference. | anyone hunting a specific detail |
+| [`../README.md`](../README.md) | What the product does and how to set it up. | anyone installing or using it |
+| [`../supabase/migrations/README.md`](../supabase/migrations/README.md) | The database schema, the first admin, diagnostics. | anyone setting up the database |
 
-## Ajánlott olvasási sorrend
+## A suggested reading order
 
-**Új fejlesztőként:** főoldali `README` → `ARCHITECTURE.md` 1–5. fejezet →
-`MAINTENANCE.md` 1–3. → aztán a `DEVELOPER.md` abban a részben, amihez hozzányúlsz.
+**New to the project:** the top-level `README` → `ARCHITECTURE.md` sections 1 to 4 →
+`MAINTENANCE.md` sections 1 to 3 → then the part of `DEVELOPER.md` covering whatever you
+are about to touch.
 
-**Az ütemezőhöz:** `ARCHITECTURE.md` 10. fejezet → `DECISIONS.md` ADR-13…ADR-17 →
-`src/domain/optimizer.js`.
+**For the scheduler:** `ARCHITECTURE.md` section 9 → `DECISIONS.md` ADR-12 through ADR-16
+→ `src/domain/optimizer.js`.
 
-**Hibakereséshez:** `MAINTENANCE.md` 7. fejezet (tünet → hol nézd) →
-`ARCHITECTURE.md` „Hova nyúlj, ha…” táblázata.
+**For debugging:** `MAINTENANCE.md` section 7 (symptom to cause) → the "where to look
+when…" table in `ARCHITECTURE.md`.

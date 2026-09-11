@@ -1,8 +1,8 @@
 import { describe, test, expect } from "vitest";
-import {
-  normalizePlate, timeToMin, minToTime, weekdayIdx, mondayOf, addDays,
-  legMin, bestStationOrder, splitStationsByCapacity, rideWindow, findConflicts,
-} from "../fuvarterv.jsx";
+import { timeToMin, minToTime, weekdayIdx, mondayOf, addDays } from "../src/domain/datetime.js";
+import { legMin } from "../src/domain/geo.js";
+import { normalizePlate, rideWindow, findConflicts } from "../src/domain/logic.js";
+import { bestStationOrder, splitStationsByCapacity } from "../src/domain/optimizer.js";
 
 /* ------------------------------------------------------------------ */
 describe("normalizePlate", () => {

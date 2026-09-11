@@ -1,5 +1,8 @@
-/* Fuvarterv — dátum és idő — hétfővel kezdődő hetek, 24 órás idők
-   Kiemelve a fuvarterv.jsx monolitból; a viselkedés változatlan. */
+/* Fuvarterv — dates and times. Weeks start on Monday, times are 24-hour.
+
+   Everything here works in LOCAL time on purpose. A training is "Wednesday at
+   half past four" in the club's own timezone; converting through UTC would shift
+   it across a date boundary twice a year. */
 
 import { MONTHS } from "./constants.js";
 

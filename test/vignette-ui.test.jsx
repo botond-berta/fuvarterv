@@ -4,9 +4,9 @@ import { createRoot } from "react-dom/client";
 import { MasterForm } from "../src/screens/MasterScreen.jsx";
 
 /*
- * A két jelölőnégyzet: a járműnél a tény ("van matricája"), a helyszínnél a
- * követelmény ("csak matricás autóval érhető el"). Az állomáson szándékosan
- * NINCS ilyen mező — a matricát a célpont kényszeríti ki.
+ * The two checkboxes: on a vehicle the fact ("has one"), on a venue the requirement
+ * ("reachable only with one"). A station deliberately has NO such field, because the
+ * destination is what forces the vignette.
  */
 
 const baseState = { stations: [], venues: [], bases: [], vehicles: [], drivers: [], rides: [], teams: [], trainings: [] };
@@ -32,7 +32,7 @@ function mount(props) {
 
 const boxFor = (text) => [...container.querySelectorAll("label")]
   .find((l) => l.textContent.includes(text))?.querySelector("input[type=checkbox]");
-/* A natív kattintás billenti a checkboxot és váltja ki a change eseményt,
+/* A native click toggles the checkbox and fires the change event,
    amit a React szintetikus rendszere elkap — a `checked` kézi állítása
    ezután épp visszabillentené. */
 const check = (box) => act(() => box.dispatchEvent(new MouseEvent("click", { bubbles: true })));

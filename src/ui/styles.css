@@ -1,37 +1,162 @@
-/* Fuvarterv — az alkalmazás felületének stílusai.
+/* Fuvarterv — every stylesheet rule in the application.
  *
- * Korábban ez egy JS sablonsztring volt a fuvarterv.jsx-ben, amit az App három
- * külön ág <style> elemében renderelt. Valódi .css fájlként a Vite feldolgozza
- * (minify, prefix, gyorsítótárazható külön fájl), a szerkesztő kiemeli, és nem
- * a React renderelési sorrendje dönti el, hova kerül a kaszkádban.
+ * One file, one palette. The design tokens below are defined once and consumed by
+ * both halves of the UI:
  *
- * A tokenek a src/theme.css --v-* rendszerére épülnek, hogy egy paletta legyen.
+ *   .shell-*   the frames that run outside the application proper — login, the
+ *              error boundary, the snapshot restore panel, the save-failure toast.
+ *              Rounder, larger, its own spacing scale, because these screens are
+ *              full-viewport cards rather than dense working surfaces.
+ *   everything
+ *   else       the application itself — dense, tabular, information-first.
+ *
+ * Keep that split when you add a rule. Tailwind utility classes are used in the
+ * markup for LAYOUT only (flex, gap, margins); colour, size, typography and state
+ * belong here, so that changing a colour is one edit rather than a search.
+ *
+ * Dark mode follows the operating system. There is deliberately no in-app theme
+ * switch: an earlier [data-theme] override existed for one that was never built,
+ * and dead theming is worse than none.
  */
-@import "../theme.css";
 
-/* Az app saját token-nevei a közös --v-* rendszer ALIASAI. Így minden alábbi
-   szabály változatlan maradhat, de a felület automatikusan követi a sötét
-   módot, amit eddig csak a bejelentkező képernyő tudott. Egy paletta, egy hely. */
+/* ---------- Design tokens ---------- */
+
 :root{
-  --ink:var(--v-ink); --ink2:var(--v-ink-2); --paper:var(--v-paper); --card:var(--v-card);
-  --line:var(--v-line); --acc:var(--v-acc); --acc-soft:var(--v-acc-soft); --on-acc:var(--v-on-acc);
-  --acc-strong:var(--v-acc-strong);
-  --danger:var(--v-crit); --danger-soft:var(--v-crit-soft); --ok:var(--v-go);
-  --warn:var(--v-warn); --warn-soft:var(--v-warn-soft); --paper2:var(--v-paper-2);
+  /* Surfaces and text */
+  --paper:#F6F7F9; --paper2:#EEF0F3; --card:#FFFFFF; --field:#F3F5F7;
+  --ink:#14161C; --ink2:#6A7180; --ink3:#9AA0AC; --line:#EAECEF; --line2:#DFE2E7;
 
-  /* Szándékosan sötét felület és a rajta olvasható szöveg. Világos módban ez a
-     tinta-sötét; sötét módban egy kiemelt felület — NEM a --ink, mert az ott
-     már majdnem fehér. */
+  /* Accent and status */
+  --acc:#00C2E8; --acc-strong:#0098BE; --acc-soft:#E1F7FC; --on-acc:#00303D;
+  --ok:#12B76A; --ok-soft:#E4F8EE; --ok-ink:#08794A;
+  --warn:#F79009; --warn-soft:#FEF0D8; --warn-ink:#8A5300;
+  --danger:#F04438; --danger-soft:#FDE7E4; --danger-ink:#B42318;
+
+  /* A deliberately dark surface and the text that stays readable on it. In light
+     mode this is the ink colour; in dark mode it is a RAISED surface, not --ink,
+     because there --ink is almost white. */
   --surface-inv:#14161C; --on-inv:#FFFFFF;
-  /* A rendszámtábla fizikai tárgy: mindig fehér alap, sötét felirat. */
+  /* A number plate is a physical object: always a white ground, dark lettering. */
   --plate-bg:#FFFFFF; --plate-ink:#14161C;
+
+  --shadow-sm:0 1px 2px rgba(16,24,40,.05);
+  --shadow:0 2px 6px rgba(16,24,40,.05), 0 16px 40px rgba(16,24,40,.08);
+  --shadow-lg:0 10px 28px rgba(16,24,40,.10), 0 44px 84px rgba(16,24,40,.16);
+  --r:22px; --r-sm:14px;
+  --sans:'Nunito', system-ui, -apple-system, "Segoe UI", sans-serif;
 }
-@media (prefers-color-scheme:dark){ :root:not([data-theme="light"]){
+
+@media (prefers-color-scheme:dark){ :root{
+  --paper:#0E1116; --paper2:#161A21; --card:#181C24; --field:#12161D;
+  --ink:#F2F4F7; --ink2:#98A2B3; --ink3:#667085; --line:#242A34; --line2:#2F3742;
+
+  --acc:#1FCDEE; --acc-strong:#1FCDEE; --acc-soft:rgba(0,194,232,.15); --on-acc:#00303D;
+  --ok:#3DD68C; --ok-soft:rgba(61,214,140,.15); --ok-ink:#83E6B7;
+  --warn:#FDB022; --warn-soft:rgba(253,176,34,.15); --warn-ink:#FCCE84;
+  --danger:#FF7066; --danger-soft:rgba(255,112,102,.16); --danger-ink:#FDA29B;
+
   --surface-inv:#242A34; --on-inv:#F2F4F7;
+
+  --shadow-sm:0 1px 2px rgba(0,0,0,.4);
+  --shadow:0 2px 6px rgba(0,0,0,.4), 0 18px 44px rgba(0,0,0,.5);
+  --shadow-lg:0 12px 32px rgba(0,0,0,.55), 0 50px 90px rgba(0,0,0,.6);
 } }
-:root[data-theme="dark"]{
-  --surface-inv:#242A34; --on-inv:#F2F4F7;
+
+/* ---------- Shell: login, error boundary, restore panel, toast ---------- */
+
+.shell-screen{ min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px;
+  background:var(--paper); color:var(--ink); font-family:var(--sans); -webkit-font-smoothing:antialiased; }
+.shell-muted{ color:var(--ink2); }
+.shell-title{ font-weight:800; font-size:20px; letter-spacing:-.01em; }
+
+.shell-card{ background:var(--card); border:1px solid var(--line); border-radius:var(--r); box-shadow:var(--shadow); }
+.shell-pad{ padding:26px; }
+.shell-info-card{ width:100%; max-width:404px; display:flex; flex-direction:column; gap:14px; line-height:1.55; font-family:var(--sans); }
+.shell-info-card code{ font-family:ui-monospace, SFMono-Regular, monospace; background:var(--paper2);
+  padding:1px 6px; border-radius:6px; font-size:.9em; }
+
+/* App icon */
+.shell-appicon{ width:56px; height:56px; border-radius:16px; flex:none; display:flex; align-items:center; justify-content:center;
+  background:linear-gradient(140deg,#00D0F0,#00A2C7); box-shadow:0 8px 20px rgba(0,168,210,.4); }
+.shell-appicon svg{ width:32px; height:32px; }
+
+/* Login card */
+.shell-login{ width:100%; max-width:352px; padding:30px; display:flex; flex-direction:column; gap:14px; }
+.shell-login-head{ display:flex; flex-direction:column; align-items:center; gap:12px; text-align:center; margin-bottom:6px; }
+.shell-login-head .sub{ color:var(--ink2); font-size:14px; }
+
+/* Fields */
+.shell-field{ display:flex; flex-direction:column; }
+.shell-label{ font-weight:800; font-size:13px; color:var(--ink2); margin-bottom:8px; }
+.shell-input{ width:100%; background:var(--field); border:2px solid transparent; border-radius:14px;
+  padding:13px 16px; font-family:var(--sans); font-size:16px; font-weight:600; color:var(--ink); min-height:52px; }
+.shell-input:focus{ outline:none; border-color:var(--acc); background:var(--card); }
+.shell-error{ color:var(--danger-ink); font-size:13px; font-weight:700; margin:0; }
+
+/* Buttons */
+.shell-btn{ display:inline-flex; align-items:center; justify-content:center; gap:8px; border-radius:999px;
+  padding:13px 22px; font-family:var(--sans); font-weight:800; font-size:15px; min-height:50px; border:none; cursor:pointer; }
+.shell-btn:disabled{ opacity:.6; cursor:default; }
+.shell-btn-primary{ background:var(--acc); color:var(--on-acc); box-shadow:0 6px 16px rgba(0,168,210,.28); }
+.shell-btn-primary:hover:not(:disabled){ filter:brightness(1.03); }
+.shell-btn-ghost{ background:var(--paper2); color:var(--ink); }
+.shell-btn-ghost:hover{ background:var(--line2); }
+.shell-btn:focus-visible{ outline:3px solid var(--acc-soft); outline-offset:2px; }
+.shell-btn-block{ width:100%; }
+
+/* Round status icon, used by the notices */
+.shell-noteic{ width:40px; height:40px; border-radius:50%; flex:none; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:18px; }
+.shell-noteic.warn{ background:var(--warn-soft); color:var(--warn-ink); }
+.shell-noteic.crit{ background:var(--danger-soft); color:var(--danger-ink); }
+.shell-noteic.go{ background:var(--ok-soft); color:var(--ok-ink); }
+.shell-noteic.acc{ background:var(--acc-soft); color:var(--acc-strong); }
+
+/* Blocking overlay and dialog */
+.shell-overlay{ position:fixed; inset:0; z-index:1000; background:rgba(16,20,28,.5);
+  display:flex; align-items:center; justify-content:center; padding:24px; }
+.shell-dialog{ width:100%; max-width:380px; background:var(--card); border-radius:var(--r); box-shadow:var(--shadow-lg);
+  padding:28px; text-align:center; display:flex; flex-direction:column; align-items:center; gap:12px;
+  color:var(--ink); font-family:var(--sans); }
+.shell-dialog p{ margin:0; line-height:1.5; font-size:14.5px; }
+
+/* Toast, shown on a save failure */
+.shell-toast{ position:fixed; top:16px; left:50%; transform:translateX(-50%); z-index:1000;
+  width:calc(100% - 32px); max-width:460px; display:flex; align-items:flex-start; gap:14px;
+  background:var(--card); border:1px solid var(--line); border-radius:var(--r-sm); box-shadow:var(--shadow);
+  padding:14px 16px; font-family:var(--sans); color:var(--ink); }
+.shell-toast .body{ flex:1; }
+.shell-toast .body b{ font-weight:800; font-size:15px; display:block; margin-bottom:2px; }
+.shell-toast .body p{ margin:0; color:var(--ink2); font-size:14px; line-height:1.5; }
+.shell-toast-x{ background:transparent; border:none; color:var(--ink3); font-size:20px; line-height:1; cursor:pointer; padding:2px 4px; }
+.shell-toast-x:hover{ color:var(--ink); }
+
+/* Small button, for lists */
+.shell-btn-sm{ min-height:0; padding:9px 15px; font-size:14px; }
+
+/* Modal panel, used by the snapshot list */
+.shell-modal{ width:100%; max-width:480px; max-height:82vh; overflow-y:auto; background:var(--card); color:var(--ink);
+  border-radius:var(--r); box-shadow:var(--shadow-lg); padding:22px; font-family:var(--sans); }
+.shell-modal-head{ display:flex; align-items:center; gap:8px; margin-bottom:6px; }
+.shell-modal-head .t{ font-weight:800; font-size:19px; flex:1; }
+.shell-modal-x{ background:transparent; border:none; color:var(--ink3); font-size:22px; line-height:1; cursor:pointer; padding:2px 6px; border-radius:8px; }
+.shell-modal-x:hover{ color:var(--ink); background:var(--paper2); }
+.shell-modal .lead{ color:var(--ink2); font-size:14px; line-height:1.55; margin:0 0 16px; }
+.shell-errbox{ background:var(--danger-soft); color:var(--danger-ink); font-weight:700; padding:10px 12px; border-radius:var(--r-sm); font-size:13.5px; margin-bottom:12px; }
+
+.shell-list{ display:flex; flex-direction:column; gap:10px; }
+.shell-snap{ border:1px solid var(--line); border-radius:var(--r-sm); padding:14px; background:var(--card); box-shadow:var(--shadow-sm); }
+.shell-snap .when{ font-weight:800; font-size:15px; }
+.shell-snap .counts{ color:var(--ink2); font-size:13px; margin:2px 0 12px; }
+.shell-snap-actions{ display:flex; gap:8px; align-items:center; }
+.shell-snap-actions .q{ font-size:13.5px; font-weight:700; flex:1; }
+
+@media (prefers-reduced-motion:no-preference){
+  .shell-btn,.shell-input,.shell-card,.shell-toast-x,.shell-modal-x,.shell-snap{
+    transition:background-color .18s ease, border-color .18s ease, color .18s ease, box-shadow .18s ease, filter .12s ease; }
 }
+
+/* ---------- Application ---------- */
+
 .ft-root{font-family:'Nunito',system-ui,sans-serif;background:var(--paper);color:var(--ink);min-height:100vh;-webkit-font-smoothing:antialiased;}
 .disp{font-family:'Nunito',system-ui,sans-serif;font-weight:800;letter-spacing:-.01em;}
 .tnum{font-family:'Nunito',system-ui,sans-serif;font-weight:700;font-variant-numeric:tabular-nums;}

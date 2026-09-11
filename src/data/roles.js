@@ -1,22 +1,24 @@
-/* Fuvarterv — szerepkör-kezelés (user_roles tábla a Supabase-ben).
-   Csak admin hívhatja sikerrel: a tábla írás-szabályai (RLS, 0004-es migráció)
-   mindenki mást elutasítanak. A supabase kliens itt közvetlen import — a
-   window.storage varrat szándékosan csak a munkaterület-blobra vonatkozik, a
-   szerepkörök nem részei az app-állapotnak. Nem konfigurált környezetben
-   (tesztek, storage-shim) minden hívás beszédes hibával tér vissza; a hívó
-   felület ebből "nincs kapcsolat" állapotot mutat. */
+/* Fuvarterv — role management, backed by the user_roles table.
+
+   Only an admin can call these successfully: the table's write policies reject
+   everyone else. The Supabase client is imported directly here, on purpose — the
+   window.storage seam covers the workspace blob only, and roles are not part of the
+   application state.
+
+   In an unconfigured environment (tests, or a storage shim) every call fails with a
+   descriptive error, which the calling screen renders as a "no connection" state. */
 
 import { supabase, isConfigured } from "../supabaseClient.js";
 
 function requireClient() {
   if (!isConfigured || !supabase) {
-    throw Object.assign(new Error("Supabase nincs beállítva"), { code: "NOT_CONFIGURED" });
+    throw Object.assign(new Error("Supabase is not configured"), { code: "NOT_CONFIGURED" });
   }
   return supabase;
 }
 
-/* A user_roles tábla hiánya (a 0004-es migráció még nem futott le) külön eset:
-   a felület ilyenkor teendőt ír ki, nem hálózati hibát. */
+/* A missing user_roles table (the schema has not been applied yet) is its own case:
+   the UI then prints what to do about it rather than a network error. */
 export function isMissingRolesTable(error) {
   const raw = `${error?.code || ""} ${error?.message || ""}`;
   return raw.includes("42P01") || raw.includes("PGRST205");

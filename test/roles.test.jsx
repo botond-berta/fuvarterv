@@ -1,15 +1,16 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import App, { seedState, ensureShape } from "../fuvarterv.jsx";
+import App from "../src/App.jsx";
+import { seedState, ensureShape } from "../src/data/seed.js";
 import { RoleContext } from "../src/roleContext.js";
 import { DriverScreen, defaultDriverId } from "../src/screens/DriverScreen.jsx";
 
 /*
- * Sofőr szerepkör: a felület csak a Sofőr fület adja, és SOHA nem ír. A valódi
- * tiltás a szerveren van (RLS, 0004-es migráció) — ezek a tesztek azt rögzítik,
- * hogy a kliens nem is próbálkozik: egy sofőr-munkamenet egyetlen storage.set
- * hívást sem adhat ki, különben minden megnyitás hibajelzést villogtatna.
+ * The driver role: the UI offers only the driver tab and NEVER writes. The real
+ * prohibition lives on the server, in the row level security policies. These tests
+ * pin down that the client does not even try: a driver session must not issue a
+ * single storage.set call, or every time they opened the app an error would flash.
  */
 
 const KEY = "fuvarterv:v1";
@@ -68,7 +69,7 @@ describe("driver role in the app shell", () => {
     expect(tabs[0].textContent).toContain("Sofőr");
     expect(container.textContent).toContain("Sofőr nézet");
     expect(container.querySelector('button[aria-label="Korábbi mentések"]')).toBeNull();
-    // A kijelentkezés és a súgó a sofőré is.
+    // Sign-out and help belong to the driver too.
     expect(container.querySelector('button[aria-label="Kijelentkezés"]')).toBeTruthy();
   });
 
@@ -81,9 +82,9 @@ describe("driver role in the app shell", () => {
   });
 
   test("a driver on an empty workspace gets a notice instead of seeding", async () => {
-    // Adminnál az üres munkaterület mintaadatot vet ÉS ment (az hozza létre a
-    // sort). Sofőrként ugyanez az írás a szerveren tilos — próbálkozás helyett
-    // érthető üzenetet kap.
+    // For an admin an empty workspace seeds sample data AND saves it, which is what
+    // creates the row. For a driver that same write is forbidden on the server, so
+    // instead of attempting it they get a message they can act on.
     const storage = fakeStorage(null);
     window.storage = storage;
     await mountAs("sofor", "gera@klub.hu");
@@ -108,26 +109,26 @@ describe("driver role in the app shell", () => {
 describe("the driver screen opens on the signed-in driver", () => {
   const stateWithEmails = () => {
     const s = ensureShape(seedState());
-    s.drivers = s.drivers.map((d) => (d.id === "dGER" ? { ...d, email: "gera@klub.hu" } : d));
+    s.drivers = s.drivers.map((d) => (d.id === "d6" ? { ...d, email: "sofor6@klub.hu" } : d));
     return s;
   };
 
   test("defaultDriverId matches by e-mail, case-insensitively", () => {
     const s = stateWithEmails();
-    expect(defaultDriverId(s.drivers, "Gera@Klub.hu")).toBe("dGER");
+    expect(defaultDriverId(s.drivers, "Sofor6@Klub.hu")).toBe("d6");
     expect(defaultDriverId(s.drivers, "ismeretlen@klub.hu")).toBe(s.drivers[0].id);
     expect(defaultDriverId(s.drivers, null)).toBe(s.drivers[0].id);
-    expect(defaultDriverId([], "gera@klub.hu")).toBe("");
+    expect(defaultDriverId([], "sofor6@klub.hu")).toBe("");
   });
 
   test("the matching driver's chip is pre-selected", async () => {
     const s = stateWithEmails();
     await act(async () => {
       root = createRoot(container);
-      root.render(<DriverScreen state={s} myEmail="GERA@klub.hu" />);
+      root.render(<DriverScreen state={s} myEmail="SOFOR6@klub.hu" />);
     });
     const on = [...container.querySelectorAll("button.chip")].find((b) => b.classList.contains("on"));
-    expect(on?.textContent).toBe("Gera Józsi");
+    expect(on?.textContent).toBe("Sofőr 6");
   });
 
   test("without an e-mail the first driver stays selected, as before", async () => {

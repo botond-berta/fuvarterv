@@ -4,10 +4,10 @@ import { createRoot } from "react-dom/client";
 import { MasterForm } from "../src/screens/MasterScreen.jsx";
 
 /*
- * Állomás és helyszín csak koordinátával menthető. Enélkül a legMin a
- * fallbackLegMin-re esik vissza és a pont kimarad a mátrixból, vagyis az
- * optimalizáló csendben rossz menetidőkkel tervez — a rögzítés helye tehát az
- * űrlap, ezért itt rögzítjük, hogy a Mentés tiltva marad.
+ * A station or venue can only be saved with a coordinate. Without one legMin falls
+ * back to fallbackLegMin and the point drops out of the matrix, so the optimizer
+ * quietly plans on wrong travel times. The form is where that gets enforced, so this
+ * is where we pin down that Save stays disabled.
  */
 
 const baseState = { stations: [], venues: [], bases: [], vehicles: [], drivers: [], rides: [], teams: [], trainings: [] };

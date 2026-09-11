@@ -1,5 +1,5 @@
-/* Fuvarterv — egy edzés-előfordulás kártyája (a Hét és a Fuvar képernyő is használja)
-   Kiemelve a fuvarterv.jsx-ből; a viselkedés változatlan. */
+/* Fuvarterv — the card for one training occurrence. Shared by the week screen and
+   the ride screen, so the two cannot drift apart visually. */
 
 import { AlertTriangle, MapPin, Clock, ChevronsRight } from "lucide-react";
 import { byId } from "../domain/constants.js";

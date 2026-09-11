@@ -4,10 +4,10 @@ import { createRoot } from "react-dom/client";
 import { RideEditor } from "../src/screens/RideScreen.jsx";
 
 /*
- * Egy mentett fuvar iránya rögzített. A fuvar neve (a választó chipje), a
- * megállók idői és a megállólista mind az irányra épül, így az átkapcsolás egy
- * VISSZA fuvart ODA-ként vitt volna tovább a régi időivel — a sofőr a listáján
- * ugyanazt a fuvart látta volna megfordulva. Új fuvarnál a kapcsoló szabad.
+ * A saved ride's direction is fixed. Its name (the chip in the picker), the stop
+ * times and the stop list all hang off the direction, so flipping it would carry a
+ * return ride onwards as an outbound one with its old times — the driver would see
+ * the same ride, reversed, on their list. On a NEW ride the switch is free.
  */
 
 const training = { id: "tr1", teamId: "t1", venueId: "v1", type: "weekly", days: [1], start: "16:00", end: "18:00" };

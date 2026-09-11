@@ -1,16 +1,16 @@
 import { supabase } from "./supabaseClient.js";
 
 /*
- * Supabase-backed implementation of the `window.storage` KV contract that
- * fuvarterv.jsx expects (get / set / delete / list). The whole app state is a
- * single JSON blob stored in one `public.app_state` row:
+ * Supabase-backed implementation of the `window.storage` key-value contract the
+ * app expects (get / set / delete / list). The whole app state is a single JSON
+ * blob stored in one `public.app_state` row:
  *
  *   id text (pk) | data jsonb | updated_at timestamptz
  *
- * The app only uses get(key) and set(key, value); delete/list are provided for
+ * The app only uses get(key) and set(key, value); delete and list exist for
  * contract completeness. `value` on set is an already-stringified JSON string
- * (fuvarterv.jsx does JSON.stringify before calling set and JSON.parse after
- * get), so we parse it into the jsonb column on write and stringify on read.
+ * (src/data/storage.js stringifies before calling set and parses after get), so we
+ * parse it into the jsonb column on write and stringify it back on read.
  *
  * Single-editor model with a stale-write guard: we remember the updated_at we
  * last read, and only overwrite the row if it still matches. If someone else
@@ -85,7 +85,7 @@ async function archivePrevious(key, blob) {
       await supabase.from("app_state_history").delete().in("id", extra.map((r) => r.id));
     }
   } catch (e) {
-    if (typeof console !== "undefined") console.warn("Előzmény mentése sikertelen:", e);
+    if (typeof console !== "undefined") console.warn("Saving a history snapshot failed:", e);
   }
 }
 
@@ -214,9 +214,9 @@ export const supabaseStorage = {
     return { key, deleted: true };
   },
 
-  // Kijelentkezéskor hívandó: a modul-szintű gyorsítótár nem élhet túl egy
-  // felhasználóváltást (a következő get() amúgy is felülírná, de a lastData a
-  // korábbi felhasználó teljes blobját tartaná a memóriában addig is).
+  // Call on sign-out: the module-level cache must not survive a change of user.
+  // The next get() would overwrite it anyway, but until then lastData would keep the
+  // previous user's entire blob in memory.
   reset() {
     lastSeen.clear();
     lastData.clear();

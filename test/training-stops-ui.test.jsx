@@ -4,10 +4,10 @@ import { createRoot } from "react-dom/client";
 import { TrainingDetail, TeamDetail } from "../src/screens/TeamsScreen.jsx";
 
 /*
- * Az edzés képernyője az a hely, ahol a saját megállólista egyáltalán
- * létrejöhet. A kapcsoló bekapcsolásakor a csapat listájából kell másolatot
- * készíteni (különben üres listát kapna a felhasználó), kikapcsoláskor pedig
- * null-ra kell visszaállni — ez a null jelenti a csapat listájának öröklését.
+ * The training screen is the only place a per-training stop list can come into
+ * existence. Switching the toggle on must copy from the team's list (otherwise the
+ * user is handed an empty one), and switching it off must return to null — that null
+ * is what means "inherit the team's list".
  */
 
 const team = {

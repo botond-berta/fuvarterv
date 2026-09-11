@@ -1,894 +1,595 @@
-# Fuvarterv — architektúra és tervezési döntések
+# Fuvarterv — architecture
 
-Ez a dokumentum azt írja le, **hogyan van felépítve** a Fuvarterv, és főleg azt, hogy
-**miért így**. A célja, hogy a kódbázis évek múlva is karbantartható maradjon: aki
-módosít benne, lássa, mely szabályok tartják egyben a rendszert, és melyik változtatás
-mit dönt romba.
+This document describes **how Fuvarterv is put together**, and above all **why it is put
+together that way**. Its purpose is that the codebase stays maintainable years from now:
+whoever changes it should be able to see which rules hold the system together, and which
+change would break which one.
 
-Három dokumentum tartozik össze:
-
-| Dokumentum | Mire válaszol |
+| Document | What it answers |
 |---|---|
-| [`DEVELOPER.md`](DEVELOPER.md) | **Hogyan működik?** — fájlról fájlra, mezőről mezőre haladó referencia (angolul). |
-| **`ARCHITECTURE.md`** (ez) | **Miért így van felépítve?** — rétegek, invariánsok, adatáramlás, kockázatok. |
-| [`DECISIONS.md`](DECISIONS.md) | **Ki döntötte el, és mi lett volna a másik út?** — tömör döntésnapló (ADR). |
-| [`MAINTENANCE.md`](MAINTENANCE.md) | **Mit csináljak, ha hozzányúlok?** — munkafolyamat, konvenciók, ellenőrzőlisták. |
+| [`DEVELOPER.md`](DEVELOPER.md) | **How does it work?** A file-by-file, field-by-field reference. |
+| **`ARCHITECTURE.md`** (this) | **Why is it built this way?** Layers, invariants, data flow, risks. |
+| [`DECISIONS.md`](DECISIONS.md) | **What was decided, and what was the alternative?** The decision log. |
+| [`MAINTENANCE.md`](MAINTENANCE.md) | **What do I do when I touch it?** Workflow, conventions, checklists. |
+| [`ACTION_PLAN.md`](ACTION_PLAN.md) | **What is worth doing next?** Prioritised work from a code review. |
 
-> **Nyelv.** A felület, a kódkommentek és ez a dokumentáció magyar; az azonosítók
-> angolosak. A magyar↔angol szószedet a [`DEVELOPER.md` 20. fejezetében](DEVELOPER.md#20-glossary-hungarian--english) van.
-
----
-
-## Tartalom
-
-1. [Mit old meg a rendszer](#1-mit-old-meg-a-rendszer)
-2. [Rendszerkontextus](#2-rendszerkontextus)
-3. [Vezérlő tervezési elvek](#3-vezérlő-tervezési-elvek)
-4. [Rétegek és modultérkép](#4-rétegek-és-modultérkép)
-5. [Futásidejű architektúra](#5-futásidejű-architektúra)
-6. [Állapotkezelés és a mentési ciklus](#6-állapotkezelés-és-a-mentési-ciklus)
-7. [Perzisztencia és konkurencia](#7-perzisztencia-és-konkurencia)
-8. [Biztonsági architektúra](#8-biztonsági-architektúra)
-9. [Domain modell és invariánsok](#9-domain-modell-és-invariánsok)
-10. [Az ütemező pipeline](#10-az-ütemező-pipeline)
-11. [Külső szolgáltatások és degradáció](#11-külső-szolgáltatások-és-degradáció)
-12. [Felületi architektúra](#12-felületi-architektúra)
-13. [Teljesítmény és skálázási határok](#13-teljesítmény-és-skálázási-határok)
-14. [Tesztarchitektúra](#14-tesztarchitektúra)
-15. [Bővítési forgatókönyvek](#15-bővítési-forgatókönyvek)
-16. [Ismert kockázatok és technikai adósság](#16-ismert-kockázatok-és-technikai-adósság)
+> **Language.** The user interface is Hungarian, because the club's staff and drivers
+> use it. Everything else — code, comments, documentation — is English. Two Hungarian
+> words survive as **stored data values** and cannot be translated without a data
+> migration: a ride's direction (`oda` outbound, `vissza` return) and the driver role
+> (`sofor`). A glossary is at the end of this document.
 
 ---
 
-## 1. Mit old meg a rendszer
+## Contents
 
-Egy vidéki kézilabdaklub több utánpótláscsapatot hord kisbuszokkal edzésre a környező
-falvakból. A feladat nem egyetlen útvonal megtervezése, hanem egy **napi erőforrás-
-ütemezés**: adott edzésidőpontok, megállók, létszámok, buszok és sofőrök mellett ki
-melyik fuvart viszi, melyik busszal, és hogyan fűzhetők egymás után a fuvarok, hogy a
-napi bérköltség a lehető legkisebb legyen.
-
-Ebből három dolog következik, ami az egész architektúrát meghatározza:
-
-1. **Az adatmennyiség kicsi, a logika nehéz.** Néhány tucat entitás, viszont NP-nehéz
-   ütemezési mag. Ezért nincs backend, nincs adatbázis-séma és nincs lekérdezésnyelv:
-   az egész állapot egyetlen JSON blob, a számítás pedig a böngészőben fut.
-2. **A felhasználók nem informatikusok.** Klubvezetők és sofőrök. Ezért minden
-   hibaágnak **kimondható** üzenete van, és minden „nem sikerült” esethez tartozik
-   indoklás — a néma kihagyás tiltott (lásd [3. elv](#3-vezérlő-tervezési-elvek)).
-3. **Egyszerre gyakorlatilag egy ember szerkeszt.** Ezért nem valós idejű
-   együttműködés van, hanem **egyszerkesztős modell optimista ütközésvédelemmel**:
-   olcsó, kiszámítható, és nem veszít adatot.
-
----
-
-## 2. Rendszerkontextus
-
-```mermaid
-flowchart TB
-    admin["Admin<br/>(klubvezető, edző)"]
-    sofor["Sofőr<br/>(olvasó szerep)"]
-
-    subgraph browser["Böngésző — a teljes alkalmazás"]
-        app["Fuvarterv SPA<br/>React + Vite"]
-    end
-
-    subgraph vercel["Vercel"]
-        static["Statikus bundle<br/>+ CSP és biztonsági fejlécek"]
-    end
-
-    subgraph supabase["Supabase"]
-        auth["Auth<br/>e-mail + jelszó"]
-        db[("Postgres + RLS<br/>app_state<br/>app_state_history<br/>user_roles")]
-    end
-
-    osrm["OSRM demo<br/>/table mátrix"]
-    nomi["Nominatim<br/>címkeresés"]
-    tiles["OSM csempék"]
-    cdn["cdnjs<br/>Leaflet"]
-
-    admin --> app
-    sofor --> app
-    static -.->|kiszolgálja| app
-    app -->|"session"| auth
-    app -->|"1 sor JSON blob"| db
-    app -->|"1 kérés / mátrix"| osrm
-    app -->|"felhasználói keresésre"| nomi
-    app --> tiles
-    app -->|"lusta betöltés"| cdn
-```
-
-**A rendszer határa a böngésző.** Nincs saját szerverkód: az üzleti logika, az
-optimalizálás és a validáció mind kliensoldali. Amit ez a döntés megkövetel, az a
-[8. fejezet](#8-biztonsági-architektúra): ha a kliens megkerülhető, akkor a
-tényleges védelmet az adatbázis szabályainak (RLS) kell adniuk, nem a felületnek.
+1. [What the system solves](#1-what-the-system-solves)
+2. [System context](#2-system-context)
+3. [Governing design principles](#3-governing-design-principles)
+4. [Layers and the module map](#4-layers-and-the-module-map)
+5. [State and the save cycle](#5-state-and-the-save-cycle)
+6. [Persistence and concurrency](#6-persistence-and-concurrency)
+7. [Security architecture](#7-security-architecture)
+8. [Domain model and invariants](#8-domain-model-and-invariants)
+9. [The scheduling pipeline](#9-the-scheduling-pipeline)
+10. [External services and degradation](#10-external-services-and-degradation)
+11. [UI architecture](#11-ui-architecture)
+12. [Performance and scaling limits](#12-performance-and-scaling-limits)
+13. [Test architecture](#13-test-architecture)
+14. [Extension scenarios](#14-extension-scenarios)
+15. [Known risks and technical debt](#15-known-risks-and-technical-debt)
+16. [Where to look when…](#where-to-look-when)
+17. [Glossary](#glossary)
 
 ---
 
-## 3. Vezérlő tervezési elvek
-
-Ez a nyolc elv az, amit egy módosítás **nem ronthat el**. Mindegyiknél ott van, hol
-él a kódban, és mi történik, ha megsérül.
-
-### E1. Egy állapot, egy blob
-
-A teljes munkaterület egyetlen sima objektum (`teams`, `stations`, `venues`, `bases`,
-`vehicles`, `drivers`, `trainings`, `rides`, `assignments`, `matrix`, `settings`),
-amely egyetlen adatbázissorban, JSON-ként él.
-
-*Miért:* atomi mentés, triviális visszaállítás, nincs séma-migráció szerveroldalon,
-és az összes származtatott nézet egyetlen konzisztens pillanatképből számolható.
-*Ára:* nincs részleges mentés és nincs valós idejű együttszerkesztés.
-*Hol:* `src/data/storage.js`, `src/supabaseStorage.js`.
-
-### E2. A domain tiszta, a mellékhatás a peremen van
-
-A `src/domain/` és `src/data/seed.js` függvényei bemenetből kimenetet számolnak;
-nem olvasnak `window`-ot, nem hívnak hálózatot, nem módosítanak állapotot. Két
-kivétel szándékos és jelölt: `computeMatrix` (hálózat) és a `window.storage` varrat.
-
-*Miért:* ettől tesztelhető a rendszer nehéz része böngésző nélkül, és ezért lehet az
-optimalizálót property-tesztekkel véletlen állapotokon futtatni.
-*Ha megsérül:* a `test/optimizer.test.js` és `test/base-shift.test.js` típusú tesztek
-nem írhatók újra — a legdrágább képességet veszítenénk el.
-
-### E3. A függés egyirányú
-
-`screens → ui → domain → data`, visszafelé soha. A `domain/geo.js` szándékosan
-levélmodul: `logic` és `optimizer` is használja a `legMin`-t, így ha bármelyikükben
-lakna, a kettő körkörös lenne.
-
-*Hol:* a modulok import-listái; a szabály megsértését ma nem gép ellenőrzi, hanem a
-kódolvasás — ezért van külön nevesítve.
-
-### E4. Fail-closed biztonság
-
-Aki nincs felvéve adminnak, az sofőr; a sofőr nem ír. A tiltást nem a felület adja,
-hanem az RLS. A felület elrejtése kizárólag UX.
-
-*Hol:* `supabase/migrations/0004_user_roles.sql`, `src/AuthGate.jsx` (`fetchRole`),
-`src/App.jsx` (`isAdmin` őrök a mentésben is: „öv és nadrágtartó”).
-
-### E5. Degradáció, nem összeomlás
-
-Minden külső függésnek van visszaesési útja, és a visszaesés **látható**:
-OSRM → légvonalas becslés (a mátrix `source` mezője jelzi), Leaflet/csempe →
-beépített offline SVG-választó, koordináta nélküli pont → `fallbackLegMin`,
-képernyőhiba → `ErrorBoundary` a shellen belül (a mentések és a kijelentkezés
-elérhető marad).
-
-### E6. „Nincs megadva” ≠ „nulla”
-
-A megállónkénti létszámnál az üres mező azt jelenti, *még nem tudjuk*, a beírt `0`
-azt, *ide most nem kell menni*. A kettőt az adat is megkülönbözteti (`""` vs. `0`),
-és a `genDayTasks` `zeroed()` predikátuma ezen áll. A `legPax` ezért a bontás és az
-összlétszám **maximumát** adja: egy félig kitöltött bontás nem rövidítheti le a
-csapatot.
-
-*Ha megsérül:* gyerekek maradnak a megállóban — ez a rendszer legdrágább hibafajtája.
-
-### E7. Néma kihagyás tilos
-
-Ha egy feladat nem készül el vagy nem fedhető le, a rendszer **megmondja, miért**:
-`genDayTasks().skipped`, `optimizeDay().uncovered[].reasons`, `resolveDay()` lánc-
-`issues`, `contentionReasons`, valamint az elavult láncokra a `droppedChains` üzenet.
-Új korlát bevezetésekor az indoklás nem opcionális, hanem a feature része.
-
-### E8. A régi adat viselkedése nem változhat magától
-
-Új mező bevezetésekor az `ensureShape` alapértéke pontosan a korábbi viselkedést adja
-(`returnStationIds: null` = tükrözés, `training.stops: null` = a csapat listája,
-`baseId: null` = a klub telephelye, annak hiányában a feladatok szerinti számítás).
-
-*Hol:* `src/data/seed.js` — `ensureShape` az egyetlen séma-migrációs pont.
-
----
-
-## 4. Rétegek és modultérkép
-
-```mermaid
-flowchart TD
-    subgraph shell["Shell (belépés, mentés, hibák)"]
-        main["main.jsx"]
-        gate["AuthGate.jsx"]
-        restore["RestorePanel.jsx"]
-        eb["ErrorBoundary.jsx"]
-        sstore["supabaseStorage.js"]
-        sclient["supabaseClient.js"]
-    end
-
-    subgraph appl["Alkalmazás"]
-        barrel["fuvarterv.jsx<br/>(barrel)"]
-        App["App.jsx"]
-    end
-
-    subgraph screens["screens/"]
-        Week["WeekScreen"]
-        Sched["ScheduleScreen"]
-        Data["DataScreen → Teams / Master / Users"]
-        Ride["RideScreen"]
-        Driver["DriverScreen"]
-        Stops["StopListEditor"]
-    end
-
-    subgraph ui["ui/"]
-        base["base.jsx"]
-        map["MapPicker.jsx"]
-        occ["OccCard.jsx"]
-        fmt["format.js"]
-    end
-
-    subgraph domain["domain/ (tiszta)"]
-        opt["optimizer.js"]
-        logic["logic.js"]
-        geo["geo.js"]
-        dt["datetime.js"]
-        konst["constants.js"]
-    end
-
-    subgraph data["data/"]
-        storage["storage.js<br/>(window.storage varrat)"]
-        seed["seed.js<br/>(mintaadat + ensureShape)"]
-        roles["roles.js"]
-    end
-
-    main --> gate --> App
-    main --> barrel --> App
-    gate --> sstore --> sclient
-    gate --> restore
-    gate --> eb
-    App --> screens
-    screens --> ui
-    screens --> domain
-    App --> data
-    opt --> logic --> geo --> konst
-    opt --> geo
-    logic --> dt
-    seed --> storage
-    Data --> roles --> sclient
-```
-
-### Rétegszabályok
-
-| Réteg | Szabad | Tilos |
-|---|---|---|
-| `data/` | alapértékek, alaknormalizálás, a KV varrat | domain-logika, React |
-| `domain/` | tiszta számítás, `state` olvasása | React, `window`, hálózat (kivéve `computeMatrix`) |
-| `ui/` | általános építőkockák, formázás | domain-szabályok kódolása |
-| `screens/` | felület + `state`/`update` propok | közvetlen perzisztencia, Supabase-hívás (kivéve `roles.js` a Felhasználók fülön) |
-| shell | belépés, mentés, hibahatár | domain-ismeret |
-
-### Két szándékos „szabálytalanság”
-
-- **`fuvarterv.jsx` barrel.** Az app egyetlen artifact-fájlból nőtt ki. A fájl ma már
-  csak újraexportál (`export { default } from "./src/App.jsx"` + a tesztek által
-  használt tiszta függvények). Azért maradt, mert a `src/main.jsx` és a **teljes
-  tesztkészlet innen importál**: a szétvágás így egyetlen importot sem tört el, és a
-  tesztek a modulhatárok mozgatásától függetlenek maradtak. Új kód **soha** nem ide
-  kerül — csak az export sora, ha a tesztnek kell.
-- **`data/roles.js` közvetlenül a Supabase-t hívja.** A `window.storage` varrat
-  szándékosan csak a munkaterület-blobra vonatkozik; a szerepkörök nem részei az
-  app-állapotnak (más tábla, más jogosultság, más életciklus).
-
----
-
-## 5. Futásidejű architektúra
-
-### 5.1 A shell és az app szétválasztása
-
-Két, egymást nem ismerő rész van:
-
-- **Shell** (`AuthGate` és barátai): belépés, munkamenet, szerepkör, a perzisztencia
-  telepítése, blokkoló hibaállapotok, korábbi mentések, hibahatár.
-- **App** (`App.jsx` + `screens/`): az üzleti felület, ami feltételezi, hogy van
-  bejelentkezett felhasználó és működő `window.storage`.
-
-A kettő **eseményekkel** kommunikál, nem importtal:
-
-| Esemény | Ki küldi | Ki kezeli | Miért |
-|---|---|---|---|
-| `fuvarterv:stale` | `supabaseStorage` | `AuthGate` → blokkoló overlay | a tároló nem ismerheti a React-fát |
-| `fuvarterv:saveerror` | `supabaseStorage` | `AuthGate` → toast | ugyanaz |
-| `fuvarterv:restore` | `App` fejléc, `ErrorBoundary` | `AuthGate` → `RestorePanel` | az app nem importálhat auth-ot |
-| `fuvarterv:signout` | `App` fejléc, üres munkaterület képernyő | `AuthGate` → `signOut` + `storage.reset()` | ugyanaz |
-
-*Miért így:* az `App` az artifact-örökség miatt nem függhet az auth-rétegtől, és a
-`supabaseStorage` egy modul-szintű objektum, nem komponens. A `CustomEvent` a
-legkisebb varrat, ami ezt megoldja; cserébe a kapcsolat nem típusos, ezért a négy
-eseménynév ezen a táblán van dokumentálva.
-
-### 5.2 Indulási sorrend
-
-```mermaid
-sequenceDiagram
-    participant M as main.jsx
-    participant G as AuthGate
-    participant S as Supabase
-    participant A as App
-    participant St as window.storage
-
-    M->>G: import (mellékhatás: window.storage = supabaseStorage)
-    M->>A: import (barrel → App.jsx)
-    G->>S: auth.getSession()
-    alt nincs munkamenet
-        G-->>M: LoginScreen
-    else van munkamenet
-        G->>S: preflight: app_state fej + fetchRole(email)
-        alt olvasási hiba
-            G-->>M: „Nem sikerült betölteni” + újrapróba
-        else rendben
-            G->>A: RoleContext.Provider + ErrorBoundary → <App/>
-            A->>St: loadState()
-            alt van adat
-                A->>A: ensureShape → state, lastSaved rögzítése
-            else NOT_FOUND és admin
-                A->>A: seedState() → mentendő állapot
-            else NOT_FOUND és sofőr
-                A-->>M: „Még nincs feltöltött adat”
-            end
-        end
-    end
-```
-
-Két részlet, ami tudatos:
-
-- **A `window.storage` import-időben áll be**, mielőtt az `App` mountolna. Az `App`
-  csak létező munkamenettel renderelődik, így hitelesítetlen kérés sosem megy át rajta.
-- **A preflight olvasás** azért van, hogy egy pillanatnyi olvasási hiba ne legyen
-  összetéveszthető az üres munkaterülettel — különben az app mintaadatot vetne a
-  fel nem olvasott valós adat fölé. Ugyanezt a különbségtételt szolgálja a tipizált
-  `NOT_FOUND` hiba (`isNotFound`) és a `test/load-error.test.js`.
-- **A preflight a felhasználó azonosítójára fut, nem a session-objektumra**: a
-  `TOKEN_REFRESHED` esemény óránként új objektumot ad, és arra kötve az `App`
-  újramountolna — elvesztve minden nyitott űrlapot.
-
----
-
-## 6. Állapotkezelés és a mentési ciklus
-
-Egyetlen `useState` tartja a teljes állapotot az `App`-ban, és minden módosítás
-`update(fn)` alakú, immutábilis frissítés. **Nincs Redux, nincs context-store.**
-
-*Miért:* a képernyők úgyis a teljes állapotot olvassák (a beosztás és az ütközések
-keresztbe hivatkoznak mindenre), a mentés pedig blob-alapú — egy globális store itt
-absztrakciót adna hozzá, képességet nem. A skálázási ára ismert és vállalt: minden
-módosítás újrarendereli a fát ([13. fejezet](#13-teljesítmény-és-skálázási-határok)).
-
-### A mentési ciklus
-
-```mermaid
-sequenceDiagram
-    participant U as Felhasználó
-    participant A as App
-    participant P as pending ref
-    participant St as supabaseStorage
-    participant DB as app_state
-
-    U->>A: módosítás → update(fn)
-    A->>A: blob = JSON.stringify(state)
-    alt blob === lastSaved
-        A-->>A: nincs írás (betöltés utáni visszaírás elkerülése)
-    else változott
-        A->>P: pending = { blob, state }
-        Note over A: 300 ms debounce
-        A->>St: set(kulcs, blob)
-        St->>DB: őrzött írás (updated_at egyezés)
-        DB-->>St: új updated_at
-        St->>DB: előző blob → app_state_history (best-effort)
-    end
-```
-
-Négy dolog, amit könnyű elrontani, ezért itt van kimondva:
-
-1. **A mentés a blob tartalmához hasonlít, nem az objektumidentitáshoz.** Enélkül
-   minden oldalbetöltés visszaírná a beolvasott állapotot: a másik szerkesztőt
-   ütközésbe kergetné, és elégetné a 20 elemű mentési előzményt.
-2. **A függőben lévő mentést ki kell üríteni** lapelrejtéskor (`visibilitychange`),
-   lapbezáráskor (`pagehide`) és unmountkor (`flush()`). A kijelentkezés unmount:
-   nélküle a debounce némán eldobná az utolsó módosítást.
-3. **Sofőr sosem ír** — sem a `flush`, sem a mentő effekt nem ütemez neki. Ez nem
-   biztonsági intézkedés (azt az RLS adja), hanem a hibaüzenet elkerülése.
-4. **A `seedState()` mintaadatot mentésre szánjuk**, mert az hozza létre a sort;
-   a szerverről olvasott állapot viszont már perzisztált, ezért `lastSaved`-be kerül.
-
----
-
-## 7. Perzisztencia és konkurencia
-
-### 7.1 A `window.storage` szerződés
-
-```js
-get(key)    // → { key, value } | dob { code: "NOT_FOUND" }
-set(key, v) // v: már JSON-stringgé alakított állapot
-delete(key)
-list(prefix)
-reset()     // kijelentkezéskor: modul-szintű gyorsítótár ürítése
-```
-
-Ez az artifact-környezet KV API-ja. Azért maradt meg, mert **egyetlen, szűk varratra
-szűkíti a perzisztenciát**: a Supabase-implementáció (`supabaseStorage.js`) cserélhető
-bármi másra (fájl, IndexedDB, saját backend) anélkül, hogy az app-kód változna. A
-tesztek is ezen a varraton keresztül adnak hamis tárolót.
-
-### 7.2 Egyszerkesztős modell optimista őrrel
-
-A tárolóréteg megjegyzi a legutóbb olvasott `updated_at`-et, és csak akkor ír felül,
-ha az még mindig ugyanaz (`.eq("updated_at", prev)`). Ha nem — valaki más mentett —,
-az írás **nem** megy át, a felhasználó blokkoló overlayt kap, és csak újratöltéssel
-folytathatja.
-
-*Miért nem merge:* két párhuzamos szerkesztő összefésülése blob-szinten
-megoldhatatlan, elemenként pedig egy olyan konfliktuskezelő felületet igényelne,
-amit ez a felhasználói kör nem tudna használni. A klubban egyszerre egy ember
-szerkeszt; a ritka ütközés helyes viselkedése az, hogy **senki adata nem vész el**.
-
-### 7.3 A három nem nyilvánvaló eset
-
-| Eset | Mi történne naivan | Mit csinál a kód |
-|---|---|---|
-| Egyszerre két mentés (lassú válasz + debounce) | a második elavult `lastSeen`-nel indulna, és hamis ütközést jelentene | `writeChain`: az írások sorosítva futnak, és a lánc sosem marad elutasított állapotban |
-| **Elveszett válasz** (az írás bement, a válasz nem jött meg) | 0 sor illeszkedik → „valaki más mentett” → a munkaterület indokolatlanul blokkolódik | `lastAttempt` + visszaolvasás: ha a szerveren pont az áll, amit írni akartunk, az a *mi* írásunk volt — átvesszük az időbélyeget és újrapróbáljuk |
-| Első mentés két klienstől | egyedi kulcs ütközés (23505) általános mentési hibaként | ütközésként kezeljük (`announceStale`), nem hibaként — a másik kliens adatát nem írjuk felül |
-
-A `jsonb` a körbefordulás során átrendezi a kulcssorrendet, ezért az összehasonlítás
-`stableStr()`-rel megy (rekurzívan rendezett kulcsok), nem nyers `JSON.stringify`-jal.
-
-### 7.4 Előzmény (visszaállítás)
-
-Minden sikeres felülíráskor az **előző** blob bekerül az `app_state_history` táblába,
-és a kliens 20 pillanatképre nyes. Szándékosan **best-effort**: minden hibát elnyel,
-mert az előzmény írása sosem buktathat el egy mentést. Ennek az ára, hogy a hiányzó
-tábla (le nem futott `0002` migráció) csendben „nincs mentés” állapotnak látszik —
-ezért a `RestorePanel` külön felismeri a `42P01` hibát, és megmondja a teendőt.
-
-Azonos blobot nem archiválunk: a 20 hely azonos másolatokkal feltöltve pont azokat a
-visszaállítási pontokat semmisítené meg, amikért a felhasználó odanéz.
-
----
-
-## 8. Biztonsági architektúra
+## 1. What the system solves
+
+A rural handball club takes several youth teams to practice by minibus from the
+surrounding villages. The problem is not planning one route. It is a **daily resource
+schedule**: given fixed training times, pickup stops, headcounts, buses and drivers,
+who drives which run, in which bus, and how can runs be chained back to back so the
+day's wage bill comes out as low as possible.
+
+Three consequences shape the entire architecture.
+
+1. **The data is small; the logic is hard.** A few dozen entities, but an NP-hard
+   scheduling core. So there is no backend, no database schema and no query language:
+   the whole state is one JSON blob and the computation runs in the browser.
+2. **The users are not computer people.** Club managers and drivers. So every failure
+   branch has a sentence a human can act on, and every "could not do it" carries a
+   reason. Silent skipping is forbidden (principle E7).
+3. **In practice one person edits at a time.** So there is no real-time collaboration,
+   but a **single-editor model with optimistic conflict detection**.
+
+## 2. System context
 
 ```mermaid
 flowchart LR
-    subgraph pub["Nyilvános (bárki láthatja)"]
-        bundle["JS bundle<br/>+ anon key"]
-    end
-    subgraph authd["Hitelesített felhasználó"]
-        read["olvasás: app_state, history, saját szerepkör"]
-    end
-    subgraph adm["Admin (user_roles.role = 'admin')"]
-        write["írás: app_state, history-insert, szerepkezelés"]
-    end
-    bundle -->|"belépés e-mail+jelszó"| authd
-    authd -->|"is_admin() a JWT e-mailjéből"| adm
+    U["Club manager / driver<br/>(browser)"] --> V["Vercel<br/>static SPA"]
+    V --> S["Supabase<br/>auth + Postgres + RLS"]
+    V -. "matrix, on demand" .-> O["OSRM<br/>router.project-osrm.org"]
+    V -. "address search" .-> N["Nominatim"]
+    V -. "map, lazy" .-> L["Leaflet + OSM tiles"]
 ```
 
-**A bizalmi határ az adatbázis, nem a felület.** A böngészőben futó kód teljes
-egészében a felhasználó kezében van; a felület szerep szerinti szűkítése (`isAdmin`
-őrök az `App`-ban) kizárólag azért van, hogy a sofőr ne kapjon értelmetlen gombokat
-és tiltott írásokat.
+Supabase is the only **required** dependency. The other three are enhancements, and
+each has a visible fallback (principle E5).
 
-| Tábla | select | insert | update | delete |
-|---|---|---|---|---|
-| `app_state` | bármely hitelesített | admin, csak a munkaterület-kulcsra | admin, csak a munkaterület-kulcsra | **nincs szabály** (tilos) |
-| `app_state_history` | bármely hitelesített | admin, csak a munkaterületre | – | hitelesített, csak a munkaterületre (nyesés) |
-| `user_roles` | saját sor, vagy admin mindet | admin | admin | admin |
+## 3. Governing design principles
 
-Négy döntés, ami ezt a modellt tartja:
+These eight are what a change **must not break**. Each says where it lives and what
+happens if it is violated.
 
-1. **A szerepkör e-mail alapú, nem user-id alapú.** Így az admin az appból oszthat
-   szerepet olyan címnek is, amely még nem lépett be; az e-mailt a Supabase auth
-   hitelesíti, és a JWT-ből olvassa vissza az `is_admin()`.
-2. **Nincs sor = sofőr** (fail-closed). Egy elfelejtett fiók megnézheti a
-   beosztást, de nem nyúlhat semmihez.
-3. **Egy szándékos kivétel:** ha maga a `user_roles` tábla hiányzik (a `0004`
-   migráció nem futott le), a kliens mindenkit adminnak vesz. Ilyenkor a szerver sem
-   korlátoz semmit, tehát a fülek elrejtése színház volna — viszont e nélkül egy
-   frissen deployolt kliens olvasásra némítaná a régi adatbázis minden felhasználóját.
-4. **A publikus regisztráció kikapcsolása a biztonsági modell fele.** Minden szabály
-   „hitelesített felhasználót” enged, az anon kulcs pedig a bundle-ben utazik. Nyitott
-   regisztráció mellett bárki, aki kiolvassa a kulcsot, olvashatja az adatot.
+### E1. One state, one blob
 
-A `vercel.json` CSP-je pontosan a ténylegesen használt origókat engedi, és
-**`'unsafe-inline'` nélkül** működik (a production `index.html`-ben nincs inline
-script vagy stílus; a React és a Leaflet CSSOM-on át állít stílust, amit a CSP nem
-szabályoz). Új külső szolgáltatáshoz kötelező a hozzá tartozó direktíva, különben a
-böngésző némán blokkol.
+The whole workspace is a single plain object (`teams`, `stations`, `venues`, `bases`,
+`vehicles`, `drivers`, `trainings`, `rides`, `assignments`, `matrix`, `settings`) living
+as JSON in one database row.
 
----
+*Why:* atomic saves, trivial rollback, no server-side schema migrations, and every
+derived view can be computed from one consistent snapshot.
+*Cost:* no partial saves and no real-time co-editing.
+*Where:* `src/data/storage.js`, `src/supabaseStorage.js`.
 
-## 9. Domain modell és invariánsok
+### E2. The domain is pure; side effects live at the edge
 
-### 9.1 Entitások
+Functions in `src/domain/` and `src/data/seed.js` compute output from input. They do not
+read `window`, do not call the network, and do not mutate shared state. Two exceptions
+are deliberate and marked: `computeMatrix` (network) and the `window.storage` seam.
 
-```mermaid
-erDiagram
-    TEAM ||--o{ TRAINING : "edzései"
-    TEAM }o--o{ STATION : "megállói (stationIds)"
-    TEAM }o--o{ VENUE : "lehetséges helyszínei"
-    TRAINING }o--|| VENUE : "helyszíne"
-    TRAINING ||--o| STOPLIST : "saját megállólistája (stops)"
-    TRAINING ||--o{ RIDE : "alkalmanként"
-    RIDE }o--|| VEHICLE : "busz"
-    RIDE }o--|| DRIVER : "sofőr"
-    RIDE ||--o{ RIDESTOP : "időzített megállók"
-    VEHICLE }o--o| BASE : "telephely (baseId)"
-    DRIVER }o--o| VEHICLE : "preferált jármű"
-    ASSIGNMENT ||--o{ CHAIN : "hétköznaponként"
-    CHAIN }o--|| DRIVER : "sofőr"
-    CHAIN }o--|| VEHICLE : "busz"
-    CHAIN ||--o{ TASKREF : "taskIds (+ zárolás)"
-```
+*Why:* it makes the hard part of the system testable without a browser, which is what
+lets the optimizer be checked with property tests over randomly generated states.
+*If broken:* tests like `optimizer.test.js` and `base-shift.test.js` could not be
+written. That is the most valuable capability in the repo.
 
-A mezőszintű alakot a [`DEVELOPER.md` 7. fejezete](DEVELOPER.md#7-the-data-model-the-single-json-blob)
-írja le. Itt az számít, ami a **kapcsolatokból** következik.
+There is a third rule inside this one: **no `Math.random()` on a decision path.** The
+optimizer must be deterministic, or the same day would produce a different schedule on
+every click and nobody could trust it.
 
-### 9.2 Tárolt, származtatott és hibrid adat
+### E3. Dependencies flow one way
 
-| Fajta | Példa | Hol keletkezik | Élettartam |
-|---|---|---|---|
-| Tárolt | csapat, állomás, jármű, sofőr, edzés, fuvar, beosztás | felhasználói szerkesztés | a blobban |
-| Származtatott | előfordulás (`weekOccurrences`), feladat (`genDayTasks`), lánc nézetmodell (`mkChain`, `resolveDay`) | minden rendereléskor újraszámolva | memória |
-| Hibrid | `matrix` (számított, de eltárolt), `assignments` (a láncok *hivatkoznak* származtatott feladatokra) | számítás + mentés | a blobban |
+`App → screens → ui → domain → data`, never backwards. `domain/geo.js` is deliberately a
+leaf module: both `logic` and `optimizer` use `legMin`, so keeping it inside either would
+make the two circular.
 
-A hibrid adat a rendszer legérzékenyebb pontja, mert **eltárolt hivatkozás mutat
-újraszámolt objektumra**:
+*Where:* the import lists. This rule is **not machine-enforced today**, which is why it
+is named explicitly here. See risk R4.
 
-- A **feladatazonosító** `${trainingId}:${nap|"x"}:${irány}${#index}` alakú, tehát a
-  megállók vagy létszámok módosítása után egy `…:vissza` azonosítóból `…:vissza#1`
-  lehet. A `resolveDay` az elavult láncokat nem dobja el némán: megszámolja
-  (`droppedChains`), és a felület kiírja, hogy futtasd újra az optimalizálást.
-- A **mátrix** kulcsa (`matrixKey`) az összes koordinátás pont id-jét és 5 tizedesre
-  kerekített koordinátáját tartalmazza; ha eltér az aktuálistól, a felület jelzi, hogy
-  a mátrix elavult.
+### E4. Fail-closed security
 
-### 9.3 A rendszer invariánsai
+Anyone not entered as an admin is a driver, and a driver does not write. The prohibition
+does not come from the UI; it comes from row level security. Hiding tabs is purely UX.
 
-Ezek a tesztekkel is rögzített szabályok. Ha egy módosítás bármelyiket megsérti,
-az hibajavítás helyett hibabevezetés.
+*Where:* `supabase/migrations/0001_initial_schema.sql`, `src/AuthGate.jsx` (`fetchRole`),
+`src/App.jsx` (`isAdmin` guards, belt and braces, on the save path too).
 
-| # | Invariáns | Hol él | Teszt |
-|---|---|---|---|
-| I1 | Felülírás nélkül a visszaút az odaút tükre — meglévő csapatnál semmi nem változik | `legFor`, `teamLeg` | `return-leg.test.js` |
-| I2 | Az edzés saját megállólistája **teljes** felülírás; irányonkénti félig-öröklés nincs | `legSource` | `training-leg.test.js` |
-| I3 | A szállítandó létszám a bontás és az összlétszám maximuma | `legPax` | `fixes.test.js` |
-| I4 | Explicit 0 fős megálló kimarad az útvonalból; üres mező nem | `genDayTasks.zeroed` | `zero-count-stops.test.js` |
-| I5 | Minden feladat pontosan egy láncba kerül, vagy fedetlenként indoklást kap | `minCostChains` (`seen`), `optimizeDay` | `optimizer.test.js` |
-| I6 | Egy jármű/sofőr két lánca között fizikailag át kell érni | `resourceClash`, `resolveDay` | `optimizer.test.js` |
-| I7 | A kiszállási díj műszakonként jár, nem lánconként | `driverPay` + `mergeShifts` | `base-shift.test.js` |
-| I8 | Matricás helyszínre csak matricás jármű kerülhet (az optimalizálásban kemény korlát) | `assignResources`, `optimizeDay` | `vignette.test.js` |
-| I9 | Állomás/helyszín/telephely koordináta nélkül nem menthető | `MasterForm` | `master-coord.test.jsx` |
-| I10 | Hivatkozott törzsadat nem törölhető | `deleteGuard` (+ `chainRefs`) | `fixes.test.js` |
-| I11 | Valós adat fölé sosem kerül mintaadat olvasási hiba után | `isNotFound`, preflight | `load-error.test.js` |
-| I12 | Mentett fuvar iránya nem állítható át | `RideForm` | `ride-direction.test.jsx` |
+### E5. Degrade, do not collapse
 
----
+Every external dependency has a fallback path, and the fallback is **visible**: OSRM
+falls back to a straight-line estimate (flagged in the matrix's `source` field), Leaflet
+and tiles fall back to the built-in offline SVG picker, a point with no coordinate falls
+back to `fallbackLegMin`, and a screen crash falls back to the `ErrorBoundary` inside the
+shell, where snapshots and sign-out stay reachable.
 
-## 10. Az ütemező pipeline
+### E6. "Not entered" is not "zero"
 
-Ez a rendszer szíve, és az egyetlen hely, ahol az „egyszerű megoldás” nem elég.
+For a per-stop headcount, an empty field means *we do not know yet*; a typed `0` means
+*no need to go there this time*. The data distinguishes them (`""` versus `0`), and
+`genDayTasks`'s `zeroed()` predicate rests on that. `legPax` therefore returns the
+**maximum** of the breakdown and the stated total: a half-filled breakdown must never
+shrink a team.
 
-### 10.1 A feladat
+*If broken:* children are left standing at a stop. That is the most expensive class of
+failure this system has.
 
-Adott egy nap edzés-előfordulásainak halmaza. Mindegyikből keletkezik egy **ODA** és
-egy **VISSZA** feladat (ha kell, kapacitás miatt buszonként több is). Egy sofőr+jármű
-pár több feladatot is elvihet egymás után, ha időben és térben átér köztük. A cél a
-napi **bérköltség** minimalizálása:
+### E7. Silent skipping is forbidden
 
-```
-költség = Σ műszakonként [ kiszállási díj + max(műszakhossz, minimum műszak) / 60 × órabér ]
-műszak  = a telephelytől telephelyig tartó, egymásba érő sávok uniója
-```
+When a task cannot be built or cannot be covered, the system **says why**:
+`genDayTasks().skipped`, `optimizeDay().uncovered[].reasons`, the chain `issues` from
+`resolveDay()`, `contentionReasons`, and the `droppedChains` message for stale chains.
+When you add a constraint, the explanation is not optional; it is part of the feature.
 
-Ez lényegében egy erőforrás-korlátos ütemezés — NP-nehéz. Egyetlen egzakt modell
-(pl. MILP) nem futna böngészőben, ezért a megoldás **három fázisú**, és a fázisok
-egyre pontosabb költségfüggvényen dolgoznak.
+### E8. Old data must not change behaviour by itself
 
-### 10.2 A pipeline
+A new field's default in `ensureShape` must reproduce the **previous** behaviour. A
+return leg with no `returnStationIds` mirrors the outbound one. A training with no
+`stops` uses the team's list. A vehicle with no `baseId` falls back to the club depot,
+and with no depot at all, paid time is measured exactly as it was before depots existed.
+
+*Why:* there is no schema version and no server-side migration, so an upgrade must never
+silently reprice a club's schedule.
+
+## 4. Layers and the module map
 
 ```mermaid
 flowchart TD
-    A["weekOccurrences<br/>a nap edzés-előfordulásai"] --> B["genDayTasks<br/>ODA/VISSZA feladatok"]
-    B --> B1{"pax > legnagyobb busz?"}
-    B1 -->|igen| B2["splitStationsByCapacity<br/>first-fit-decreasing, megállónként"]
-    B1 -->|nem| C
-    B2 --> C["legRouteOrder<br/>Held–Karp vagy kézi sorrend"]
-    C --> D["planOda / planVissza<br/>menetrend visszafelé / előrefelé"]
-    D --> E{"zárolt feladat?"}
-    E -->|igen| F["csontváz-láncok<br/>(fix sofőr+jármű)"]
-    E -->|nem| G["kemény megvalósíthatóság<br/>kapacitás / matrica / elérhetőség"]
-    G -->|nem megy| H["uncovered + indoklás"]
-    G -->|mehet| I["1. fázis: minCostChains<br/>min-költségű folyam"]
-    I --> J["2. fázis: assignResources<br/>egzakt visszalépéses keresés"]
+    main["main.jsx"] --> gate["AuthGate.jsx<br/>login, role, installs window.storage"]
+    gate --> app["App.jsx<br/>navigation, state, saving"]
+    app --> screens["screens/"]
+    screens --> ui["ui/"]
+    screens --> domain["domain/"]
+    ui --> domain
+    domain --> data["data/"]
+    gate --> store["supabaseStorage.js"] --> client["supabaseClient.js"]
+```
+
+| Layer | Modules | May import |
+|---|---|---|
+| `data` | `storage.js`, `seed.js`, `roles.js` | nothing from the app (`storage.js` is a true leaf) |
+| `domain` | `constants`, `datetime`, `geo`, `logic`, `optimizer` | only `domain` and `data` |
+| `ui` | `styles.css`, `base`, `OccCard`, `MapPicker`, `VignettePill`, `format` | `domain`, React |
+| `screens` | Week, Schedule, Data, Teams, Master, StopListEditor, Ride, Driver, Users | `domain`, `data`, `ui` |
+| shell | `App.jsx`, `AuthGate.jsx`, `ErrorBoundary`, `RestorePanel`, `supabase*` | everything above |
+
+Inside `domain` the order is also strict: `constants → datetime → geo → logic →
+optimizer`. There are no cycles.
+
+The seam between the app and the shell is **event-based**, not an import: `App` fires
+`fuvarterv:signout` and `fuvarterv:restore` on `window`, and `AuthGate` listens. That is
+what lets `App` stay ignorant of authentication entirely.
+
+## 5. State and the save cycle
+
+There is no global store. `App.jsx` holds one `useState` containing the whole workspace,
+passes it down as props, and exposes `update(fn)`, which must be a **pure** transform.
+
+```
+user edit
+  → update((s) => ({ ...s, ... }))        pure transform
+  → setState                              re-render, derived views recomputed
+  → save effect: JSON.stringify(state)
+  → equal to lastSaved?  yes → stop
+                          no → 300 ms debounce → flush()
+  → window.storage.set(...)
+```
+
+Three details matter and each prevents a real failure.
+
+**`lastSaved` is compared as a string, not by object identity.** Otherwise every page
+load would write back the state it just read, pushing the other editor into a "changed
+elsewhere" conflict and burning the 20-slot save history on identical copies.
+
+**The pending save is flushed on `pagehide`, on `visibilitychange`, and on unmount.**
+Unmount is the sign-out case: `<App/>` goes away before the debounce would fire, and
+without the flush the last edit would be silently dropped.
+
+**A driver never schedules a save at all.** Row level security would reject it, but
+attempting it would flash an error on every session, so the client does not try.
+
+## 6. Persistence and concurrency
+
+The app talks only to `window.storage`, a four-method key-value contract (`get`, `set`,
+`delete`, `list`). `AuthGate` installs the Supabase-backed implementation at import time,
+before `App` ever mounts; tests install a stub.
+
+The model is **single-editor with an optimistic guard**:
+
+1. `get` remembers the row's `updated_at` as `lastSeen`.
+2. `set` updates only where `updated_at` still equals `lastSeen`.
+3. Zero rows matched means somebody else wrote in between. The UI blocks and asks for a
+   reload rather than overwriting.
+
+Two refinements stop that guard from misfiring.
+
+**Writes are serialised.** Each `set` chains onto the previous one, so `lastSeen` is
+never read mid-flight by a second overlapping write. The chain is never left rejected, or
+one failed save would block every later one.
+
+**A lost response is told apart from a real conflict.** If the guard matches nothing, the
+row is re-read: if the server already holds exactly what we last tried to write, that
+write did commit and only its response was lost. We adopt the row's timestamp and retry,
+rather than hard-blocking the workspace over our own success.
+
+**History is best-effort.** On every successful overwrite the *previous* blob is archived
+to `app_state_history` and pruned to 20. It is fire-and-forget and swallows its own
+errors: a history failure must never fail a save. An unchanged blob is never archived —
+filling 20 slots with identical copies would destroy exactly the restore points a user
+goes looking for.
+
+Restoring goes through the **normal guarded write**, so it cannot bypass the conflict
+check, and then reloads the page.
+
+## 7. Security architecture
+
+**The boundary is row level security. The UI is only UX.** Every rule that matters is in
+`supabase/migrations/0001_initial_schema.sql`.
+
+- Reads are open to any authenticated user, because drivers must see the schedule.
+- Writes are admin-only and scoped to the one workspace row.
+- `is_admin()` is `security definer` with an empty `search_path`, so the `user_roles`
+  policies that call it cannot recurse, and every name inside it is schema-qualified.
+- There is no delete policy on `app_state`, and no update policy on the history.
+
+**The one setting that is not in the schema file** is turning off public sign-ups. The
+anon key ships in the JS bundle by design, and every policy grants access to any
+*authenticated* user. While sign-ups are open, anyone who reads that key out of the
+bundle can register and read everything. The schema file says so in its header, and so
+does the README.
+
+`vercel.json` adds a Content-Security-Policy with **no `'unsafe-inline'`**, listing
+exactly the origins the app uses.
+
+## 8. Domain model and invariants
+
+### Entities
+
+```mermaid
+erDiagram
+    TEAM ||--o{ TRAINING : "has"
+    TEAM }o--o{ STATION : "stops (stationIds)"
+    TEAM }o--o{ VENUE : "possible venues"
+    TRAINING }o--|| VENUE : "held at"
+    TRAINING ||--o| STOPLIST : "own stop list (stops)"
+    TRAINING ||--o{ RIDE : "per occurrence"
+    RIDE }o--|| VEHICLE : "bus"
+    RIDE }o--|| DRIVER : "driver"
+    RIDE ||--o{ RIDESTOP : "timed stops"
+    VEHICLE }o--o| BASE : "depot (baseId)"
+    DRIVER }o--o| VEHICLE : "preferred vehicle"
+    ASSIGNMENT ||--o{ CHAIN : "per weekday"
+    CHAIN }o--|| DRIVER : "driver"
+    CHAIN }o--|| VEHICLE : "bus"
+    CHAIN ||--o{ TASKREF : "taskIds (+ lock)"
+```
+
+Field-level shapes are in [`DEVELOPER.md`](DEVELOPER.md#7-the-data-model-the-single-json-blob).
+What matters here is what follows from the **relationships**.
+
+### Stored, derived, and hybrid data
+
+| Kind | Example | Where it comes from | Lifetime |
+|---|---|---|---|
+| Stored | team, station, vehicle, driver, training, ride, schedule | user editing | in the blob |
+| Derived | occurrences (`weekOccurrences`), tasks (`genDayTasks`), chain view models (`mkChain`, `resolveDay`) | recomputed every render | memory |
+| Hybrid | `matrix` (computed but stored), `assignments` (chains *reference* derived tasks) | computed, then saved | in the blob |
+
+Hybrid data is the system's most delicate point, because **a stored reference points at a
+recomputed object**:
+
+- A **task id** has the shape `${trainingId}:${day|"x"}:${direction}${#index}`, so after a
+  change to stops or headcounts a `...:vissza` id can become `...:vissza#1`. `resolveDay`
+  does not drop stale chains silently: it counts them (`droppedChains`) and the UI says to
+  re-run the optimizer. See risk R1.
+- The **matrix key** (`matrixKey`) contains every located point's id and its coordinate
+  rounded to five decimals. If it differs from the current one, the UI flags the matrix
+  as stale.
+
+### The invariants
+
+These are rules the tests pin down. A change that violates one is introducing a bug, not
+fixing one.
+
+| # | Invariant | Where it lives | Test |
+|---|---|---|---|
+| I1 | With no override, the return leg mirrors the outbound one; nothing changes for an existing team | `legFor`, `teamLeg` | `return-leg.test.js` |
+| I2 | A training's own stop list is a **complete** override; there is no half-inheritance by direction | `legSource` | `training-leg.test.js` |
+| I3 | The headcount to carry is the maximum of the breakdown and the stated total | `legPax` | `fixes.test.js` |
+| I4 | An explicit zero drops a stop from the route; an empty field does not | `genDayTasks.zeroed` | `zero-count-stops.test.js` |
+| I5 | Every task lands in exactly one chain, or is uncovered with a reason | `minCostChains` (`seen`), `optimizeDay` | `optimizer.test.js` |
+| I6 | A shared vehicle or driver must physically be able to get between two chains | `resourceClash`, `resolveDay` | `optimizer.test.js` |
+| I7 | The call-out fee is per shift, not per chain | `driverPay` + `mergeShifts` | `base-shift.test.js` |
+| I8 | Only a vignette-carrying vehicle may serve a vignette-only venue (a hard constraint) | `assignResources`, `optimizeDay` | `vignette.test.js` |
+| I9 | A station, venue or depot cannot be saved without a coordinate | `MasterForm` | `master-coord.test.jsx` |
+| I10 | Referenced master data cannot be deleted | `deleteGuard`, `chainRefs` | `fixes.test.js` |
+| I11 | Sample data is never seeded over real data after a read failure | `isNotFound`, preflight | `load-error.test.js` |
+| I12 | A saved ride's direction cannot be switched | `RideForm` | `ride-direction.test.jsx` |
+
+## 9. The scheduling pipeline
+
+This is the heart of the system, and the only place where the simple solution is not
+good enough.
+
+### The problem
+
+Given a day's training occurrences, each produces an **outbound** and a **return** task
+(possibly several, split by capacity). One driver-and-bus pair can run several tasks
+back to back if it can get between them in time and space. The objective is the day's
+**wage bill**:
+
+```
+cost  = Σ over shifts [ call-out fee + max(shift length, minimum shift) / 60 × hourly wage ]
+shift = the union of touching depot-to-depot spans
+```
+
+That is resource-constrained scheduling, which is NP-hard. A single exact model would not
+run in a browser, so the solution has **three phases**, each working on a more accurate
+cost function than the last.
+
+```mermaid
+flowchart TD
+    A["weekOccurrences<br/>the day's trainings"] --> B["genDayTasks<br/>outbound/return tasks"]
+    B --> B1{"pax > biggest bus?"}
+    B1 -->|yes| B2["splitStationsByCapacity<br/>first-fit-decreasing, by stop"]
+    B1 -->|no| C
+    B2 --> C["legRouteOrder<br/>Held-Karp or manual order"]
+    C --> D["planOda / planVissza<br/>timetable, backwards / forwards"]
+    D --> E{"locked task?"}
+    E -->|yes| F["skeleton chains<br/>(fixed driver + bus)"]
+    E -->|no| G["hard feasibility<br/>capacity / vignette / availability"]
+    G -->|impossible| H["uncovered + reason"]
+    G -->|possible| I["phase 1: minCostChains<br/>min-cost flow"]
+    I --> J["phase 2: assignResources<br/>exact backtracking search"]
     F --> J
-    J --> K["3. fázis: lokális javítás<br/>lánc-összevonások a valódi költségen"]
-    K --> L["dayStats + javaslat<br/>előtte/utána"]
+    J --> K["phase 3: local improvement<br/>chain merges at true cost"]
+    K --> L["dayStats + proposal<br/>before/after"]
 ```
 
-### 10.3 Fázisok és miért ilyenek
+### The phases, and why they are shaped this way
 
-**0. Feladatgenerálás (`genDayTasks`).** Irányonként külön kör, mert a visszaútnak
-saját megállói, saját létszámai és akár saját buszszáma lehet. A két irány feladatai
-ezután **függetlenek**: a láncolás időre és üresjáratra megy, az #1/#2 párosítást
-semmi nem kényszeríti ki.
+**Task generation (`genDayTasks`).** One pass per direction, because the return leg can
+have its own stops, its own headcounts and even its own bus count. From there the two
+directions' tasks are **independent**: chaining works on time and deadhead, and nothing
+forces part #1 to pair with part #1.
 
-**Menetrend.** Az ODA menetrend **visszafelé** számolódik az edzés kezdete előtti
-céltidőpontból (mikor kell indulni, hogy időben odaérj), a VISSZA **előrefelé** az
-edzés vége utáni indulástól. Ez az egyetlen helyes irány: a fix pont mindkét esetben
-a helyszín, nem a megálló.
+**Timetabling.** The outbound timetable is computed **backwards** from the target arrival
+before the training starts (when must we leave to get there in time), and the return leg
+**forwards** from the departure after it ends. This is the only correct direction: in both
+cases the fixed point is the venue, not the stop.
 
-**Útvonalsorrend (`bestStationOrder`).** Held–Karp dinamikus programozás, `2^n × n`
-állapottal, opcionális rögzített első/utolsó megállóval és a helyszínnel mint elő-
-vagy utótaggal. **10 megállóig egzakt**, felette az eredeti sorrend marad — 10 fölött
-a memória és az idő is elszaladna, és a valóságban egy kör ennél nem hosszabb.
+**Route ordering (`bestStationOrder`).** Held-Karp dynamic programming over `2^n × n`
+states, with an optional pinned first or last stop and the venue as a prefix or suffix.
+**Exact up to 10 stops**; above that the original order is kept, because both memory and
+time run away past that and real runs are not longer.
 
-**1. fázis — láncolás (`minCostChains`).** Páros gráf: minden feladat egyszer lehet
-„előd” és egyszer „utód”; él akkor van `A→B` között, ha `A.vég + üresjárat(A.hova,
-B.honnan) ≤ B.kezdet`. Élköltség:
+**Phase 1, chaining (`minCostChains`).** A bipartite graph: each task can be a predecessor
+once and a successor once, and an edge `A → B` exists when
+`A.end + deadhead(A.to, B.from) ≤ B.start`. The edge cost is:
 
 ```
-él(A→B) = (kényszerített várakozás ? 0 : rés × átlagos percbér) − kiszállási díj
+edge(A→B) = (forced wait ? 0 : gap × average per-minute wage) − call-out fee
 ```
 
-A negatív tag a lényeg: a láncolás **egy kiszállási díjat spórol**, a rés viszont
-fizetett időbe kerül — hacsak a sofőr a rés alatt úgysem tudna hazamenni (akkor a
-várakozás láncolás nélkül is fizetett, tehát nem a láncolás terhe). Az algoritmus
-egymást követő legrövidebb utakon küld folyamot, és **csak negatív összköltségű
-utakon** — így pontosan addig láncol, amíg az olcsóbb. A ciklus `n` javítóútra van
-korlátozva; a kiolvasás `seen` halmazzal garantálja, hogy elfajult esetben (kör a
-succ/pred gráfban) se tűnhessen el feladat.
+The negative term is the point: chaining **saves one call-out fee**, while the gap costs
+paid time — unless the driver could not get home during the gap anyway, in which case the
+waiting is paid with or without chaining and must not be charged against it. The algorithm
+pushes flow along successive shortest paths, and **only along paths with negative total
+cost**, so it chains exactly as long as chaining is cheaper. The loop is bounded at `n`
+augmenting paths, and reading the chains back out uses a `seen` set so that even a
+degenerate cycle in the succ/pred graph cannot make a task disappear.
 
-**2. fázis — erőforrás-hozzárendelés (`assignResources`).** Visszalépéses keresés a
-valódi költségfüggvényen, költségkorlátos vágással (`cost >= best.cost` → vissza).
-Egy lánc ára a sofőr napi költségének **növekménye**: ha a lánc egy meglévő
-műszakhoz tapad, csak a plusz fizetett idő az ára, második kiszállási díj nélkül.
-A keresés `30 000` iteráció után leáll, és ezt **jelzi** (`capped` → „heurisztikus”
-megjegyzés) — nem tesz úgy, mintha optimumot talált volna.
+**Phase 2, resource assignment (`assignResources`).** Backtracking search against the real
+cost function, pruned on cost (`cost >= best.cost` backtracks). A chain's price is the
+**increment** to that driver's cost for the day: attach it to an existing shift and only
+the extra paid time counts, with no second call-out fee. The search stops after 30,000
+iterations and **says so** (`capped` produces a "heuristic" note) rather than pretending
+it found an optimum.
 
-**3. fázis — lokális javítás.** Az 1. fázis csak átlagbérrel és résekkel számolt; a
-minimum műszak és az eltérő órabérek hatását itt korrigáljuk: szabad láncokat és
-csontváz-láncokat próbálunk összevonni, és a próbát csak akkor fogadjuk el, ha a
-teljes terv költsége **szigorúan** csökken. Legfeljebb 60 kör.
+**Phase 3, local improvement.** Phase 1 only saw average wages and gaps. Minimum shift
+lengths and differing wages are corrected here by trying to merge free chains and skeleton
+chains, accepting a trial only when the whole plan's cost **strictly** decreases. At most
+60 rounds.
 
-### 10.4 Kemény és puha korlátok
+### Hard and soft constraints
 
-| Korlát | Fajta | Hol érvényesül |
+There is exactly one soft constraint: the **preferred-vehicle bias**, a forint penalty for
+putting a driver on a bus other than their usual one. Everything else — capacity,
+availability, the vignette, physical reachability — is hard.
+
+The golden rule when adding either: a hard constraint needs a filter in `assignResources`
+**and** a pre-filter in `optimizeDay`'s feasibility pass, with a reason (E7). A soft one
+is a cost term, and it must also go into `skelCost`. Leaving it out of `skelCost` makes
+the improvement loop compare a biased cost against an unbiased one, and the displayed
+daily cost can then go **up** after optimising.
+
+## 10. External services and degradation
+
+| Service | Used for | Failure behaviour | Visible? |
+|---|---|---|---|
+| Supabase | auth, storage, roles | retry screen; never seeds over unread data | yes |
+| OSRM | the deadhead matrix | haversine estimate at `estSpeedKmh` | yes, `matrix.source` |
+| Nominatim | address search in the map picker | an error line; pick by hand or paste a coordinate | yes |
+| Leaflet + OSM tiles | the map picker | the built-in offline SVG picker | yes |
+
+The OSRM **demo server** is fine for testing and not for production. Replacing it is a
+one-function change (`computeMatrix`). See risk R2.
+
+## 11. UI architecture
+
+**Props down, callbacks up.** No context except `RoleContext`, which carries exactly two
+values (role and e-mail) and does not change while `App` is mounted.
+
+**One stylesheet.** `src/ui/styles.css` defines every design token once and contains both
+halves of the UI: `.shell-*` rules for the frames that run outside the app proper (login,
+error boundary, restore panel, save-failure toast) and everything else for the app itself.
+Tailwind utilities are used in the markup for **layout only**; colour, size, typography
+and state belong in the stylesheet. Dark mode follows the operating system.
+
+**Editor forms remount by `key`** rather than synchronising a draft by hand, which is what
+keeps a half-filled form from being silently reset by a parent re-render.
+
+**Components are defined at module level.** A component defined inside a render function
+is a new type on every render and loses its state.
+
+## 12. Performance and scaling limits
+
+| Limit | Value | What happens at the limit | Where |
+|---|---|---|---|
+| Held-Karp exact routing | ≤ 10 stops | the original order is kept (no error, just not optimal) | `bestStationOrder` |
+| Assignment search space | 30,000 iterations | best found so far, plus a "heuristic" note | `assignResources` |
+| Local improvement | 60 rounds | stops, keeping the best plan so far | `optimizeDay` |
+| Save history | 20 snapshots | the oldest falls off | `supabaseStorage` |
+| Workspace size | one `jsonb` row | practically a few MB; beyond that the save round-trip slows | `app_state` |
+| Re-rendering | the whole tree on every edit | imperceptible at club scale | `App.jsx` |
+
+Optimisation is **synchronous** and takes from a fraction of a second up to about a second
+and a half. The button therefore yields for one frame to paint its "calculating" state
+first, or the browser would not repaint and the button would look dead. If it ever becomes
+noticeably slow, the next step is not micro-optimisation but a Web Worker: `optimizeDay`
+is a pure function and can simply move.
+
+## 13. Test architecture
+
+19 test files, 168 tests (`npm test`, Vitest and jsdom), in four layers.
+
+| Layer | Example | What it protects |
 |---|---|---|
-| Férőhely ≥ lánc maximális létszáma | kemény | `assignResources`, `optimizeDay` előszűrő |
-| Országos matrica matricás helyszínhez | kemény | `chainNeedsVignette` szűrő az opciókban |
-| Sofőr elérhetősége a teljes sávra | kemény | `driverAvailableFor` (az érintkező ablakok összeolvadnak) |
-| Erőforrás-ütközés + átérés | kemény | `resourceClash` |
-| Zárolt feladat marad a helyén | kemény | csontváz-láncok |
-| Preferált jármű | **puha** — `preferredBias` Ft büntetés | `assignResources`, `skelCost` |
+| **Property tests** | `optimizer.test.js`, random states from a seeded PRNG | the scheduling invariants (I5, I6): every task gets a home, no physically impossible chain |
+| **Domain unit tests** | `domain`, `return-leg`, `training-leg`, `vignette`, `zero-count-stops`, `base-shift` | rules and edge cases: plates, times, mirrored versus own return leg, zero headcounts, shift arithmetic |
+| **Regression tests** | `fixes`, `load-error`, `settings` | **specific defects that actually happened.** Each one describes the wrong behaviour it rules out |
+| **UI and integration tests** | `smoke` (mounts `<App/>` and walks every tab), `roles`, `login`, `master-coord`, `ride-direction`, `training-stops-ui`, `vignette-ui`, `base-visibility` | that every referenced identifier exists, and that the role, coordinate and direction rules hold on screen too |
 
-> **Aranyszabály a költségfüggvényre.** Ha egy tag (pl. a `preferredBias`) bekerül a
-> hozzárendelés költségébe, akkor **ugyanúgy** be kell kerülnie a csontváz-láncok
-> árába (`skelCost`) is. Amikor ez elcsúszott, a javítóciklus torzított és torzítatlan
-> költséget vetett össze, és az optimalizálás *után* nőtt a kijelzett napi költség.
+Two structural choices:
 
-### 10.5 A fizetett idő modellje
+- **Tests import from the real modules**, not through a barrel. A new domain function is
+  testable immediately, with no export list to keep in sync.
+- **The `window.storage` seam is filled with a stub**, so the full load-and-save cycle
+  runs without Supabase.
 
-A sofőr akkor lép munkába, amikor **elindul a telephelyről**, és akkor végez, amikor
-**visszaért** (`spanOf`). Az egymásba érő sávok egy műszakká olvadnak (`mergeShifts`),
-és ebből külön szabály nélkül következik a „hazamehet-e két fuvar között?” kérdés
-válasza: ha nincs idő hazaérni és visszajönni, a sávok átfednek, tehát egy műszak van
-— benne a fizetett helyszíni várakozással (`onSiteWait`). Telephely nélkül a sáv a
-feladatokét fedi, vagyis a telephelyek bevezetése előtti számítás — E8 szerint.
+What the suite does **not** cover: the real Supabase round trip (the RLS policies
+themselves), the Leaflet path, and CSP behaviour under production headers. Those are
+manual checkpoints — see [`MAINTENANCE.md`](MAINTENANCE.md).
 
-### 10.6 Determinizmus
+## 14. Extension scenarios
 
-Az optimalizálás **determinisztikus**: nincs véletlen, a rendezések teljes (tie-break
-tartalmazó) komparátorokkal mennek, és a bemenet ugyanaz → a kimenet ugyanaz. Ez tette
-lehetővé a property-teszteket egy magvas PRNG-vel generált állapotokon
-(`test/optimizer.test.js`). Ne vezess be `Math.random()`-ot ebbe az útba; az `uid()`
-az egyetlen kivétel, és az csak *új* láncazonosítót gyárt, nem befolyásol döntést.
+### A new field on an entity
 
----
+1. `ensureShape` — give it a default that reproduces the **previous** behaviour (E8).
+2. `seedState` — fill it in the sample data if that is meaningful.
+3. The form: a field in `MasterForm` / `TeamForm` / `TrainingForm`, plus normalisation on
+   save.
+4. If anything will reference it, extend `deleteGuard` (I10).
+5. Does it affect the timetable or the cost? Then `optimizer.js`, and a test that pins
+   down the old behaviour as well as the new.
 
-## 11. Külső szolgáltatások és degradáció
+### A new setting
 
-| Szolgáltatás | Mikor hívjuk | Ha nem elérhető | Hol |
+`DEFAULT_SETTINGS` in `data/storage.js` → the settings modal in `ScheduleScreen` → use it
+in the domain. `DEFAULT_SETTINGS` is the single source; both `seedState` and `ensureShape`
+read from it so they cannot drift.
+
+### A new optimizer constraint
+
+1. Decide: **hard** (excluding) or **soft** (a cost term)?
+2. Hard: a filter in `assignResources`'s options **and** a pre-filter in `optimizeDay`'s
+   feasibility pass, with a reason (E7). The vignette is the worked example.
+3. Soft: a cost term — and put it in `skelCost` too (see the golden rule in §9).
+4. A property test for the new invariant.
+
+### A different backend
+
+Implement the four-method `window.storage` contract and install it in place of
+`supabaseStorage`. Nothing in `src/domain/`, `src/ui/` or `src/screens/` changes.
+
+## 15. Known risks and technical debt
+
+An open list: not bugs, but accepted trade-offs and identified weak points. Anyone
+touching the system should know about them. [`ACTION_PLAN.md`](ACTION_PLAN.md) says what
+to do about each.
+
+| # | Risk | Consequence | Mitigation / direction |
 |---|---|---|---|
-| Supabase Auth | belépés, munkamenet | beszédes, esetenkénti hibaüzenet (`loginErrorMessage`) | `AuthGate.jsx` |
-| Supabase Postgres | betöltés, mentés, előzmény, szerepkörök | újratöltő képernyő / mentés-toast / blokkoló overlay | `supabaseStorage.js` |
-| OSRM `/table` | csak kézi „mátrix számítása” gombra | légvonalas becslés, `source: "estimate"` felirattal | `domain/geo.js` |
-| Nominatim | csak explicit keresésre (max ~1 kérés/mp) | a keresőmező hibát ír, a kézi koordináta marad | `ui/MapPicker.jsx` |
-| OSM csempék + cdnjs Leaflet | a térképmodál első megnyitásakor, lustán | beépített offline SVG-választó a meglévő pontokkal | `ui/MapPicker.jsx` |
-
-Két általános szabály:
-
-- **Külső hívás sosem történik automatikusan, felhasználói szándék nélkül** (kivéve
-  az induló olvasást). Ez tartja be a Nominatim használati feltételeit, és ez teszi
-  kiszámíthatóvá a költséget.
-- **A visszaesés mindig látható.** A becsült mátrix felirata, az offline térkép
-  jelzése és a „mátrix elavult” figyelmeztetés nélkül a felhasználó rossz adatból
-  tervezne, és nem tudná, hogy rossz.
-
-> Az OSRM demószerver tesztre való, élesre nem: statikus sebességprofillal dolgozik,
-> és nincs rendelkezésre állási garanciája. Éles használatra saját OSRM (Docker +
-> magyar OSM kivonat) vagy fizetős, forgalomtudatos API az ajánlott. Az illesztés
-> pontja egyetlen függvény: `computeMatrix`.
+| R1 | **Task ids are not stable** (they contain the split index) | saved chains can drop out after stops or headcounts change | today: counted, with a user-facing message (`droppedChains`). Properly: a split-independent id plus a separate mapping |
+| R2 | **The OSRM demo server** | an availability and accuracy risk in real use | self-hosted OSRM or a paid API; the swap point is one function (`computeMatrix`) |
+| R3 | **One blob, single-editor model** | of two concurrent editors, the second is forced to reload | documented and visible. If a real need appears: per-entity rows plus CRDT or merge, which is a large step |
+| R4 | **The layer rule is not machine-enforced** | circular imports can creep in over time | an import-boundary lint rule can be added |
+| R5 | **`assignments` is a per-weekday template** | chains never cross days; scheduling one-off trainings is limited | a deliberate simplification; date-based scheduling needs a different model |
+| R6 | **Duplicated feasibility check** | `taskHardIssues` in `ScheduleScreen` re-implements part of `optimizeDay`'s and has already drifted (it omits the vignette), so a task blocked only by that shows no reason — a violation of E7 | merge into one domain function. `ACTION_PLAN.md` P0-2 |
+| R7 | **No server-side validation** | a broken client could save an invalid blob | `ensureShape` defends reads; the save history is the way back |
+| R8 | **Whole-tree re-render** | noticeable slowdown at larger data sizes | measure first, then memoise or move the optimizer to a Web Worker |
+| R9 | **No error reporting from production** | a user-reported crash must be reproduced locally before work can start | sourcemaps now ship; an `app_errors` table is the next step. `ACTION_PLAN.md` P2-3 |
 
 ---
 
-## 12. Felületi architektúra
+## Where to look when…
 
-### 12.1 Képernyőfa és propszerződés
-
-```
-App (state, isAdmin, tab)
-├── WeekScreen      (state, openRide)                 — csak olvas
-├── ScheduleScreen  (state, update)                   — láncok, optimalizálás
-├── DataScreen      (state, update, resetSeed, …)
-│   ├── TeamsScreen  → TeamDetail → TrainingDetail → StopListEditor
-│   ├── MasterScreen → MasterForm → MapPickerModal
-│   └── UsersPanel   (szerepkörök — a Supabase-t közvetlenül hívja)
-├── RideScreen      (state, update, target)           — fuvarszerkesztő
-└── DriverScreen    (state, myEmail)                  — csak olvas, percenként frissül
-```
-
-Minden képernyő ugyanazt a két propot kapja: `state` (olvasás) és `update` (írás egy
-tiszta transzformációval). **Nincs képernyő-lokális másolata az állapotnak**, kivéve a
-szerkesztő űrlapok piszkozatát — ott a `key` prop kényszeríti ki az újramountot
-(`RideForm key={existing?.id ?? …}`), ami sokkal kevesebb hibalehetőség, mint a
-piszkozat kézi szinkronizálása.
-
-### 12.2 Újrafelhasználás mezőnév-egyezéssel
-
-A `StopListEditor` **két szinten** ugyanaz a komponens: a csapat állandó listájához és
-az edzés saját listájához. Adapter nélkül működik, mert a két forrás mezőnevei
-azonosak (`stationIds`, `stationCounts`, `routeMode`, `routeAnchorId`, `return*`) —
-és ugyanezért adható át bármelyik a `legFor` / `legRouteOrder` / `legPax`
-függvényeknek. Ez tudatos szerződés: **ha új mezőt adsz a megállólistához, mindkét
-szinten ugyanazon a néven kell megjelennie.**
-
-### 12.3 Stílusrendszer
-
-Két token-réteg van, és ez nem véletlen:
-
-- `src/theme.css` — a közös dizájnrendszer `--v-*` névtérben (shell: belépés,
-  visszaállítás, hibaképernyők). Világos-first, a sötét mód az OS beállítását követi.
-- `src/ui/styles.css` — az app saját `--ink/--acc/--paper` tokenjei, amelyek ma már
-  **aliasok** a `--v-*` fölött. Így az app minden szabálya változatlan maradhatott,
-  miközben a felület automatikusan követi a sötét módot.
-
-A CSS valódi fájl, nem JS sablonsztring (korábban az volt, három `<style>` elemben
-renderelve): a Vite feldolgozza, a kaszkádot nem a React renderelési sorrendje dönti
-el, és a szerkesztő is kiemeli. Tailwind (v4, `@tailwindcss/vite`) csak segédosztályokra
-van; a komponensstílusok saját osztálynevekkel mennek.
-
-### 12.4 Felületi minták, amiket érdemes követni
-
-- **Számmező:** a `NumField` a gépelt szöveget helyben tartja, és csak blur/Enterkor
-  rögzíti számként. A naiv `Number(e.target.value) || 0` minta az „50” beírásából
-  „150”-et csinált.
-- **Veszélyes művelet:** `DangerBtn` kétlépcsős megerősítéssel, `deleteGuard`
-  indoklással.
-- **Magyarázat a helyén:** `InfoDot` a képernyőkön, `HelpSheet` a fejlécben.
-- **Modul szintű komponensek:** a renderfüggvényen belül definiált komponens minden
-  rendereléskor új típus, ami elveszti az állapotot — ezért a `ScheduleScreen`
-  segédkomponensei modulszinten vannak.
-
----
-
-## 13. Teljesítmény és skálázási határok
-
-| Korlát | Érték | Mi történik a határon | Hol |
-|---|---|---|---|
-| Held–Karp egzakt útvonal | ≤ 10 megálló | felette az eredeti sorrend marad (nincs hiba, csak nem optimális) | `bestStationOrder` |
-| Hozzárendelés keresési tere | 30 000 iteráció | a legjobb megtalált megoldás + „heurisztikus” megjegyzés | `assignResources` |
-| Lokális javítás | 60 kör | leáll, az addigi legjobb terv marad | `optimizeDay` |
-| Mentési előzmény | 20 pillanatkép | a legrégebbi kiesik | `supabaseStorage` |
-| Munkaterület mérete | egy `jsonb` sor | gyakorlati határ: néhány MB; e fölött a mentési kör lassul | `app_state` |
-| Újrarenderelés | teljes fa minden módosításnál | a klub léptékében észrevehetetlen | `App.jsx` |
-
-Az optimalizálás **szinkron** és a nap méretétől függően néhány tized–másfél másodperc.
-Ezért a gomb egy képkockányi késleltetéssel előbb kirajzolja a „Számítás…” állapotot —
-különben a böngésző nem frissítene, és a gomb halottnak látszana. Ha az optimalizálás
-érezhetően lassabbá válik (több csapat, több busz), a következő lépés nem
-mikrooptimalizálás, hanem Web Worker: a `optimizeDay` tiszta függvény, tehát
-átköltöztethető.
-
----
-
-## 14. Tesztarchitektúra
-
-19 tesztfájl, 168 teszt (`npm test`, Vitest + jsdom). A készlet négy rétegű:
-
-| Réteg | Példa | Mit véd |
-|---|---|---|
-| **Property-tesztek** | `optimizer.test.js` — véletlen állapotok magvas PRNG-vel | az ütemezés invariánsai (I5, I6): minden feladat helyet kap, nincs fizikailag lehetetlen lánc |
-| **Domain-egységtesztek** | `domain.test.js`, `return-leg.test.js`, `training-leg.test.js`, `vignette.test.js`, `zero-count-stops.test.js`, `base-shift.test.js` | szabályok és határesetek: rendszám, idő, tükrözött vs. saját visszaút, 0 fő, műszakszámítás |
-| **Regressziós tesztek** | `fixes.test.js`, `load-error.test.js`, `settings.test.js` | **konkrét, egyszer már megtörtént hibák** — minden teszt leírja, milyen rossz viselkedést zár ki |
-| **Felület- és integrációs tesztek** | `smoke.test.jsx` (mountolja az `<App/>`-ot és végigjárja a füleket), `roles.test.jsx`, `login.test.jsx`, `master-coord.test.jsx`, `ride-direction.test.jsx`, `training-stops-ui.test.jsx`, `vignette-ui.test.jsx`, `base-visibility.test.jsx` | hogy a modulbontás után is létezik minden hivatkozott azonosító, és a szerep/koordináta/irány szabályok a felületen is érvényesek |
-
-Két szerkezeti döntés:
-
-- **A tesztek a barrelből (`../fuvarterv.jsx`) importálnak**, nem a modulokból. Ezért
-  a belső modulhatárok mozgatása nem tör el teszteket; cserébe új publikus függvényt
-  a barrel export-listájára is fel kell venni.
-- **A `window.storage` varratot a tesztek hamis tárolóval töltik ki**, így a teljes
-  betöltés–mentés ciklus futtatható Supabase nélkül.
-
-Amit **nem** fed a készlet: a valódi Supabase-kör (RLS-szabályok), a Leaflet-út és a
-CSP viselkedése éles fejlécekkel. Ezek kézi ellenőrzési pontok — lásd
-[`MAINTENANCE.md`](MAINTENANCE.md).
-
----
-
-## 15. Bővítési forgatókönyvek
-
-### Új mező egy entitáson
-
-1. `ensureShape` — adj neki alapértéket, ami a **korábbi viselkedést** adja (E8).
-2. `seedState` — töltsd ki a mintaadatban is, ha értelmes.
-3. Űrlap: `MasterForm` / `TeamForm` / `TrainingForm` mező + mentéskori normalizálás.
-4. Ha bárhol hivatkozás lesz belőle: `deleteGuard` bővítése (I10).
-5. Domain-hatás: a mező befolyásolja a menetrendet vagy a költséget? Akkor
-   `optimizer.js`, és **kötelezően** teszt, ami a régi viselkedést is rögzíti.
-
-### Új beállítás
-
-`DEFAULT_SETTINGS` (`data/storage.js`) → a `ScheduleScreen` beállításmodálja →
-felhasználás a domainben. A `DEFAULT_SETTINGS` az egyetlen forrás; a `seedState` és
-az `ensureShape` is innen dolgozik, hogy ne csúszhassanak szét.
-
-### Új korlát az optimalizálóban
-
-1. Döntsd el: **kemény** (kizáró) vagy **puha** (költségtag)?
-2. Kemény: szűrő a `assignResources` opcióiban **és** előszűrő az `optimizeDay`
-   megvalósíthatósági körében, hozzá **indoklással** (E7) — a `vignette` a mintapélda.
-3. Puha: költségtag — és tedd bele a `skelCost`-ba is (10.4 aranyszabály).
-4. Property-teszt az új invariánsra.
-
-### Új képernyő
-
-`src/screens/` új fájl → `TABS` az `App.jsx`-ben → szerepkör-őr (`isAdmin`), ha nem
-sofőrnek szól → a smoke-teszt fülbejárása fedje le.
-
-### Új külső szolgáltatás
-
-`vercel.json` CSP `connect-src`/`img-src` kiegészítése → visszaesési út és látható
-jelzés (E5) → a hívás felhasználói szándékhoz kötése.
-
-### Új adatbázis-migráció
-
-Új, sorszámozott fájl a `supabase/migrations/` alatt, **újrafuttathatóan** (minden
-`create policy` előtt `drop policy if exists`, tábláknál `if not exists`), plusz sor
-a `supabase/migrations/README.md` táblázatában és a főoldali README lépéssorában.
-A migrációk lefutását egy csak-olvasó diagnosztikai lekérdezés ellenőrzi a
-migrációs README-ben.
-
----
-
-## 16. Ismert kockázatok és technikai adósság
-
-Nyílt lista — nem hibák, hanem vállalt kompromisszumok és felderített gyenge pontok.
-Aki hozzányúl a rendszerhez, ezekkel számoljon.
-
-| # | Kockázat | Következmény | Enyhítés / irány |
-|---|---|---|---|
-| R1 | **A feladatazonosító nem stabil** (tartalmazza a felosztási indexet) | a megállók/létszámok módosítása után mentett láncok kieshetnek | ma: számolás + felhasználói üzenet (`droppedChains`). Tartós megoldás: stabil, felosztástól független azonosító + külön leképezés |
-| R2 | **Egyetlen blob, egyszerkesztős modell** | két párhuzamos szerkesztő közül a második újratöltésre kényszerül | dokumentált és látható. Ha valós igény lesz: entitásonkénti sorok + CRDT/merge — nagy lépés |
-| R3 | **`assignments` hétköznaponkénti sablon** | a láncok sosem lépnek át napot; egyszeri edzések beosztása korlátozott | tudatos egyszerűsítés; dátum szerinti beosztás külön modellt igényel |
-| R4 | **Az OSRM demószerver** | éles használatban rendelkezésre állási és pontossági kockázat | saját OSRM vagy fizetős API; a csere pontja egy függvény (`computeMatrix`) |
-| R5 | **A mintaadat valós neveket és rendszámokat tartalmaz** | nyilvános repóban adatvédelmi probléma | anonimizálás a publikálás előtt (a főoldali README figyelmeztet rá) |
-| R6 | **A rétegszabályt nem gép őrzi** | idővel körkörös importok szivároghatnak be | import-lint szabály (pl. `eslint-plugin-import` boundaries) bevezethető |
-| R7 | **A CSP Leaflet-ága nincs élesben végigpróbálva** | a térkép elvileg blokkolódhat éles fejlécekkel | a preview deployon nyisd meg a térképet és nézd a konzolt; ha kell, `'unsafe-inline'` a `style-src`-be |
-| R8 | **A barrel kettős szerep** (kompatibilitás + teszt-API) | új publikus függvény könnyen kimarad az exportból | a tesztek azonnal buknak; a barrel fejléce erre figyelmeztet |
-| R9 | **Nincs szerveroldali validáció** | egy elrontott kliens érvénytelen blobot menthet | `ensureShape` védi az olvasást; a mentési előzmény a visszaút |
-| R10 | **Teljes fa újrarenderelése** | nagyobb adatnál érezhető lassulás | mérés után memoizáció vagy Web Worker az optimalizálásra |
-
----
-
-## Hova nyúlj, ha…
-
-| Kérdés | Fájl |
+| Question | File |
 |---|---|
-| …miért ilyen időt ír ki a beosztás? | `domain/optimizer.js` → `planOda` / `planVissza` |
-| …miért nem kapott sofőrt egy feladat? | `optimizeDay` uncovered ág + `contentionReasons` |
-| …miért „ütközik” két fuvar? | `domain/logic.js` → `rideWindow`, `findConflicts` |
-| …miért nem tudom törölni ezt a járművet? | `deleteGuard`, `chainRefs` |
-| …miért nem mentődik? | `supabaseStorage.doSet` + RLS (`0004`, `0006`) |
-| …miért lát/nem lát valaki egy fület? | `AuthGate.fetchRole` + `App` `isAdmin` őrei |
-| …miért tűnt el a beosztásom? | `resolveDay` `droppedChains` ága (R1) |
+| …why does the schedule print this time? | `domain/optimizer.js` → `planOda` / `planVissza` |
+| …why did a task get no driver? | `optimizeDay`'s uncovered branch + `contentionReasons` |
+| …why do these two rides "clash"? | `domain/logic.js` → `rideWindow`, `findConflicts` |
+| …why can I not delete this vehicle? | `deleteGuard`, `chainRefs` |
+| …why is nothing saving? | `supabaseStorage.doSet` plus the RLS policies |
+| …why can somebody see (or not see) a tab? | `AuthGate.fetchRole` and `App`'s `isAdmin` guards |
+| …where did my schedule go? | `resolveDay`'s `droppedChains` branch (R1) |
+
+## Glossary
+
+| Hungarian | English | Note |
+|---|---|---|
+| fuvar | ride, run | one bus trip |
+| beosztás | schedule, roster | the `assignments` |
+| csapat | team | |
+| állomás, megálló | station, stop | a pickup point |
+| helyszín | venue | where a training is held |
+| telephely | depot | where a bus spends the night |
+| jármű, busz, kisbusz | vehicle, bus, minibus | |
+| sofőr | driver | **also a stored role value**, `sofor` |
+| edzés | training | |
+| rendszám | licence plate | |
+| férőhely | seat, capacity | excludes the driver |
+| **oda** | outbound | villages → venue. **A stored data value** |
+| **vissza** | return | venue → villages. **A stored data value** |
+| lánc | chain | tasks run back to back by one driver and bus |
+| feladat | task | one outbound or return unit of work |
+| üresjárat | deadhead | driving empty between tasks |
+| órabér | hourly wage | |
+| műszak | shift | |
+| kiszállási díj | call-out fee | a fixed cost per driver dispatch |
+| elérhetőség | availability | a driver's time windows |
+| létszám | headcount | passengers |
+| törzsadat | master data | the reference entities |
+| ütközés | clash, conflict | overlapping use of a vehicle or driver |
+| fedetlen | uncovered | a task with no valid assignment |
+| mátrix | matrix | the travel-time table |
+| matrica | vignette | the national motorway pass |

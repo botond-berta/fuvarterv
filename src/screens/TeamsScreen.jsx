@@ -1,14 +1,14 @@
-/* Fuvarterv — Csapatok — állomások, létszámok, útvonal, edzések
-   Kiemelve a fuvarterv.jsx-ből. A megállólista-szerkesztő azóta önálló,
-   újrahasznosított komponens (StopListEditor): a csapat állandó listáját és az
-   edzés saját listáját (TrainingDetail) ugyanaz szolgálja ki. */
+/* Fuvarterv — Teams: stations, headcounts, routing, trainings.
+
+   The stop list editor is its own reusable component (StopListEditor): the same one
+   serves a team's standing list and a training's own list (TrainingDetail). */
 
 import { useState } from "react";
 import { Plus, Pencil, ChevronLeft, AlertTriangle, MapPin, ChevronsRight, Route } from "lucide-react";
 import { GENDERS, TEAM_COLORS, uid, byId } from "../domain/constants.js";
 import { DAYS, DAYS_SHORT } from "../domain/constants.js";
 import { fmtDate } from "../domain/datetime.js";
-import { Field, Modal, DangerBtn, TeamDot, EmptyState, InfoDot } from "../ui/base.jsx";
+import { Field, Modal, DangerBtn, TeamDot, EmptyState } from "../ui/base.jsx";
 import { fmtDateFull, toISO } from "../domain/datetime.js";
 import { StopListEditor } from "./StopListEditor.jsx";
 
@@ -88,7 +88,7 @@ export function TeamForm({ team, onSave, onCancel }) {
   );
 }
 
-export function TeamDetail({ state, update, team, onBack, notice }) {
+export function TeamDetail({ state, update, team, onBack }) {
   const [editing, setEditing] = useState(false);
   const [trForm, setTrForm] = useState(null); // null | {} | training
   const [selTrId, setSelTrId] = useState(null);
@@ -198,8 +198,8 @@ export function TeamDetail({ state, update, team, onBack, notice }) {
   );
 }
 
-/* Egy edzés részletei. Külön képernyő és nem modál: a megállólista-szerkesztő
-   túl magas ahhoz, hogy mobilon egy alsó lapon kényelmesen elférjen. */
+/* One training's detail. Its own screen rather than a modal: the stop list editor is
+   too tall to sit comfortably in a bottom sheet on a phone. */
 export function TrainingDetail({ state, update, team, training, onBack }) {
   const [editing, setEditing] = useState(false);
   const venue = byId(state.venues, training.venueId);
@@ -210,9 +210,9 @@ export function TrainingDetail({ state, update, team, training, onBack }) {
   }));
   const setStops = (patch) => setTraining({ stops: { ...training.stops, ...patch } });
 
-  /* Bekapcsoláskor a csapat aktuális listájából indulunk, hogy legyen mit
-     szerkeszteni — ugyanaz a minta, mint a visszaút külön listájánál. A másolat
-     ettől a pillanattól független: a csapat listájának változása nem követi. */
+  /* Switching it on seeds from the team's current list so there is something to
+     edit, the same pattern the separate return list uses. From that moment the copy
+     is independent: later changes to the team's list do not follow it. */
   const copyOf = (src) => ({
     stationIds: [...(src.stationIds || [])],
     stationCounts: { ...(src.stationCounts || {}) },
@@ -225,8 +225,8 @@ export function TrainingDetail({ state, update, team, training, onBack }) {
   });
   const setOwn = (v) => setTraining({ stops: v ? copyOf(team) : null });
 
-  /* A csapat többi, saját listás edzése — egy háromedzéses csapatnál enélkül
-     minden listát elölről kellene összekattintgatni. */
+  /* The team's other trainings that already have their own list. Without this, a
+     team with three sessions would need every list clicked together from scratch. */
   const sources = state.trainings.filter((t) => t.teamId === team.id && t.id !== training.id && t.stops);
   const when = (t) => (t.type === "weekly" ? (t.days || []).map((d) => DAYS_SHORT[d]).join(", ") : fmtDate(t.date));
 

@@ -1,5 +1,11 @@
-/* Fuvarterv — Leaflet térképes koordináta-választó, offline SVG tartalékkal
-   Kiemelve a fuvarterv.jsx-ből; a viselkedés változatlan. */
+/* Fuvarterv — a Leaflet coordinate picker, with an offline SVG fallback.
+
+   Leaflet is loaded lazily from a CDN the first time a picker opens, so it stays out
+   of the main bundle. When that load fails — no network, a CSP that blocks it, or
+   tiles that never arrive — the offline picker below takes over: a grid with the
+   known points drawn on it, which is enough to place a stop roughly and correct it
+   later. A coordinate is mandatory, so there has to be a way to enter one even with
+   no map. */
 
 import { useState, useEffect, useMemo, useRef } from "react";
 import { Plus, Minus, AlertTriangle, X, Search } from "lucide-react";
@@ -16,8 +22,8 @@ export function loadLeaflet() {
   if (leafletLoader) return leafletLoader;
   leafletLoader = new Promise((resolve, reject) => {
     const CSS_ID = "leaflet-css";
-    // Csak egyszer fűzzük be a stíluslapot: újrapróbálkozáskor korábban minden
-    // kísérlet hagyott maga után egy halott <link>-et és egy halott <script>-et.
+    // Attach the stylesheet only once. Every retry used to leave behind a dead
+    // <link> and a dead <script>.
     if (!document.getElementById(CSS_ID)) {
       const css = document.createElement("link");
       css.id = CSS_ID;
@@ -28,8 +34,8 @@ export function loadLeaflet() {
     const js = document.createElement("script");
     js.src = "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js";
     js.onload = () => {
-      // A script betöltődhet úgy is, hogy a globális L nem jön létre (pl. CSP);
-      // ilyenkor a hívó egyértelmű hibát kapjon, ne egy undefined-ot.
+      // The script can load without the global L ever appearing (a CSP, for
+      // instance). The caller should get a clear error rather than an undefined.
       if (window.L) resolve(window.L);
       else { js.remove(); leafletLoader = null; reject(new Error("Leaflet betöltési hiba")); }
     };
@@ -39,7 +45,7 @@ export function loadLeaflet() {
   return leafletLoader;
 }
 
-/* Koordináta-szöveg értelmezése: "46.25311, 20.14503" vagy "46,25311 20,14503" */
+/* Parse a pasted coordinate: "46.25311, 20.14503" or the comma-decimal form. */
 export function parseLatLon(str) {
   const m = String(str || "").trim().match(/^(-?\d{1,3}(?:[.,]\d+)?)[;,\s]+(-?\d{1,3}(?:[.,]\d+)?)$/);
   if (!m) return null;
@@ -48,7 +54,7 @@ export function parseLatLon(str) {
   return { lat, lon };
 }
 
-/* Egyszerű helyi vetítés az offline térképhez (városi léptékben pontos) */
+/* A simple local projection for the offline map; accurate at town scale. */
 export const DEG_M = 111320; // méter / szélességi fok
 export function projPx(view, size, lat, lon) {
   const cosL = Math.cos((view.lat * Math.PI) / 180);
@@ -65,9 +71,9 @@ export function projGeo(view, size, x, y) {
   };
 }
 
-/* Offline (csempementes) választó: rács + a meglévő pontok tájékozódásul.
-   Koppintás = jelölő (közeli ismert pontra rásnappel), húzás = pásztázás,
-   jelölő húzható, +/− gombokkal nagyítás. */
+/* The offline (tile-free) picker: a grid plus the existing points for orientation.
+   Tap places the marker (snapping to a nearby known point), drag pans, the marker
+   itself is draggable, and the +/- buttons zoom. */
 export function OfflinePicker({ state, view, setView, pos, setPos }) {
   const boxRef = useRef(null);
   const drag = useRef(null);
@@ -237,7 +243,7 @@ export function MapPickerModal({ state, item, title, onSave, onClose }) {
       mapRef.current = map;
       setMode("osm");
       setTimeout(() => { if (mapRef.current) mapRef.current.invalidateSize(); }, 80);
-      // Csempe-ellenőrzés: ha csak hibák jönnek és egy csempe sem tölt be, offline módra váltunk
+      // Tile check: if only errors arrive and not one tile loads, fall back to offline mode.
       const check = () => {
         if (!alive || okTiles > 0) return;
         if (errTiles > 0) { goOffline("tiles"); return; }
@@ -263,7 +269,7 @@ export function MapPickerModal({ state, item, title, onSave, onClose }) {
       if (!r.ok) throw new Error("http");
       const js = await r.json();
       setResults(Array.isArray(js) ? js : []);
-    } catch (e) {
+    } catch {
       setSearchErr("A címkeresés most nem érhető el — jelölj kézzel, vagy illessz be koordinátát lent.");
     } finally {
       setSearchBusy(false);

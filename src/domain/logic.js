@@ -1,11 +1,12 @@
-/* Fuvarterv — rendszám, előfordulások, fuvarablakok, ütközések, törlésvédelem
-   Kiemelve a fuvarterv.jsx monolitból; a viselkedés változatlan. */
+/* Fuvarterv — plates, occurrences, ride windows, clashes, delete guards.
+
+   Pure domain: no window, no network, no Math.random on any decision path. */
 
 import { byId } from "./constants.js";
 import { toISO, parseISO, weekdayIdx, addDays, timeToMin } from "./datetime.js";
 import { legMin } from "./geo.js";
 
-/* Rendszám: nagybetű, kötőjel a betű–szám határon (ABC-123, AABB-123) */
+/* Plate: upper-cased, hyphen at the letter/digit boundary (ABC-123, AABB-123). */
 export function normalizePlate(raw) {
   const s = (raw || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
   const m = s.match(/^([A-Z]+)(\d+)$/);
@@ -17,7 +18,7 @@ export function plateExists(state, plate, exceptId) {
   return state.vehicles.some((v) => v.id !== exceptId && normalizePlate(v.plate) === p);
 }
 
-/* Egy edzés adott heti előfordulásai */
+/* Every occurrence of every training inside one week. */
 export function weekOccurrences(state, mon) {
   const out = [];
   for (const t of state.trainings) {
@@ -33,19 +34,22 @@ export function weekOccurrences(state, mon) {
 
 
 
-/* Több fuvar is tartozhat egy edzésalkalomhoz (több busz hordja a csapatot) */
+/* One training session can have several rides: more than one bus carrying the team. */
 export function findRides(state, training, dayIdx) {
   return state.rides.filter((r) => r.trainingId === training.id && (training.type !== "weekly" || r.day === dayIdx));
 }
 
-/* A helyszíni indulás ideje egy VISSZA fuvarnál (edzés vége + ráhagyás). */
+/* Departure time from the venue on a return leg: training end plus the margin. */
 export function venueDepartMin(state, training) {
   return (timeToMin(training.end) ?? 0) + (state.settings?.departAfterMin ?? 0);
 }
 
-/* Fuvar foglaltsági ablaka. ODA: első megálló indulása → utolsó megálló + út a
-   helyszínig (így egy sofőr/jármű több kört is vihet ugyanahhoz az edzéshez
-   álütközés nélkül). VISSZA: helyszíni indulás → utolsó megálló érkezése. */
+/* The window in which a ride occupies its driver and vehicle.
+
+   Outbound: first stop's departure until the last stop plus the run to the venue,
+   so one driver or bus can make several trips for the SAME training without
+   showing a false clash. Return: departure from the venue until the last stop's
+   arrival. */
 export function rideWindow(state, ride, training) {
   const stops = (ride.stops || []).filter((s) => timeToMin(s.time) != null);
   if ((ride.dir || "oda") === "vissza") {
@@ -64,15 +68,16 @@ export function rideWindow(state, ride, training) {
 
 export function occursOnSameDay(rA, tA, rB, tB) {
   if (tA.type === "once" && tB.type === "once") return tA.date === tB.date;
-  // Dátum nélküli egyszeri edzés nem helyezhető el a héten — a weekdayIdx(null)
-  // korábban TypeError-t dobott innen, a Hét képernyő renderelése közben.
+  // A one-off training with no date cannot be placed in the week at all.
+  // weekdayIdx(null) used to throw a TypeError from here, mid-render on the week
+  // screen, taking the whole page down.
   const dayOf = (t, r) => (t.type === "weekly" ? r.day : (t.date ? weekdayIdx(t.date) : null));
   const dayA = dayOf(tA, rA), dayB = dayOf(tB, rB);
   if (dayA == null || dayB == null) return false;
   return dayA === dayB;
 }
 
-/* Jármű- és sofőrütközések egy (tervezett) fuvarhoz képest */
+/* Vehicle and driver clashes against a candidate (possibly unsaved) ride. */
 export function findConflicts(state, cand) {
   const tA = byId(state.trainings, cand.trainingId);
   if (!tA) return [];
@@ -93,11 +98,13 @@ export function findConflicts(state, cand) {
 
 export const seatSum = (stops) => stops.reduce((a, s) => a + (Number(s.count) > 0 ? Number(s.count) : 0), 0);
 
-/* Törlésvédelem a törzsadatokhoz */
-/* Hány mentett beosztás-lánc hivatkozik erre a sofőrre / járműre. A fuvarok
-   önmagukban nem elegendők: egy lánc a beosztásban élhet anélkül is, hogy már
-   fuvarrá lett volna generálva, és a törlése után a resolveDay csendben
-   `undefined` sofőrt/járművet ad — a lánc hibajelzés nélkül, 0 Ft bérrel jelenik meg. */
+/* Delete guards for the master data. */
+/* How many saved schedule chains reference this driver or vehicle.
+
+   Counting rides alone is not enough: a chain can exist in the schedule without
+   having been generated into rides yet. Delete the driver and resolveDay silently
+   resolves to `undefined`, so the chain renders with no warning and a wage of
+   zero. */
 export function chainRefs(state, field, id) {
   let c = 0;
   for (const day of Object.values(state.assignments || {}))
@@ -105,35 +112,36 @@ export function chainRefs(state, field, id) {
   return c;
 }
 
-/* Honnan jönnek a megállók: az edzés saját listájából, vagy a csapatéból.
+/* Where the stops come from: the training's own list, or the team's.
 
-   Egy csapatnak több edzése lehet, akár külön helyszíneken — a megállók, a
-   létszámok és a sorrend edzésenként eltérhetnek. Az edzés `stops` mezője
-   ezért egy TELJES felülírás: vagy null (a csapat listája érvényes, ez a
-   korábbi viselkedés), vagy ugyanazokkal a mezőnevekkel megadott saját lista.
-   Az azonos mezőnevek nem véletlenek: így ugyanaz a feloldás és ugyanaz a
-   szerkesztő komponens szolgálja ki mindkét szintet, adapter nélkül.
+   A team can have several trainings, possibly at different venues, and the stops,
+   headcounts and order may differ per training. A training's `stops` field is
+   therefore a COMPLETE override: either null (the team's list applies, which is
+   the original behaviour) or a full list of its own using the same field names.
 
-   Irányonként félig örökölni (odaút az edzésé, visszaút a csapaté) szándékosan
-   nem lehet: az átláthatatlan mátrixot adna. Az edzés vagy a csapatét
-   használja, vagy van egy önálló, teljes sajátja. */
+   The matching field names are not an accident. They let one resolver and one
+   editor component serve both levels with no adapter in between.
+
+   Inheriting by direction (outbound from the training, return from the team) is
+   deliberately impossible: that would produce an unreadable matrix of cases. A
+   training either uses the team's list or has a complete one of its own. */
 export function legSource(team, training) {
   return training?.stops || team || {};
 }
 export const hasOwnStops = (training) => !!training?.stops;
 
-/* Egy megállólista adott irányhoz tartozó "lába": mely megállókat érinti,
-   mennyi emberrel, és melyik megálló van rögzítve a sor végére.
+/* One direction's "leg" of a stop list: which stops it touches, with how many
+   people, and which stop is pinned to the end of the line.
 
-   Ez az EGYETLEN hely, ahol eldől, hogy a visszaút saját listát használ-e vagy
-   tükrözi az odautat. Ha nincs `returnStationIds`, mindkét irány az odaút
-   mezőit kapja — vagyis a korábbi viselkedés változatlan, és a meglévő
-   csapatoknál semmit nem kell átállítani. A szabály a forráson belül él, tehát
-   egy saját listás edzésnél az ő odaútját tükrözi, nem a csapatét.
+   This is the ONLY place that decides whether the return leg uses its own list or
+   mirrors the outbound one. With no `returnStationIds`, both directions get the
+   outbound fields, so the original behaviour is unchanged and existing teams need
+   no migration. The rule lives inside the source, so a training with its own list
+   mirrors ITS outbound leg, not the team's.
 
-   `isOverride` azért kell, mert a rendezés máshogy viselkedik: egy tükrözött
-   visszautat meg kell fordítani, egy kézzel összeállított visszaút-listát
-   viszont NEM — annak a sorrendje már a szándékolt sorrend. */
+   `isOverride` matters because ordering differs: a mirrored return leg must be
+   reversed, but a hand-built return list must NOT be — its order is already the
+   intended one. */
 export function legFor(team, training, dir) {
   const src = legSource(team, training);
   const own = dir === "vissza" && Array.isArray(src.returnStationIds);
@@ -156,31 +164,32 @@ export function legFor(team, training, dir) {
   };
 }
 
-/* A csapat szintje: pontosan az, ami az edzésenkénti listák előtt volt. Ez a
-   wrapper mondja ki azt az invariánst, amit a return-leg tesztek ellenőriznek:
-   felülírás nélkül semmi nem változik. */
+/* The team-level call. This wrapper states the invariant the return-leg tests
+   check: with no override, nothing changes. */
 export const teamLeg = (team, dir) => legFor(team, null, dir);
 
-/* Országos autópálya-matrica. A jelölés a HELYSZÍNEN van (`needsVignette`), a
-   járművön pedig a tény (`hasVignette`) — a feladat két végpontja közül az egyik
-   mindig a helyszín (ODA: `to`, VISSZA: `from`), ezért iránytól függetlenül
-   elég mindkettőt megnézni. A megállók szándékosan nem jelölhetők: a matricát a
-   célpont kényszeríti ki, és így egyetlen mezőt kell karbantartani. */
+/* The national motorway vignette. The REQUIREMENT is marked on the venue
+   (`needsVignette`); the FACT is on the vehicle (`hasVignette`).
+
+   One of a task's two endpoints is always the venue (outbound: `to`, return:
+   `from`), so checking both covers either direction with no special case. Stops
+   deliberately cannot be marked: the destination is what forces the vignette, and
+   this way there is one field to maintain rather than dozens. */
 export const venueNeedsVignette = (state, id) => !!byId(state.venues, id)?.needsVignette;
 export const taskNeedsVignette = (state, task) =>
   venueNeedsVignette(state, task.from) || venueNeedsVignette(state, task.to);
 export const chainNeedsVignette = (state, chain) =>
   (chain?.tasks || []).some((t) => taskNeedsVignette(state, t));
-/* Mely matricás helyszínekre megy a lánc — az indoklásokhoz, hogy ne csak azt
-   mondjuk meg, hogy baj van, hanem azt is, melyik helyszín miatt. */
+/* Which vignette-requiring venues this chain visits. Used by the explanations,
+   so we say WHICH venue caused the problem rather than only that there is one. */
 export const vignetteVenues = (state, chain) => [...new Set((chain?.tasks || [])
   .flatMap((t) => [t.from, t.to])
   .filter((id) => venueNeedsVignette(state, id))
   .map((id) => byId(state.venues, id).name))];
 
-/* Melyik telephelyről indul és hova tér vissza ez a jármű. A jármű saját
-   telephelye erősebb a klubénál; ha egyik sincs, null — olyankor a fizetett idő
-   a feladatoktól számít, ahogy a telephelyek bevezetése előtt. */
+/* Which depot this vehicle leaves from and returns to. A vehicle's own depot
+   beats the club's. With neither, null: paid time is then measured from the tasks
+   themselves, exactly as it was before depots existed. */
 export function baseOf(state, vehicleId) {
   const v = byId(state.vehicles, vehicleId);
   return (v && v.baseId) || state.settings?.defaultBaseId || null;
@@ -189,11 +198,11 @@ export function baseOf(state, vehicleId) {
 export function deleteGuard(state, kind, id) {
   const n = (c, w) => (c > 0 ? `Használatban: ${c} ${w}.` : null);
   if (kind === "stations") {
-    // A visszaút saját listáját is számolni kell: egy csak hazafelé használt
-    // állomás egyébként hivatkozatlannak látszana, törölhetővé válna, és utána
-    // a teamRouteOrder szűrője némán kihagyná — a gyerekeket nem vinné haza senki.
-    // Ugyanez áll az edzések saját listáira: egy csak ott használt állomás
-    // szintén hivatkozatlannak tűnne.
+    // The return-leg list has to be counted too. A station used only on the way
+    // home would otherwise look unreferenced, become deletable, and afterwards
+    // teamRouteOrder's filter would silently skip it — nobody would take those
+    // children home. The same applies to a training's own list: a station used
+    // only there would look unreferenced as well.
     const inSource = (src) => (src.stationIds || []).includes(id) || (src.returnStationIds || []).includes(id);
     const c = state.teams.filter(inSource).length
       + state.trainings.filter((t) => t.stops && inSource(t.stops)).length
@@ -208,15 +217,15 @@ export function deleteGuard(state, kind, id) {
   if (kind === "vehicles") {
     const c = state.rides.filter((r) => r.vehicleId === id).length
       + chainRefs(state, "vehicleId", id)
-      // Egy törölt preferált jármű tartósan bünteti a sofőrt: az offPreferred
-      // minden járműre igaz marad, így a preferredBias végleg elrejti őt.
+      // A deleted preferred vehicle penalises its driver forever: offPreferred
+      // stays true for every bus, so preferredBias hides that driver for good.
       + state.drivers.filter((d) => d.preferredVehicleId === id).length;
     return n(c, "fuvar/beosztás/sofőr");
   }
   if (kind === "bases") {
-    // A settings.defaultBaseId-t is számolni kell: a klub telephelyét törölve
-    // minden jármű telephely nélkül maradna, és a fizetett idő némán visszaesne
-    // a feladatok szerinti számításra.
+    // settings.defaultBaseId has to be counted too. Delete the club depot and
+    // every vehicle is left without one, and paid time silently falls back to
+    // being measured from the tasks.
     const c = state.vehicles.filter((v) => v.baseId === id).length
       + (state.settings?.defaultBaseId === id ? 1 : 0);
     return n(c, "jármű/beállítás");

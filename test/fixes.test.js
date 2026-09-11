@@ -1,8 +1,9 @@
 import { describe, test, expect } from "vitest";
-import {
-  legMin, teamPax, deleteGuard, ensureShape,
-  planOda, planVissza, venueDepartMin, timeToMin, minToTime, bestStationOrder,
-} from "../fuvarterv.jsx";
+import { ensureShape } from "../src/data/seed.js";
+import { timeToMin, minToTime } from "../src/domain/datetime.js";
+import { legMin } from "../src/domain/geo.js";
+import { deleteGuard, venueDepartMin } from "../src/domain/logic.js";
+import { teamPax, planOda, planVissza, bestStationOrder } from "../src/domain/optimizer.js";
 
 /*
  * Regression tests for the defects fixed in this branch. Each test states the

@@ -1,5 +1,7 @@
-/* Fuvarterv — alap építőkockák (Field, Modal, DangerBtn, …)
-   Kiemelve a fuvarterv.jsx-ből; a viselkedés változatlan. */
+/* Fuvarterv — the shared building blocks (Field, Modal, DangerBtn and friends).
+
+   Presentation only. Nothing here reaches into the application state; each component
+   takes what it renders as props. */
 
 import { useState, useEffect, useRef, useId } from "react";
 import { AlertTriangle, Boxes, CalendarDays, Car, HelpCircle, Trash2, Workflow, X } from "lucide-react";
@@ -14,12 +16,13 @@ export function Field({ label, children, hint }) {
   );
 }
 
-/* Számmező, ami gépelés közben nem ugrál. A nyers `Number(e.target.value) || 0`
-   mintával a mező kiürítése azonnal 0-t (vagy 1-et) írt vissza, így az "50"
-   begépeléséből "150" lett. Itt a gépelt szöveg helyben marad, és csak elhagyáskor
-   (blur / Enter) rögzül számként — érvénytelen bevitelnél az előző érték áll vissza. */
+/* A number field that does not fight the person typing into it. With the naive
+   `Number(e.target.value) || 0` pattern, clearing the field immediately wrote back 0
+   (or 1), so typing "50" produced "150". Here the typed text stays as typed and is
+   only committed as a number on blur or Enter; invalid input reverts to the previous
+   value. */
 export function NumField({ label, hint, value, min = 0, onCommit }) {
-  const [raw, setRaw] = useState(null);          // null = a mentett érték látszik
+  const [raw, setRaw] = useState(null);          // null means the committed value is shown
   const commit = () => {
     const n = Number(raw);
     if (raw !== null && raw.trim() !== "" && Number.isFinite(n)) onCommit(Math.max(min, n));
@@ -36,9 +39,9 @@ export function NumField({ label, hint, value, min = 0, onCommit }) {
   );
 }
 
-/* Logikai mező. A natív checkbox marad a kattintható címke mögött, hogy a
-   billentyűzet és a képernyőolvasó ingyen működjön; csak a méret és a szín
-   igazodik a többi mezőhöz. */
+/* A boolean field. The native checkbox stays behind the clickable label so keyboard
+   and screen-reader support come for free; only the size and colour are restyled to
+   match the other fields. */
 export function Check({ label, hint, checked, onChange }) {
   return (
     <label className="block mb-3" style={{ cursor: "pointer" }}>
@@ -54,10 +57,10 @@ export function Check({ label, hint, checked, onChange }) {
 
 export function Modal({ title, onClose, children }) {
   const titleId = useId();
-  /* A háttérre kattintás csak akkor zár, ha az egérgomb LENYOMÁSA is a háttéren
-     történt. Enélkül elég az inputban elkezdett szövegkijelölést pár pixellel a
-     modálon kívül elengedni: a click a közös ősre, a háttérre esik, és a fél
-     kitöltött űrlap (vagy a térképen épp kiválasztott koordináta) elveszik. */
+  /* A click on the backdrop only closes when the mouse went DOWN on the backdrop
+     too. Without that, releasing a text selection a few pixels outside the modal is
+     enough: the click lands on the common ancestor, the backdrop, and a half-filled
+     form (or a coordinate just picked on the map) is lost. */
   const downOnBg = useRef(false);
 
   useEffect(() => {
@@ -81,7 +84,7 @@ export function Modal({ title, onClose, children }) {
   );
 }
 
-/* Kétlépcsős törlés: első koppintásra élesedik, 3 mp múlva visszaáll */
+/* Two-step delete: the first tap arms it, and it disarms itself after 3 seconds. */
 export function DangerBtn({ label = "Törlés", confirmLabel = "Biztos törlöd?", onConfirm, small, disabledReason, onBlocked }) {
   const [armed, setArmed] = useState(false);
   useEffect(() => { if (!armed) return; const t = setTimeout(() => setArmed(false), 3000); return () => clearTimeout(t); }, [armed]);
@@ -114,7 +117,7 @@ export function EmptyState({ children }) {
   return <div className="card p-5 text-center text-sm" style={{ color: "var(--ink2)", borderStyle: "dashed" }}>{children}</div>;
 }
 
-/* Kis „?” buborék — koppintásra rövid magyarázatot mutat. `align`: l | c | r */
+/* A small "?" bubble showing a short explanation on tap. `align` is l | c | r. */
 export function InfoDot({ text, align = "c", label = "Mi ez?" }) {
   const [open, setOpen] = useState(false);
   return (
@@ -134,7 +137,7 @@ export function InfoDot({ text, align = "c", label = "Mi ez?" }) {
   );
 }
 
-/* Súgó lap: hogyan működik az app + ajánlott munkamenet */
+/* The help sheet: how the app works, and the recommended order of work. */
 export function HelpSheet({ onClose }) {
   const rows = [
     [CalendarDays, "Hét", "A hét összes edzése és fuvarja egy helyen. Koppints egy fuvarra a szerkesztéshez."],

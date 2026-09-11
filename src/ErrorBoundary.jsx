@@ -1,14 +1,14 @@
 import { Component } from "react";
-import "./theme.css";
+import "./ui/styles.css";
 
 /*
- * Az alkalmazásnak nem volt hibahatára: egyetlen dobás bármelyik képernyőn fehér
- * oldalt eredményezett, ahonnan a felhasználó még elnavigálni sem tudott, hogy a
- * hibát okozó adatot kijavítsa. Ez a határ megtartja a shellt (fejléc, mentések,
- * kijelentkezés), és felkínálja a két értelmes kiutat: újratöltés vagy a korábbi
- * mentések megnyitása.
+ * The app had no error boundary: a single throw on any screen produced a white page
+ * the user could not even navigate away from to fix the data that caused it. This
+ * boundary keeps the shell alive and offers the two useful ways out — reload, or
+ * open the earlier snapshots.
  *
- * Szándékosan osztálykomponens — React-ben csak így lehet hibahatárt írni.
+ * Deliberately a class component: in React that is still the only way to write an
+ * error boundary.
  */
 export default class ErrorBoundary extends Component {
   constructor(props) {
@@ -21,28 +21,28 @@ export default class ErrorBoundary extends Component {
   }
 
   componentDidCatch(error, info) {
-    // Konzolra a teljes kép: a felhasználónak szánt szöveg szándékosan rövid.
+    // The full picture goes to the console; the text shown to the user stays short.
     console.error("Váratlan hiba a felületen:", error, info?.componentStack);
   }
 
   render() {
     if (!this.state.error) return this.props.children;
     return (
-      <div className="v-screen">
-        <div className="v-card v-pad v-info-card">
-          <div className="v-title">Váratlan hiba történt</div>
-          <p className="v-muted" style={{ margin: 0 }}>
+      <div className="shell-screen">
+        <div className="shell-card shell-pad shell-info-card">
+          <div className="shell-title">Váratlan hiba történt</div>
+          <p className="shell-muted" style={{ margin: 0 }}>
             A felület egy része nem tudott megjelenni. Az adataid a szerveren
             érintetlenek — a legutóbbi, még el nem mentett módosításod veszhetett el.
           </p>
-          <p className="v-muted" style={{ margin: 0, fontSize: 13 }}>
+          <p className="shell-muted" style={{ margin: 0, fontSize: 13 }}>
             <code>{String(this.state.error?.message || this.state.error)}</code>
           </p>
-          <button className="v-btn v-btn-primary v-btn-block" onClick={() => window.location.reload()}>
+          <button className="shell-btn shell-btn-primary shell-btn-block" onClick={() => window.location.reload()}>
             Újratöltés
           </button>
           <button
-            className="v-btn v-btn-ghost v-btn-block"
+            className="shell-btn shell-btn-ghost shell-btn-block"
             onClick={() => window.dispatchEvent(new CustomEvent("fuvarterv:restore"))}
           >
             Korábbi mentések megnyitása

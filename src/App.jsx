@@ -1,5 +1,8 @@
-/* Fuvarterv — az alkalmazás héja: navigáció, állapot, mentés.
-   Kiemelve a fuvarterv.jsx-ből; a viselkedés változatlan. */
+/* Fuvarterv — the application shell: navigation, state, saving.
+
+   There is no global store. The whole application state is one object held here,
+   passed down as props, and updated through `update(fn)` with a pure transform.
+   At this size that is less machinery to understand, not more. */
 
 import { useState, useEffect, useRef, useContext } from "react";
 import { CalendarDays, Boxes, Car, Workflow, HelpCircle, RotateCcw, LogOut } from "lucide-react";
@@ -24,10 +27,10 @@ const TABS = [
 ];
 
 export default function App() {
-  /* Szerepkör: az AuthGate tölti be a szerverről, és amíg az App mountolva van,
-     nem változik (felhasználóváltáskor az App újramountol). Sofőrként a felület
-     csak a Sofőr fület adja, és SOSEM ír — a tényleges tiltást az adatbázis
-     szabályai (RLS, 0004-es migráció) adják, ez itt csak a hozzá illő UX. */
+  /* Role: AuthGate loads it from the server, and it does not change while App is
+     mounted (switching user remounts App). As a driver the UI offers only the driver
+     tab and NEVER writes. The actual prohibition comes from the database's row level
+     security policies; this is only the matching UX. */
   const { role, email: myEmail } = useContext(RoleContext);
   const isAdmin = role === "admin";
   const [state, setState] = useState(null);
@@ -35,23 +38,24 @@ export default function App() {
   const [rideTarget, setRideTarget] = useState(null);
   const [notice, setNotice] = useState("");
   const [loadError, setLoadError] = useState(false);
-  /* Sofőr + üres munkaterület: adminnál ilyenkor mintaadatot vetünk és MENTJÜK
-     (az hozza létre a sort) — sofőrként az az írás tilos is, hiábavaló is. */
+  /* Driver plus an empty workspace. For an admin we seed sample data and SAVE it
+     (that is what creates the row); for a driver that write is both forbidden and
+     pointless. */
   const [emptyWs, setEmptyWs] = useState(false);
   const [retryTick, setRetryTick] = useState(0);
   const [helpOpen, setHelpOpen] = useState(false);
   const loaded = useRef(false);
-  /* A legutóbb kiírt (vagy a szerverről változatlanul beolvasott) blob. A mentés
-     ehhez hasonlít, nem az objektumidentitáshoz — különben minden oldalbetöltés
-     visszaírná a beolvasott állapotot, ami a másik szerkesztőt „az adatok máshol
-     módosultak" ütközésbe kergetné, és elégetné a 20 elemű mentési előzményt. */
+  /* The last blob written out, or read back unchanged from the server. Saving
+     compares against THIS, not against object identity: otherwise every page load
+     would write the state it just read, pushing the other editor into a "changed
+     elsewhere" conflict and burning through the 20-slot save history. */
   const lastSaved = useRef(null);
-  /* A debounce-ban várakozó mentés, hogy unmountkor / lapelrejtéskor ki tudjuk
-     üríteni ahelyett, hogy a clearTimeout némán eldobná. */
+  /* The save waiting inside the debounce, so it can be flushed on unmount or when
+     the page is hidden, instead of being silently dropped by clearTimeout. */
   const pending = useRef(null);
 
   const flush = () => {
-    if (!isAdmin) return;   // sofőr sosem ír (a mentő-effekt sem ütemez neki)
+    if (!isAdmin) return;   // a driver never writes; the save effect never schedules one either
     const p = pending.current;
     if (!p) return;
     pending.current = null;
@@ -67,12 +71,12 @@ export default function App() {
         const s = await loadState();
         if (cancelled) return;
         if (s) {
-          // Valódi, szerverről olvasott állapot → már perzisztált, ne írjuk vissza.
+          // Real state read from the server: already persisted, so do not write it back.
           const shaped = ensureShape(s);
           lastSaved.current = JSON.stringify(shaped);
           setState(shaped);
         } else if (isAdmin) {
-          // Üres érték → mintaadat, amit ki KELL írni (ez hozza létre a sort).
+          // Empty value: seed sample data, which MUST be written out to create the row.
           setState(ensureShape(seedState()));
         } else {
           setEmptyWs(true);
@@ -98,17 +102,17 @@ export default function App() {
   }, [retryTick]);
 
   useEffect(() => {
-    if (!isAdmin) return;   // öv és nadrágtartó: az RLS amúgy is elutasítaná
+    if (!isAdmin) return;   // belt and braces; row level security would reject it anyway
     if (!loaded.current || !state) return;
     const blob = JSON.stringify(state);
-    if (blob === lastSaved.current) return;   // nincs valódi változás → nincs írás
+    if (blob === lastSaved.current) return;   // nothing actually changed, so nothing is written
     pending.current = { blob, state };
     const t = setTimeout(flush, 300);
     return () => clearTimeout(t);
   }, [state]);
 
-  /* A függőben lévő mentés kiürítése lapbezáráskor, elrejtéskor és unmountkor
-     (utóbbi a kijelentkezés: az <App/> unmountol, mielőtt a debounce lejárna). */
+  /* Flush a pending save when the page closes, is hidden, or unmounts. That last
+     one is signing out: <App/> unmounts before the debounce would fire. */
   useEffect(() => {
     const onHide = () => { if (document.visibilityState === "hidden") flush(); };
     window.addEventListener("pagehide", flush);

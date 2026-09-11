@@ -1,31 +1,40 @@
-/* Fuvarterv — perzisztencia-varrat és a hangolható beállítások alapértékei
-   Kiemelve a fuvarterv.jsx monolitból; a viselkedés változatlan. */
+/* Fuvarterv — the persistence seam, and the defaults for every tunable setting.
+
+   The app talks to storage only through window.storage, a four-method key-value
+   contract (get / set / delete / list). AuthGate installs the Supabase-backed
+   implementation at import time; tests install a stub. Swapping the backend means
+   writing one new object, not touching the app.
+
+   STORAGE_KEY must match workspace_id() in the database schema. If they disagree
+   the app loads an empty workspace and every save is rejected by row level
+   security. */
 
 export const STORAGE_KEY = "fuvarterv:v1";
 
-/* Az összes hangolható beállítás alapértéke — EGY forrás, hogy a seedState() és az
-   ensureShape() ne csúszhasson szét. Mindkettő innen dolgozik. */
+/* Defaults for every tunable setting — ONE source, so seedState() and
+   ensureShape() cannot drift apart. Both read from here. */
 export const DEFAULT_SETTINGS = {
-  arriveEarlyMin: 10,   // perc: mennyivel az edzés előtt érjen oda a busz
-  departAfterMin: 10,   // perc: mennyivel az edzés után induljon a visszaút
-  calloutFee: 1500,     // Ft: egy sofőr egyszeri kiszállási díja
-  dwellMin: 2,          // perc: megállási idő megállónként
-  estSpeedKmh: 50,      // km/h: légvonalas menetidő-becsléshez
-  fallbackLegMin: 12,   // perc: üresjárat, ha se mátrix, se koordináta nincs
-  preferredBias: 1000,  // Ft: büntetés, ha a sofőr nem a preferált buszát kapja (0 = kikapcsolva)
-  defaultBaseId: null,  // a klub telephelye; a jármű saját baseId-je felülírja
+  arriveEarlyMin: 10,   // min: how long before the training the bus should arrive
+  departAfterMin: 10,   // min: how long after the training the return leg departs
+  calloutFee: 1500,     // HUF: a driver's one-off call-out fee, per shift
+  dwellMin: 2,          // min: dwell time at each stop
+  estSpeedKmh: 50,      // km/h: used for straight-line travel time estimates
+  fallbackLegMin: 12,   // min: deadhead when there is neither a matrix nor coordinates
+  preferredBias: 1000,  // HUF: penalty when a driver is put on a bus other than their usual one (0 disables it)
+  defaultBaseId: null,  // the club depot; a vehicle's own baseId overrides it
 };
 
-/* Igaz, ha a hiba azt jelenti: "még nincs mentett adat" (üres munkaterület).
-   Csak ekkor szabad mintaadatot vetni; minden más hiba valódi (hálózat, jogosultság),
-   olyankor NEM vetünk mintaadatot a fel nem olvasott valós adat fölé. */
+/* True when the error means "nothing has been saved yet" (an empty workspace).
+   ONLY then may sample data be seeded. Every other error is real (network,
+   permissions), and seeding over real data we merely failed to read would destroy
+   it. */
 export function isNotFound(err) {
   return !!(err && err.code === "NOT_FOUND");
 }
 
-/* Betölti a mentett állapotot. Nincs adat → NOT_FOUND hibát dob (a hívó vet
-   mintaadatot). Bármely más hiba továbbdobódik, hogy a hívó újratöltő képernyőt
-   mutathasson mintaadat helyett. */
+/* Loads the saved state. No data throws NOT_FOUND, and the caller seeds from
+   there. Every other error is re-thrown so the caller can show a retry screen
+   instead of sample data. */
 export async function loadState() {
   const r = await window.storage.get(STORAGE_KEY);
   return r && r.value ? JSON.parse(r.value) : null;
@@ -33,5 +42,5 @@ export async function loadState() {
 
 export async function persistState(state) {
   try { await window.storage.set(STORAGE_KEY, JSON.stringify(state)); }
-  catch (e) { console.error("Mentési hiba:", e); }
+  catch (e) { console.error("Save failed:", e); }
 }

@@ -1,15 +1,17 @@
-/* Fuvarterv — Hét — a hét összes edzése, csapatszínekkel
-   Kiemelve a fuvarterv.jsx-ből; a viselkedés változatlan. */
+/* Fuvarterv — the Week tab: every training in the week, in team colours.
+
+   Read-only apart from the links into the ride editor; it renders occurrences derived
+   from the state rather than anything stored. */
 
 import { useState, useMemo } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { DAYS } from "../domain/constants.js";
 import { toISO, addDays, mondayOf, fmtDate, fmtWeekRange } from "../domain/datetime.js";
 import { weekOccurrences } from "../domain/logic.js";
-import { EmptyState, InfoDot } from "../ui/base.jsx";
+import { EmptyState } from "../ui/base.jsx";
 import { OccCard } from "../ui/OccCard.jsx";
 
-/* ---------- 4.1 HETI ÁTTEKINTÉS ---------- */
+/* ---------- Week overview ---------- */
 export function WeekScreen({ state, openRide }) {
   const [mon, setMon] = useState(() => mondayOf(new Date()));
   const todayISO = toISO(new Date());

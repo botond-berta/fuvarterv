@@ -1,15 +1,17 @@
 import { describe, test, expect } from "vitest";
-import {
-  teamLeg, legFor, legSource, hasOwnStops, legPax, teamPax, legRouteOrder,
-  genDayTasks, deleteGuard, ensureShape, mondayOf,
-} from "../fuvarterv.jsx";
+import { ensureShape } from "../src/data/seed.js";
+import { mondayOf } from "../src/domain/datetime.js";
+import { teamLeg, legFor, legSource, hasOwnStops, deleteGuard } from "../src/domain/logic.js";
+import { legPax, teamPax, legRouteOrder, genDayTasks } from "../src/domain/optimizer.js";
 
 /*
- * Egy csapatnak több edzése lehet, akár külön helyszíneken — a megállólista
- * viszont a csapaton élt, így minden edzésre ugyanaz az útvonal és ugyanaz a
- * létszám készült. Az edzés `stops` mezője ezt írja felül. A vezérlő szabály
- * ugyanaz, mint a visszaútnál: a HIÁNY (null) jelenti a korábbi viselkedést —
- * minden felülírás nélküli edzésnek pontosan úgy kell működnie, mint eddig.
+ * A team can have several trainings, possibly at different venues, but the stop list
+ * lived on the team, so every session got the same route and the same headcount. A
+ * training's `stops` field overrides that.
+ *
+ * The governing rule is the same one the return leg uses: ABSENCE (null) means the
+ * original behaviour, so every training without an override must work exactly as it
+ * did before.
  */
 
 const WEEKDAY = 2;
@@ -98,7 +100,7 @@ describe("az edzés saját listája felülírja a csapatét", () => {
     const leg = legFor(t, tr, "vissza");
     expect(leg.stationIds).toEqual(["sC", "sA"]);
     expect(leg.isOverride).toBe(false);
-    // a csapat saját visszaút-listája csak a csapat szintjén él tovább
+    // the team's own return list stays in force at the team level only
     expect(teamLeg(t, "vissza").stationIds).toEqual(["sD"]);
   });
 

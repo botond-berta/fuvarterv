@@ -3,9 +3,9 @@ import { createRoot } from "react-dom/client";
 import "./index.css";
 
 // AuthGate installs window.storage (Supabase-backed) at import time, before
-// App mounts. App itself is the portable single-file artifact at the repo root.
+// App mounts, so the app never renders against an unconfigured store.
 import AuthGate from "./AuthGate.jsx";
-import App from "../fuvarterv.jsx";
+import App from "./App.jsx";
 
 createRoot(document.getElementById("root")).render(
   <React.StrictMode>

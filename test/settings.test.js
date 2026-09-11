@@ -1,5 +1,6 @@
 import { describe, test, expect } from "vitest";
-import { DEFAULT_SETTINGS, seedState, ensureShape } from "../fuvarterv.jsx";
+import { DEFAULT_SETTINGS } from "../src/data/storage.js";
+import { seedState, ensureShape } from "../src/data/seed.js";
 
 /*
  * Guards against the two settings sources drifting apart. Before the

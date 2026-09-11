@@ -1,5 +1,8 @@
-/* Fuvarterv — mindenhol használt konstansok és apró segédek
-   Kiemelve a fuvarterv.jsx monolitból; a viselkedés változatlan. */
+/* Fuvarterv — constants and small helpers used across the whole app.
+
+   The day, month and gender lists are UI copy and stay Hungarian: they are
+   rendered directly, and DAYS is also indexed by weekday number everywhere in
+   the scheduler (Monday = 0). */
 
 export const DAYS = ["Hétfő", "Kedd", "Szerda", "Csütörtök", "Péntek", "Szombat", "Vasárnap"];
 export const DAYS_SHORT = ["H", "K", "Sze", "Cs", "P", "Szo", "V"];

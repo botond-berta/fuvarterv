@@ -3,7 +3,7 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 
 /*
- * The login screen used to answer every failure with "Hibás e-mail vagy jelszó",
+ * The login screen used to answer every failure with one "wrong e-mail or password"
  * throwing away the reason Supabase had already told it. That turned a two-click
  * fix (confirm the user) into a hunt through the browser's Network tab. These
  * tests pin each branch to the message it must produce.
@@ -51,7 +51,7 @@ async function mountAndSubmit() {
     await Promise.resolve();
   });
   return {
-    error: container.querySelector(".v-error")?.textContent ?? "",
+    error: container.querySelector(".shell-error")?.textContent ?? "",
     button: container.querySelector('button[type="submit"]'),
   };
 }
@@ -105,7 +105,7 @@ describe("the login form surfaces those messages", () => {
 
   test("a thrown error leaves the button usable again", async () => {
     // Regression: without try/catch the rejection escaped submit(), setStatus was
-    // never reached, and the button stayed on "Belépés…" forever with no message.
+    // never reached, and the button stayed on "signing in" forever with no message.
     signInWithPassword.mockRejectedValue(new TypeError("Failed to fetch"));
     const { error, button } = await mountAndSubmit();
     expect(error).toMatch(/Nem sikerült elérni a szervert/i);
