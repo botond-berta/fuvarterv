@@ -36,7 +36,9 @@ export default [
     },
   },
   {
-    files: ["test/**", "*.config.js"],
+    /* `tools/**` runs under Node, not in the browser: the parity fixture generator reads the
+       domain modules and writes files, so it needs the Node globals (ADR-29). */
+    files: ["test/**", "tools/**", "*.config.js"],
     languageOptions: { globals: { ...globals.node, ...globals.browser } },
   },
 ];

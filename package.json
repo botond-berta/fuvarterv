@@ -11,7 +11,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "parity:fixtures": "node tools/parity/gen-fixtures.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",

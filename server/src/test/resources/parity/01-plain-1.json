@@ -1,0 +1,2987 @@
+{
+ "name": "01-plain-1",
+ "weekday": 2,
+ "weekMonISO": "2026-08-03",
+ "state": {
+  "teams": [
+   {
+    "id": "tm0",
+    "name": "tm0",
+    "age": "U12",
+    "gender": "vegyes",
+    "color": "#000",
+    "stationIds": [
+     "s0",
+     "s1",
+     "s2",
+     "s3"
+    ],
+    "venueIds": [
+     "v0"
+    ],
+    "passengerCount": 8,
+    "stationCounts": {
+     "s0": 4,
+     "s1": 4,
+     "s2": 2,
+     "s3": 3
+    },
+    "routeMode": "auto",
+    "routeAnchorId": null,
+    "returnStationIds": null,
+    "returnStationCounts": {},
+    "returnRouteAnchorId": null
+   },
+   {
+    "id": "tm1",
+    "name": "tm1",
+    "age": "U12",
+    "gender": "vegyes",
+    "color": "#000",
+    "stationIds": [
+     "s3"
+    ],
+    "venueIds": [
+     "v0"
+    ],
+    "passengerCount": null,
+    "stationCounts": {
+     "s3": 1
+    },
+    "routeMode": "manual",
+    "routeAnchorId": null,
+    "returnStationIds": null,
+    "returnStationCounts": {},
+    "returnRouteAnchorId": null
+   },
+   {
+    "id": "tm2",
+    "name": "tm2",
+    "age": "U12",
+    "gender": "vegyes",
+    "color": "#000",
+    "stationIds": [
+     "s0",
+     "s1",
+     "s2"
+    ],
+    "venueIds": [
+     "v0"
+    ],
+    "passengerCount": null,
+    "stationCounts": {
+     "s0": 1,
+     "s1": 4,
+     "s2": 1
+    },
+    "routeMode": "auto",
+    "routeAnchorId": "s0",
+    "returnStationIds": [
+     "s2",
+     "s1"
+    ],
+    "returnStationCounts": {
+     "s2": 4,
+     "s1": 4
+    },
+    "returnRouteAnchorId": null
+   }
+  ],
+  "stations": [
+   {
+    "id": "s0",
+    "name": "s0",
+    "lat": 46.01289715617895,
+    "lon": 19.984480023616925
+   },
+   {
+    "id": "s1",
+    "name": "s1",
+    "lat": 46.11348509322852,
+    "lon": 19.683156712446362
+   },
+   {
+    "id": "s2",
+    "name": "s2",
+    "lat": 46.25955593818799,
+    "lon": 19.69700953993015
+   },
+   {
+    "id": "s3",
+    "name": "s3",
+    "lat": 46.046030207769945,
+    "lon": 19.564907031599432
+   }
+  ],
+  "venues": [
+   {
+    "id": "v0",
+    "name": "v0",
+    "lat": 46.58130051731132,
+    "lon": 19.996263273060322
+   }
+  ],
+  "bases": [
+   {
+    "id": "b0",
+    "name": "b0",
+    "lat": 46.37037895224057,
+    "lon": 19.258210057392716
+   }
+  ],
+  "vehicles": [
+   {
+    "id": "veh0",
+    "name": "veh0",
+    "plate": "AB-0",
+    "seats": 6,
+    "note": ""
+   },
+   {
+    "id": "veh1",
+    "name": "veh1",
+    "plate": "AB-1",
+    "seats": 8,
+    "note": ""
+   },
+   {
+    "id": "veh2",
+    "name": "veh2",
+    "plate": "AB-2",
+    "seats": 7,
+    "note": "",
+    "baseId": "b0"
+   },
+   {
+    "id": "veh3",
+    "name": "veh3",
+    "plate": "AB-3",
+    "seats": 6,
+    "note": "",
+    "baseId": "b0"
+   }
+  ],
+  "drivers": [
+   {
+    "id": "d0",
+    "name": "d0",
+    "phone": "",
+    "note": "",
+    "wage": 2600,
+    "minShiftMin": 180,
+    "availability": [
+     {
+      "days": [
+       2
+      ],
+      "start": "15:00",
+      "end": "19:00"
+     }
+    ],
+    "preferredVehicleId": null
+   },
+   {
+    "id": "d1",
+    "name": "d1",
+    "phone": "",
+    "note": "",
+    "wage": 2200,
+    "minShiftMin": 60,
+    "availability": [],
+    "preferredVehicleId": null
+   },
+   {
+    "id": "d2",
+    "name": "d2",
+    "phone": "",
+    "note": "",
+    "wage": 3400,
+    "minShiftMin": 60,
+    "availability": [
+     {
+      "days": [
+       2
+      ],
+      "start": "14:00",
+      "end": "17:00"
+     },
+     {
+      "days": [
+       2
+      ],
+      "start": "17:00",
+      "end": "22:00"
+     }
+    ],
+    "preferredVehicleId": null
+   },
+   {
+    "id": "d3",
+    "name": "d3",
+    "phone": "",
+    "note": "",
+    "wage": 2800,
+    "minShiftMin": 180,
+    "availability": [
+     {
+      "days": [
+       2
+      ],
+      "start": "14:00",
+      "end": "17:00"
+     },
+     {
+      "days": [
+       2
+      ],
+      "start": "17:00",
+      "end": "22:00"
+     }
+    ],
+    "preferredVehicleId": null
+   }
+  ],
+  "trainings": [
+   {
+    "id": "tr0",
+    "teamId": "tm0",
+    "venueId": "v0",
+    "type": "weekly",
+    "days": [
+     2
+    ],
+    "date": null,
+    "start": "15:00",
+    "end": "16:00"
+   },
+   {
+    "id": "tr1",
+    "teamId": "tm1",
+    "venueId": "v0",
+    "type": "weekly",
+    "days": [
+     2
+    ],
+    "date": null,
+    "start": "18:00",
+    "end": "19:30"
+   },
+   {
+    "id": "tr2",
+    "teamId": "tm2",
+    "venueId": "v0",
+    "type": "weekly",
+    "days": [
+     2
+    ],
+    "date": null,
+    "start": "18:00",
+    "end": "19:30"
+   }
+  ],
+  "rides": [],
+  "assignments": {},
+  "matrix": null,
+  "settings": {
+   "arriveEarlyMin": 10,
+   "departAfterMin": 10,
+   "calloutFee": 1500,
+   "dwellMin": 2,
+   "estSpeedKmh": 50,
+   "fallbackLegMin": 12,
+   "preferredBias": 0,
+   "defaultBaseId": "b0"
+  }
+ },
+ "expect": {
+  "matrixKey": "s0:46.01290,19.98448;s1:46.11349,19.68316;s2:46.25956,19.69701;s3:46.04603,19.56491;v0:46.58130,19.99626;b0:46.37038,19.25821",
+  "allPointIds": [
+   "s0",
+   "s1",
+   "s2",
+   "s3",
+   "v0",
+   "b0"
+  ],
+  "baseOf": {
+   "veh0": "b0",
+   "veh1": "b0",
+   "veh2": "b0",
+   "veh3": "b0"
+  },
+  "venueNeedsVignette": {
+   "v0": false
+  },
+  "legMin": {
+   "s0|s0": 0,
+   "s0|s1": 33,
+   "s0|s2": 44,
+   "s0|s3": 41,
+   "s0|v0": 78,
+   "s0|b0": 84,
+   "s1|s0": 33,
+   "s1|s1": 0,
+   "s1|s2": 22,
+   "s1|s3": 16,
+   "s1|v0": 71,
+   "s1|b0": 54,
+   "s2|s0": 44,
+   "s2|s1": 22,
+   "s2|s2": 0,
+   "s2|s3": 33,
+   "s2|v0": 53,
+   "s2|b0": 45,
+   "s3|s0": 41,
+   "s3|s1": 16,
+   "s3|s2": 33,
+   "s3|s3": 0,
+   "s3|v0": 84,
+   "s3|b0": 54,
+   "v0|s0": 78,
+   "v0|s1": 71,
+   "v0|s2": 53,
+   "v0|s3": 84,
+   "v0|v0": 0,
+   "v0|b0": 75,
+   "b0|s0": 84,
+   "b0|s1": 54,
+   "b0|s2": 45,
+   "b0|s3": 54,
+   "b0|v0": 75,
+   "b0|b0": 0,
+   "s0|__missing__": 12,
+   "__missing__|s0": 12,
+   "s1|__missing__": 12,
+   "__missing__|s1": 12
+  },
+  "weekOccurrences": [
+   {
+    "trainingId": "tr0",
+    "dayIdx": 2,
+    "dateISO": "2026-08-05"
+   },
+   {
+    "trainingId": "tr1",
+    "dayIdx": 2,
+    "dateISO": "2026-08-05"
+   },
+   {
+    "trainingId": "tr2",
+    "dayIdx": 2,
+    "dateISO": "2026-08-05"
+   }
+  ],
+  "bestStationOrder": [
+   {
+    "teamId": "tm0",
+    "label": "bare",
+    "ids": [
+     "s0",
+     "s1",
+     "s2",
+     "s3"
+    ],
+    "opts": {},
+    "out": [
+     "s2",
+     "s1",
+     "s3",
+     "s0"
+    ]
+   },
+   {
+    "teamId": "tm0",
+    "label": "post-venue",
+    "ids": [
+     "s0",
+     "s1",
+     "s2",
+     "s3"
+    ],
+    "opts": {
+     "post": "v0"
+    },
+    "out": [
+     "s0",
+     "s3",
+     "s1",
+     "s2"
+    ]
+   },
+   {
+    "teamId": "tm0",
+    "label": "pre-venue",
+    "ids": [
+     "s0",
+     "s1",
+     "s2",
+     "s3"
+    ],
+    "opts": {
+     "pre": "v0"
+    },
+    "out": [
+     "s2",
+     "s1",
+     "s3",
+     "s0"
+    ]
+   },
+   {
+    "teamId": "tm0",
+    "label": "fixed-first",
+    "ids": [
+     "s0",
+     "s1",
+     "s2",
+     "s3"
+    ],
+    "opts": {
+     "post": "v0",
+     "fixedFirst": "s0"
+    },
+    "out": [
+     "s0",
+     "s3",
+     "s1",
+     "s2"
+    ]
+   },
+   {
+    "teamId": "tm0",
+    "label": "fixed-last",
+    "ids": [
+     "s0",
+     "s1",
+     "s2",
+     "s3"
+    ],
+    "opts": {
+     "pre": "v0",
+     "fixedLast": "s3"
+    },
+    "out": [
+     "s2",
+     "s0",
+     "s1",
+     "s3"
+    ]
+   },
+   {
+    "teamId": "tm0",
+    "label": "fixed-first-absent",
+    "ids": [
+     "s0",
+     "s1",
+     "s2",
+     "s3"
+    ],
+    "opts": {
+     "post": "v0",
+     "fixedFirst": "__missing__"
+    },
+    "out": [
+     "s0",
+     "s1",
+     "s2",
+     "s3"
+    ]
+   },
+   {
+    "teamId": "tm1",
+    "label": "bare",
+    "ids": [
+     "s3"
+    ],
+    "opts": {},
+    "out": [
+     "s3"
+    ]
+   },
+   {
+    "teamId": "tm1",
+    "label": "post-venue",
+    "ids": [
+     "s3"
+    ],
+    "opts": {
+     "post": "v0"
+    },
+    "out": [
+     "s3"
+    ]
+   },
+   {
+    "teamId": "tm1",
+    "label": "pre-venue",
+    "ids": [
+     "s3"
+    ],
+    "opts": {
+     "pre": "v0"
+    },
+    "out": [
+     "s3"
+    ]
+   },
+   {
+    "teamId": "tm1",
+    "label": "fixed-first",
+    "ids": [
+     "s3"
+    ],
+    "opts": {
+     "post": "v0",
+     "fixedFirst": "s3"
+    },
+    "out": [
+     "s3"
+    ]
+   },
+   {
+    "teamId": "tm1",
+    "label": "fixed-last",
+    "ids": [
+     "s3"
+    ],
+    "opts": {
+     "pre": "v0",
+     "fixedLast": "s3"
+    },
+    "out": [
+     "s3"
+    ]
+   },
+   {
+    "teamId": "tm1",
+    "label": "fixed-first-absent",
+    "ids": [
+     "s3"
+    ],
+    "opts": {
+     "post": "v0",
+     "fixedFirst": "__missing__"
+    },
+    "out": [
+     "s3"
+    ]
+   },
+   {
+    "teamId": "tm2",
+    "label": "bare",
+    "ids": [
+     "s0",
+     "s1",
+     "s2"
+    ],
+    "opts": {},
+    "out": [
+     "s2",
+     "s1",
+     "s0"
+    ]
+   },
+   {
+    "teamId": "tm2",
+    "label": "post-venue",
+    "ids": [
+     "s0",
+     "s1",
+     "s2"
+    ],
+    "opts": {
+     "post": "v0"
+    },
+    "out": [
+     "s0",
+     "s1",
+     "s2"
+    ]
+   },
+   {
+    "teamId": "tm2",
+    "label": "pre-venue",
+    "ids": [
+     "s0",
+     "s1",
+     "s2"
+    ],
+    "opts": {
+     "pre": "v0"
+    },
+    "out": [
+     "s2",
+     "s1",
+     "s0"
+    ]
+   },
+   {
+    "teamId": "tm2",
+    "label": "fixed-first",
+    "ids": [
+     "s0",
+     "s1",
+     "s2"
+    ],
+    "opts": {
+     "post": "v0",
+     "fixedFirst": "s0"
+    },
+    "out": [
+     "s0",
+     "s1",
+     "s2"
+    ]
+   },
+   {
+    "teamId": "tm2",
+    "label": "fixed-last",
+    "ids": [
+     "s0",
+     "s1",
+     "s2"
+    ],
+    "opts": {
+     "pre": "v0",
+     "fixedLast": "s2"
+    },
+    "out": [
+     "s0",
+     "s1",
+     "s2"
+    ]
+   },
+   {
+    "teamId": "tm2",
+    "label": "fixed-first-absent",
+    "ids": [
+     "s0",
+     "s1",
+     "s2"
+    ],
+    "opts": {
+     "post": "v0",
+     "fixedFirst": "__missing__"
+    },
+    "out": [
+     "s0",
+     "s1",
+     "s2"
+    ]
+   }
+  ],
+  "legRouteOrder": [
+   {
+    "trainingId": "tr0",
+    "dir": "oda",
+    "out": [
+     "s0",
+     "s3",
+     "s1",
+     "s2"
+    ]
+   },
+   {
+    "trainingId": "tr0",
+    "dir": "vissza",
+    "out": [
+     "s2",
+     "s1",
+     "s3",
+     "s0"
+    ]
+   },
+   {
+    "trainingId": "tr1",
+    "dir": "oda",
+    "out": [
+     "s3"
+    ]
+   },
+   {
+    "trainingId": "tr1",
+    "dir": "vissza",
+    "out": [
+     "s3"
+    ]
+   },
+   {
+    "trainingId": "tr2",
+    "dir": "oda",
+    "out": [
+     "s0",
+     "s1",
+     "s2"
+    ]
+   },
+   {
+    "trainingId": "tr2",
+    "dir": "vissza",
+    "out": [
+     "s2",
+     "s1"
+    ]
+   }
+  ],
+  "plans": [
+   {
+    "trainingId": "tr0",
+    "dir": "oda",
+    "order": [
+     "s0",
+     "s3",
+     "s1",
+     "s2"
+    ],
+    "out": {
+     "stops": [
+      {
+       "stationId": "s0",
+       "arr": 760,
+       "dep": 762
+      },
+      {
+       "stationId": "s3",
+       "arr": 803,
+       "dep": 805
+      },
+      {
+       "stationId": "s1",
+       "arr": 821,
+       "dep": 823
+      },
+      {
+       "stationId": "s2",
+       "arr": 845,
+       "dep": 847
+      }
+     ],
+     "venueArr": 900,
+     "start": 760,
+     "end": 900
+    }
+   },
+   {
+    "trainingId": "tr0",
+    "dir": "vissza",
+    "order": [
+     "s2",
+     "s1",
+     "s3",
+     "s0"
+    ],
+    "out": {
+     "stops": [
+      {
+       "stationId": "s2",
+       "arr": 1153,
+       "dep": 1155
+      },
+      {
+       "stationId": "s1",
+       "arr": 1177,
+       "dep": 1179
+      },
+      {
+       "stationId": "s3",
+       "arr": 1195,
+       "dep": 1197
+      },
+      {
+       "stationId": "s0",
+       "arr": 1238,
+       "dep": 1240
+      }
+     ],
+     "venueDep": 1100,
+     "start": 1100,
+     "end": 1238
+    }
+   },
+   {
+    "trainingId": "tr1",
+    "dir": "oda",
+    "order": [
+     "s3"
+    ],
+    "out": {
+     "stops": [
+      {
+       "stationId": "s3",
+       "arr": 814,
+       "dep": 816
+      }
+     ],
+     "venueArr": 900,
+     "start": 814,
+     "end": 900
+    }
+   },
+   {
+    "trainingId": "tr1",
+    "dir": "vissza",
+    "order": [
+     "s3"
+    ],
+    "out": {
+     "stops": [
+      {
+       "stationId": "s3",
+       "arr": 1184,
+       "dep": 1186
+      }
+     ],
+     "venueDep": 1100,
+     "start": 1100,
+     "end": 1184
+    }
+   },
+   {
+    "trainingId": "tr2",
+    "dir": "oda",
+    "order": [
+     "s0",
+     "s1",
+     "s2"
+    ],
+    "out": {
+     "stops": [
+      {
+       "stationId": "s0",
+       "arr": 786,
+       "dep": 788
+      },
+      {
+       "stationId": "s1",
+       "arr": 821,
+       "dep": 823
+      },
+      {
+       "stationId": "s2",
+       "arr": 845,
+       "dep": 847
+      }
+     ],
+     "venueArr": 900,
+     "start": 786,
+     "end": 900
+    }
+   },
+   {
+    "trainingId": "tr2",
+    "dir": "vissza",
+    "order": [
+     "s2",
+     "s1"
+    ],
+    "out": {
+     "stops": [
+      {
+       "stationId": "s2",
+       "arr": 1153,
+       "dep": 1155
+      },
+      {
+       "stationId": "s1",
+       "arr": 1177,
+       "dep": 1179
+      }
+     ],
+     "venueDep": 1100,
+     "start": 1100,
+     "end": 1177
+    }
+   }
+  ],
+  "splitStationsByCapacity": [
+   {
+    "teamId": "tm0",
+    "ids": [
+     "s0",
+     "s1",
+     "s2",
+     "s3"
+    ],
+    "counts": {
+     "s0": 4,
+     "s1": 4,
+     "s2": 2,
+     "s3": 3
+    },
+    "cap": 3,
+    "out": null
+   },
+   {
+    "teamId": "tm0",
+    "ids": [
+     "s0",
+     "s1",
+     "s2",
+     "s3"
+    ],
+    "counts": {
+     "s0": 4,
+     "s1": 4,
+     "s2": 2,
+     "s3": 3
+    },
+    "cap": 8,
+    "out": [
+     [
+      "s0",
+      "s1"
+     ],
+     [
+      "s2",
+      "s3"
+     ]
+    ]
+   },
+   {
+    "teamId": "tm0",
+    "ids": [
+     "s0",
+     "s1",
+     "s2",
+     "s3"
+    ],
+    "counts": {
+     "s0": 4,
+     "s1": 4,
+     "s2": 2,
+     "s3": 3
+    },
+    "cap": 100,
+    "out": [
+     [
+      "s0",
+      "s1",
+      "s2",
+      "s3"
+     ]
+    ]
+   },
+   {
+    "teamId": "tm1",
+    "ids": [
+     "s3"
+    ],
+    "counts": {
+     "s3": 1
+    },
+    "cap": 3,
+    "out": [
+     [
+      "s3"
+     ]
+    ]
+   },
+   {
+    "teamId": "tm1",
+    "ids": [
+     "s3"
+    ],
+    "counts": {
+     "s3": 1
+    },
+    "cap": 8,
+    "out": [
+     [
+      "s3"
+     ]
+    ]
+   },
+   {
+    "teamId": "tm1",
+    "ids": [
+     "s3"
+    ],
+    "counts": {
+     "s3": 1
+    },
+    "cap": 100,
+    "out": [
+     [
+      "s3"
+     ]
+    ]
+   },
+   {
+    "teamId": "tm2",
+    "ids": [
+     "s0",
+     "s1",
+     "s2"
+    ],
+    "counts": {
+     "s0": 1,
+     "s1": 4,
+     "s2": 1
+    },
+    "cap": 3,
+    "out": null
+   },
+   {
+    "teamId": "tm2",
+    "ids": [
+     "s0",
+     "s1",
+     "s2"
+    ],
+    "counts": {
+     "s0": 1,
+     "s1": 4,
+     "s2": 1
+    },
+    "cap": 8,
+    "out": [
+     [
+      "s0",
+      "s1",
+      "s2"
+     ]
+    ]
+   },
+   {
+    "teamId": "tm2",
+    "ids": [
+     "s0",
+     "s1",
+     "s2"
+    ],
+    "counts": {
+     "s0": 1,
+     "s1": 4,
+     "s2": 1
+    },
+    "cap": 100,
+    "out": [
+     [
+      "s0",
+      "s1",
+      "s2"
+     ]
+    ]
+   }
+  ],
+  "driverAvailableFor": [
+   {
+    "driverId": "d0",
+    "startMin": 900,
+    "endMin": 1000,
+    "out": true
+   },
+   {
+    "driverId": "d0",
+    "startMin": 840,
+    "endMin": 1320,
+    "out": false
+   },
+   {
+    "driverId": "d0",
+    "startMin": 1020,
+    "endMin": 1080,
+    "out": true
+   },
+   {
+    "driverId": "d0",
+    "startMin": 0,
+    "endMin": 1439,
+    "out": false
+   },
+   {
+    "driverId": "d0",
+    "startMin": 1000,
+    "endMin": 1000,
+    "out": true
+   },
+   {
+    "driverId": "d1",
+    "startMin": 900,
+    "endMin": 1000,
+    "out": true
+   },
+   {
+    "driverId": "d1",
+    "startMin": 840,
+    "endMin": 1320,
+    "out": true
+   },
+   {
+    "driverId": "d1",
+    "startMin": 1020,
+    "endMin": 1080,
+    "out": true
+   },
+   {
+    "driverId": "d1",
+    "startMin": 0,
+    "endMin": 1439,
+    "out": true
+   },
+   {
+    "driverId": "d1",
+    "startMin": 1000,
+    "endMin": 1000,
+    "out": true
+   },
+   {
+    "driverId": "d2",
+    "startMin": 900,
+    "endMin": 1000,
+    "out": true
+   },
+   {
+    "driverId": "d2",
+    "startMin": 840,
+    "endMin": 1320,
+    "out": true
+   },
+   {
+    "driverId": "d2",
+    "startMin": 1020,
+    "endMin": 1080,
+    "out": true
+   },
+   {
+    "driverId": "d2",
+    "startMin": 0,
+    "endMin": 1439,
+    "out": false
+   },
+   {
+    "driverId": "d2",
+    "startMin": 1000,
+    "endMin": 1000,
+    "out": true
+   },
+   {
+    "driverId": "d3",
+    "startMin": 900,
+    "endMin": 1000,
+    "out": true
+   },
+   {
+    "driverId": "d3",
+    "startMin": 840,
+    "endMin": 1320,
+    "out": true
+   },
+   {
+    "driverId": "d3",
+    "startMin": 1020,
+    "endMin": 1080,
+    "out": true
+   },
+   {
+    "driverId": "d3",
+    "startMin": 0,
+    "endMin": 1439,
+    "out": false
+   },
+   {
+    "driverId": "d3",
+    "startMin": 1000,
+    "endMin": 1000,
+    "out": true
+   }
+  ],
+  "legPax": [
+   {
+    "teamId": "tm0",
+    "trainingId": null,
+    "dir": "oda",
+    "out": 13
+   },
+   {
+    "teamId": "tm0",
+    "trainingId": "tr0",
+    "dir": "oda",
+    "out": 13
+   },
+   {
+    "teamId": "tm0",
+    "trainingId": null,
+    "dir": "vissza",
+    "out": 13
+   },
+   {
+    "teamId": "tm0",
+    "trainingId": "tr0",
+    "dir": "vissza",
+    "out": 13
+   },
+   {
+    "teamId": "tm1",
+    "trainingId": null,
+    "dir": "oda",
+    "out": 1
+   },
+   {
+    "teamId": "tm1",
+    "trainingId": "tr1",
+    "dir": "oda",
+    "out": 1
+   },
+   {
+    "teamId": "tm1",
+    "trainingId": null,
+    "dir": "vissza",
+    "out": 1
+   },
+   {
+    "teamId": "tm1",
+    "trainingId": "tr1",
+    "dir": "vissza",
+    "out": 1
+   },
+   {
+    "teamId": "tm2",
+    "trainingId": null,
+    "dir": "oda",
+    "out": 6
+   },
+   {
+    "teamId": "tm2",
+    "trainingId": "tr2",
+    "dir": "oda",
+    "out": 6
+   },
+   {
+    "teamId": "tm2",
+    "trainingId": null,
+    "dir": "vissza",
+    "out": 8
+   },
+   {
+    "teamId": "tm2",
+    "trainingId": "tr2",
+    "dir": "vissza",
+    "out": 8
+   }
+  ],
+  "mergeShifts": [
+   {
+    "idx": 0,
+    "in": [
+     {
+      "start": 900,
+      "end": 1000
+     }
+    ],
+    "out": [
+     {
+      "start": 900,
+      "end": 1000
+     }
+    ]
+   },
+   {
+    "idx": 1,
+    "in": [
+     {
+      "start": 900,
+      "end": 1000
+     },
+     {
+      "start": 1000,
+      "end": 1100
+     }
+    ],
+    "out": [
+     {
+      "start": 900,
+      "end": 1100
+     }
+    ]
+   },
+   {
+    "idx": 2,
+    "in": [
+     {
+      "start": 900,
+      "end": 1000
+     },
+     {
+      "start": 1001,
+      "end": 1100
+     }
+    ],
+    "out": [
+     {
+      "start": 900,
+      "end": 1000
+     },
+     {
+      "start": 1001,
+      "end": 1100
+     }
+    ]
+   },
+   {
+    "idx": 3,
+    "in": [
+     {
+      "start": 900,
+      "end": 1200
+     },
+     {
+      "start": 950,
+      "end": 1000
+     }
+    ],
+    "out": [
+     {
+      "start": 900,
+      "end": 1200
+     }
+    ]
+   },
+   {
+    "idx": 4,
+    "in": [
+     {
+      "start": 1100,
+      "end": 1200
+     },
+     {
+      "start": 900,
+      "end": 1000
+     }
+    ],
+    "out": [
+     {
+      "start": 900,
+      "end": 1000
+     },
+     {
+      "start": 1100,
+      "end": 1200
+     }
+    ]
+   }
+  ],
+  "driverPay": [
+   {
+    "driverId": "d0",
+    "uses": [
+     {
+      "driverId": "d0",
+      "vehicleId": "veh0",
+      "start": 782,
+      "end": 890,
+      "from": "s0",
+      "to": "v0"
+     },
+     {
+      "driverId": "d0",
+      "vehicleId": "veh0",
+      "start": 800,
+      "end": 890,
+      "from": "s3",
+      "to": "v0"
+     },
+     {
+      "driverId": "d0",
+      "vehicleId": "veh0",
+      "start": 956,
+      "end": 1070,
+      "from": "s0",
+      "to": "v0"
+     }
+    ],
+    "pay": {
+     "paid": 447,
+     "cost": 20870,
+     "shifts": [
+      {
+       "start": 698,
+       "end": 1145
+      }
+     ]
+    },
+    "onSiteWait": 66,
+    "spans": [
+     {
+      "start": 698,
+      "end": 965
+     },
+     {
+      "start": 746,
+      "end": 965
+     },
+     {
+      "start": 872,
+      "end": 1145
+     }
+    ]
+   },
+   {
+    "driverId": "d1",
+    "uses": [
+     {
+      "driverId": "d1",
+      "vehicleId": "veh0",
+      "start": 782,
+      "end": 890,
+      "from": "s0",
+      "to": "v0"
+     },
+     {
+      "driverId": "d1",
+      "vehicleId": "veh0",
+      "start": 800,
+      "end": 890,
+      "from": "s3",
+      "to": "v0"
+     },
+     {
+      "driverId": "d1",
+      "vehicleId": "veh0",
+      "start": 956,
+      "end": 1070,
+      "from": "s0",
+      "to": "v0"
+     }
+    ],
+    "pay": {
+     "paid": 447,
+     "cost": 17890,
+     "shifts": [
+      {
+       "start": 698,
+       "end": 1145
+      }
+     ]
+    },
+    "onSiteWait": 66,
+    "spans": [
+     {
+      "start": 698,
+      "end": 965
+     },
+     {
+      "start": 746,
+      "end": 965
+     },
+     {
+      "start": 872,
+      "end": 1145
+     }
+    ]
+   },
+   {
+    "driverId": "d2",
+    "uses": [
+     {
+      "driverId": "d2",
+      "vehicleId": "veh0",
+      "start": 782,
+      "end": 890,
+      "from": "s0",
+      "to": "v0"
+     },
+     {
+      "driverId": "d2",
+      "vehicleId": "veh0",
+      "start": 800,
+      "end": 890,
+      "from": "s3",
+      "to": "v0"
+     },
+     {
+      "driverId": "d2",
+      "vehicleId": "veh0",
+      "start": 956,
+      "end": 1070,
+      "from": "s0",
+      "to": "v0"
+     }
+    ],
+    "pay": {
+     "paid": 447,
+     "cost": 26830,
+     "shifts": [
+      {
+       "start": 698,
+       "end": 1145
+      }
+     ]
+    },
+    "onSiteWait": 66,
+    "spans": [
+     {
+      "start": 698,
+      "end": 965
+     },
+     {
+      "start": 746,
+      "end": 965
+     },
+     {
+      "start": 872,
+      "end": 1145
+     }
+    ]
+   },
+   {
+    "driverId": "d3",
+    "uses": [
+     {
+      "driverId": "d3",
+      "vehicleId": "veh0",
+      "start": 782,
+      "end": 890,
+      "from": "s0",
+      "to": "v0"
+     },
+     {
+      "driverId": "d3",
+      "vehicleId": "veh0",
+      "start": 800,
+      "end": 890,
+      "from": "s3",
+      "to": "v0"
+     },
+     {
+      "driverId": "d3",
+      "vehicleId": "veh0",
+      "start": 956,
+      "end": 1070,
+      "from": "s0",
+      "to": "v0"
+     }
+    ],
+    "pay": {
+     "paid": 447,
+     "cost": 22360,
+     "shifts": [
+      {
+       "start": 698,
+       "end": 1145
+      }
+     ]
+    },
+    "onSiteWait": 66,
+    "spans": [
+     {
+      "start": 698,
+      "end": 965
+     },
+     {
+      "start": 746,
+      "end": 965
+     },
+     {
+      "start": 872,
+      "end": 1145
+     }
+    ]
+   }
+  ],
+  "genDayTasks": {
+   "tasks": [
+    {
+     "id": "tr0:2:oda#1",
+     "dir": "oda",
+     "teamId": "tm0",
+     "trainingId": "tr0",
+     "pax": 8,
+     "label": "tm0 · ODA (1/2)",
+     "breakdown": [
+      {
+       "stationId": "s0",
+       "count": 4
+      },
+      {
+       "stationId": "s1",
+       "count": 4
+      }
+     ],
+     "from": "s0",
+     "to": "v0",
+     "start": 782,
+     "end": 890,
+     "plan": [
+      {
+       "stationId": "s0",
+       "arr": 782,
+       "dep": 784,
+       "count": 4
+      },
+      {
+       "stationId": "s1",
+       "arr": 817,
+       "dep": 819,
+       "count": 4
+      }
+     ],
+     "venueTime": 890
+    },
+    {
+     "id": "tr0:2:oda#2",
+     "dir": "oda",
+     "teamId": "tm0",
+     "trainingId": "tr0",
+     "pax": 5,
+     "label": "tm0 · ODA (2/2)",
+     "breakdown": [
+      {
+       "stationId": "s3",
+       "count": 3
+      },
+      {
+       "stationId": "s2",
+       "count": 2
+      }
+     ],
+     "from": "s3",
+     "to": "v0",
+     "start": 800,
+     "end": 890,
+     "plan": [
+      {
+       "stationId": "s3",
+       "arr": 800,
+       "dep": 802,
+       "count": 3
+      },
+      {
+       "stationId": "s2",
+       "arr": 835,
+       "dep": 837,
+       "count": 2
+      }
+     ],
+     "venueTime": 890
+    },
+    {
+     "id": "tr2:2:oda",
+     "dir": "oda",
+     "teamId": "tm2",
+     "trainingId": "tr2",
+     "pax": 6,
+     "label": "tm2 · ODA",
+     "breakdown": [
+      {
+       "stationId": "s0",
+       "count": 1
+      },
+      {
+       "stationId": "s1",
+       "count": 4
+      },
+      {
+       "stationId": "s2",
+       "count": 1
+      }
+     ],
+     "from": "s0",
+     "to": "v0",
+     "start": 956,
+     "end": 1070,
+     "plan": [
+      {
+       "stationId": "s0",
+       "arr": 956,
+       "dep": 958,
+       "count": 1
+      },
+      {
+       "stationId": "s1",
+       "arr": 991,
+       "dep": 993,
+       "count": 4
+      },
+      {
+       "stationId": "s2",
+       "arr": 1015,
+       "dep": 1017,
+       "count": 1
+      }
+     ],
+     "venueTime": 1070
+    },
+    {
+     "id": "tr0:2:vissza#2",
+     "dir": "vissza",
+     "teamId": "tm0",
+     "trainingId": "tr0",
+     "pax": 5,
+     "label": "tm0 · VISSZA (2/2)",
+     "breakdown": [
+      {
+       "stationId": "s2",
+       "count": 2
+      },
+      {
+       "stationId": "s3",
+       "count": 3
+      }
+     ],
+     "from": "v0",
+     "to": "s3",
+     "start": 970,
+     "end": 1058,
+     "plan": [
+      {
+       "stationId": "s2",
+       "arr": 1023,
+       "dep": 1025,
+       "count": 2
+      },
+      {
+       "stationId": "s3",
+       "arr": 1058,
+       "dep": 1060,
+       "count": 3
+      }
+     ],
+     "venueTime": 970
+    },
+    {
+     "id": "tr0:2:vissza#1",
+     "dir": "vissza",
+     "teamId": "tm0",
+     "trainingId": "tr0",
+     "pax": 8,
+     "label": "tm0 · VISSZA (1/2)",
+     "breakdown": [
+      {
+       "stationId": "s1",
+       "count": 4
+      },
+      {
+       "stationId": "s0",
+       "count": 4
+      }
+     ],
+     "from": "v0",
+     "to": "s0",
+     "start": 970,
+     "end": 1076,
+     "plan": [
+      {
+       "stationId": "s1",
+       "arr": 1041,
+       "dep": 1043,
+       "count": 4
+      },
+      {
+       "stationId": "s0",
+       "arr": 1076,
+       "dep": 1078,
+       "count": 4
+      }
+     ],
+     "venueTime": 970
+    },
+    {
+     "id": "tr1:2:oda",
+     "dir": "oda",
+     "teamId": "tm1",
+     "trainingId": "tr1",
+     "pax": 1,
+     "label": "tm1 · ODA",
+     "breakdown": [
+      {
+       "stationId": "s3",
+       "count": 1
+      }
+     ],
+     "from": "s3",
+     "to": "v0",
+     "start": 984,
+     "end": 1070,
+     "plan": [
+      {
+       "stationId": "s3",
+       "arr": 984,
+       "dep": 986,
+       "count": 1
+      }
+     ],
+     "venueTime": 1070
+    },
+    {
+     "id": "tr2:2:vissza",
+     "dir": "vissza",
+     "teamId": "tm2",
+     "trainingId": "tr2",
+     "pax": 8,
+     "label": "tm2 · VISSZA",
+     "breakdown": [
+      {
+       "stationId": "s2",
+       "count": 4
+      },
+      {
+       "stationId": "s1",
+       "count": 4
+      }
+     ],
+     "from": "v0",
+     "to": "s1",
+     "start": 1180,
+     "end": 1257,
+     "plan": [
+      {
+       "stationId": "s2",
+       "arr": 1233,
+       "dep": 1235,
+       "count": 4
+      },
+      {
+       "stationId": "s1",
+       "arr": 1257,
+       "dep": 1259,
+       "count": 4
+      }
+     ],
+     "venueTime": 1180
+    },
+    {
+     "id": "tr1:2:vissza",
+     "dir": "vissza",
+     "teamId": "tm1",
+     "trainingId": "tr1",
+     "pax": 1,
+     "label": "tm1 · VISSZA",
+     "breakdown": [
+      {
+       "stationId": "s3",
+       "count": 1
+      }
+     ],
+     "from": "v0",
+     "to": "s3",
+     "start": 1180,
+     "end": 1264,
+     "plan": [
+      {
+       "stationId": "s3",
+       "arr": 1264,
+       "dep": 1266,
+       "count": 1
+      }
+     ],
+     "venueTime": 1180
+    }
+   ],
+   "skipped": [
+    "tm0: a 13 fős létszám meghaladja a legnagyobb jármű férőhelyét (8 fő), ezért 2 buszra bontva, megállónként.",
+    "tm0: a 13 fős létszám meghaladja a legnagyobb jármű férőhelyét (8 fő), ezért 2 buszra bontva, megállónként."
+   ]
+  },
+  "resolveDay": {
+   "tasks": [
+    {
+     "id": "tr0:2:oda#1",
+     "dir": "oda",
+     "teamId": "tm0",
+     "trainingId": "tr0",
+     "pax": 8,
+     "label": "tm0 · ODA (1/2)",
+     "breakdown": [
+      {
+       "stationId": "s0",
+       "count": 4
+      },
+      {
+       "stationId": "s1",
+       "count": 4
+      }
+     ],
+     "from": "s0",
+     "to": "v0",
+     "start": 782,
+     "end": 890,
+     "plan": [
+      {
+       "stationId": "s0",
+       "arr": 782,
+       "dep": 784,
+       "count": 4
+      },
+      {
+       "stationId": "s1",
+       "arr": 817,
+       "dep": 819,
+       "count": 4
+      }
+     ],
+     "venueTime": 890
+    },
+    {
+     "id": "tr0:2:oda#2",
+     "dir": "oda",
+     "teamId": "tm0",
+     "trainingId": "tr0",
+     "pax": 5,
+     "label": "tm0 · ODA (2/2)",
+     "breakdown": [
+      {
+       "stationId": "s3",
+       "count": 3
+      },
+      {
+       "stationId": "s2",
+       "count": 2
+      }
+     ],
+     "from": "s3",
+     "to": "v0",
+     "start": 800,
+     "end": 890,
+     "plan": [
+      {
+       "stationId": "s3",
+       "arr": 800,
+       "dep": 802,
+       "count": 3
+      },
+      {
+       "stationId": "s2",
+       "arr": 835,
+       "dep": 837,
+       "count": 2
+      }
+     ],
+     "venueTime": 890
+    },
+    {
+     "id": "tr2:2:oda",
+     "dir": "oda",
+     "teamId": "tm2",
+     "trainingId": "tr2",
+     "pax": 6,
+     "label": "tm2 · ODA",
+     "breakdown": [
+      {
+       "stationId": "s0",
+       "count": 1
+      },
+      {
+       "stationId": "s1",
+       "count": 4
+      },
+      {
+       "stationId": "s2",
+       "count": 1
+      }
+     ],
+     "from": "s0",
+     "to": "v0",
+     "start": 956,
+     "end": 1070,
+     "plan": [
+      {
+       "stationId": "s0",
+       "arr": 956,
+       "dep": 958,
+       "count": 1
+      },
+      {
+       "stationId": "s1",
+       "arr": 991,
+       "dep": 993,
+       "count": 4
+      },
+      {
+       "stationId": "s2",
+       "arr": 1015,
+       "dep": 1017,
+       "count": 1
+      }
+     ],
+     "venueTime": 1070
+    },
+    {
+     "id": "tr0:2:vissza#2",
+     "dir": "vissza",
+     "teamId": "tm0",
+     "trainingId": "tr0",
+     "pax": 5,
+     "label": "tm0 · VISSZA (2/2)",
+     "breakdown": [
+      {
+       "stationId": "s2",
+       "count": 2
+      },
+      {
+       "stationId": "s3",
+       "count": 3
+      }
+     ],
+     "from": "v0",
+     "to": "s3",
+     "start": 970,
+     "end": 1058,
+     "plan": [
+      {
+       "stationId": "s2",
+       "arr": 1023,
+       "dep": 1025,
+       "count": 2
+      },
+      {
+       "stationId": "s3",
+       "arr": 1058,
+       "dep": 1060,
+       "count": 3
+      }
+     ],
+     "venueTime": 970
+    },
+    {
+     "id": "tr0:2:vissza#1",
+     "dir": "vissza",
+     "teamId": "tm0",
+     "trainingId": "tr0",
+     "pax": 8,
+     "label": "tm0 · VISSZA (1/2)",
+     "breakdown": [
+      {
+       "stationId": "s1",
+       "count": 4
+      },
+      {
+       "stationId": "s0",
+       "count": 4
+      }
+     ],
+     "from": "v0",
+     "to": "s0",
+     "start": 970,
+     "end": 1076,
+     "plan": [
+      {
+       "stationId": "s1",
+       "arr": 1041,
+       "dep": 1043,
+       "count": 4
+      },
+      {
+       "stationId": "s0",
+       "arr": 1076,
+       "dep": 1078,
+       "count": 4
+      }
+     ],
+     "venueTime": 970
+    },
+    {
+     "id": "tr1:2:oda",
+     "dir": "oda",
+     "teamId": "tm1",
+     "trainingId": "tr1",
+     "pax": 1,
+     "label": "tm1 · ODA",
+     "breakdown": [
+      {
+       "stationId": "s3",
+       "count": 1
+      }
+     ],
+     "from": "s3",
+     "to": "v0",
+     "start": 984,
+     "end": 1070,
+     "plan": [
+      {
+       "stationId": "s3",
+       "arr": 984,
+       "dep": 986,
+       "count": 1
+      }
+     ],
+     "venueTime": 1070
+    },
+    {
+     "id": "tr2:2:vissza",
+     "dir": "vissza",
+     "teamId": "tm2",
+     "trainingId": "tr2",
+     "pax": 8,
+     "label": "tm2 · VISSZA",
+     "breakdown": [
+      {
+       "stationId": "s2",
+       "count": 4
+      },
+      {
+       "stationId": "s1",
+       "count": 4
+      }
+     ],
+     "from": "v0",
+     "to": "s1",
+     "start": 1180,
+     "end": 1257,
+     "plan": [
+      {
+       "stationId": "s2",
+       "arr": 1233,
+       "dep": 1235,
+       "count": 4
+      },
+      {
+       "stationId": "s1",
+       "arr": 1257,
+       "dep": 1259,
+       "count": 4
+      }
+     ],
+     "venueTime": 1180
+    },
+    {
+     "id": "tr1:2:vissza",
+     "dir": "vissza",
+     "teamId": "tm1",
+     "trainingId": "tr1",
+     "pax": 1,
+     "label": "tm1 · VISSZA",
+     "breakdown": [
+      {
+       "stationId": "s3",
+       "count": 1
+      }
+     ],
+     "from": "v0",
+     "to": "s3",
+     "start": 1180,
+     "end": 1264,
+     "plan": [
+      {
+       "stationId": "s3",
+       "arr": 1264,
+       "dep": 1266,
+       "count": 1
+      }
+     ],
+     "venueTime": 1180
+    }
+   ],
+   "chains": [],
+   "unassigned": [
+    {
+     "id": "tr0:2:oda#1",
+     "dir": "oda",
+     "teamId": "tm0",
+     "trainingId": "tr0",
+     "pax": 8,
+     "label": "tm0 · ODA (1/2)",
+     "breakdown": [
+      {
+       "stationId": "s0",
+       "count": 4
+      },
+      {
+       "stationId": "s1",
+       "count": 4
+      }
+     ],
+     "from": "s0",
+     "to": "v0",
+     "start": 782,
+     "end": 890,
+     "plan": [
+      {
+       "stationId": "s0",
+       "arr": 782,
+       "dep": 784,
+       "count": 4
+      },
+      {
+       "stationId": "s1",
+       "arr": 817,
+       "dep": 819,
+       "count": 4
+      }
+     ],
+     "venueTime": 890
+    },
+    {
+     "id": "tr0:2:oda#2",
+     "dir": "oda",
+     "teamId": "tm0",
+     "trainingId": "tr0",
+     "pax": 5,
+     "label": "tm0 · ODA (2/2)",
+     "breakdown": [
+      {
+       "stationId": "s3",
+       "count": 3
+      },
+      {
+       "stationId": "s2",
+       "count": 2
+      }
+     ],
+     "from": "s3",
+     "to": "v0",
+     "start": 800,
+     "end": 890,
+     "plan": [
+      {
+       "stationId": "s3",
+       "arr": 800,
+       "dep": 802,
+       "count": 3
+      },
+      {
+       "stationId": "s2",
+       "arr": 835,
+       "dep": 837,
+       "count": 2
+      }
+     ],
+     "venueTime": 890
+    },
+    {
+     "id": "tr2:2:oda",
+     "dir": "oda",
+     "teamId": "tm2",
+     "trainingId": "tr2",
+     "pax": 6,
+     "label": "tm2 · ODA",
+     "breakdown": [
+      {
+       "stationId": "s0",
+       "count": 1
+      },
+      {
+       "stationId": "s1",
+       "count": 4
+      },
+      {
+       "stationId": "s2",
+       "count": 1
+      }
+     ],
+     "from": "s0",
+     "to": "v0",
+     "start": 956,
+     "end": 1070,
+     "plan": [
+      {
+       "stationId": "s0",
+       "arr": 956,
+       "dep": 958,
+       "count": 1
+      },
+      {
+       "stationId": "s1",
+       "arr": 991,
+       "dep": 993,
+       "count": 4
+      },
+      {
+       "stationId": "s2",
+       "arr": 1015,
+       "dep": 1017,
+       "count": 1
+      }
+     ],
+     "venueTime": 1070
+    },
+    {
+     "id": "tr0:2:vissza#2",
+     "dir": "vissza",
+     "teamId": "tm0",
+     "trainingId": "tr0",
+     "pax": 5,
+     "label": "tm0 · VISSZA (2/2)",
+     "breakdown": [
+      {
+       "stationId": "s2",
+       "count": 2
+      },
+      {
+       "stationId": "s3",
+       "count": 3
+      }
+     ],
+     "from": "v0",
+     "to": "s3",
+     "start": 970,
+     "end": 1058,
+     "plan": [
+      {
+       "stationId": "s2",
+       "arr": 1023,
+       "dep": 1025,
+       "count": 2
+      },
+      {
+       "stationId": "s3",
+       "arr": 1058,
+       "dep": 1060,
+       "count": 3
+      }
+     ],
+     "venueTime": 970
+    },
+    {
+     "id": "tr0:2:vissza#1",
+     "dir": "vissza",
+     "teamId": "tm0",
+     "trainingId": "tr0",
+     "pax": 8,
+     "label": "tm0 · VISSZA (1/2)",
+     "breakdown": [
+      {
+       "stationId": "s1",
+       "count": 4
+      },
+      {
+       "stationId": "s0",
+       "count": 4
+      }
+     ],
+     "from": "v0",
+     "to": "s0",
+     "start": 970,
+     "end": 1076,
+     "plan": [
+      {
+       "stationId": "s1",
+       "arr": 1041,
+       "dep": 1043,
+       "count": 4
+      },
+      {
+       "stationId": "s0",
+       "arr": 1076,
+       "dep": 1078,
+       "count": 4
+      }
+     ],
+     "venueTime": 970
+    },
+    {
+     "id": "tr1:2:oda",
+     "dir": "oda",
+     "teamId": "tm1",
+     "trainingId": "tr1",
+     "pax": 1,
+     "label": "tm1 · ODA",
+     "breakdown": [
+      {
+       "stationId": "s3",
+       "count": 1
+      }
+     ],
+     "from": "s3",
+     "to": "v0",
+     "start": 984,
+     "end": 1070,
+     "plan": [
+      {
+       "stationId": "s3",
+       "arr": 984,
+       "dep": 986,
+       "count": 1
+      }
+     ],
+     "venueTime": 1070
+    },
+    {
+     "id": "tr2:2:vissza",
+     "dir": "vissza",
+     "teamId": "tm2",
+     "trainingId": "tr2",
+     "pax": 8,
+     "label": "tm2 · VISSZA",
+     "breakdown": [
+      {
+       "stationId": "s2",
+       "count": 4
+      },
+      {
+       "stationId": "s1",
+       "count": 4
+      }
+     ],
+     "from": "v0",
+     "to": "s1",
+     "start": 1180,
+     "end": 1257,
+     "plan": [
+      {
+       "stationId": "s2",
+       "arr": 1233,
+       "dep": 1235,
+       "count": 4
+      },
+      {
+       "stationId": "s1",
+       "arr": 1257,
+       "dep": 1259,
+       "count": 4
+      }
+     ],
+     "venueTime": 1180
+    },
+    {
+     "id": "tr1:2:vissza",
+     "dir": "vissza",
+     "teamId": "tm1",
+     "trainingId": "tr1",
+     "pax": 1,
+     "label": "tm1 · VISSZA",
+     "breakdown": [
+      {
+       "stationId": "s3",
+       "count": 1
+      }
+     ],
+     "from": "v0",
+     "to": "s3",
+     "start": 1180,
+     "end": 1264,
+     "plan": [
+      {
+       "stationId": "s3",
+       "arr": 1264,
+       "dep": 1266,
+       "count": 1
+      }
+     ],
+     "venueTime": 1180
+    }
+   ],
+   "skipped": [
+    "tm0: a 13 fős létszám meghaladja a legnagyobb jármű férőhelyét (8 fő), ezért 2 buszra bontva, megállónként.",
+    "tm0: a 13 fős létszám meghaladja a legnagyobb jármű férőhelyét (8 fő), ezért 2 buszra bontva, megállónként."
+   ]
+  },
+  "dayStats": {
+   "drivers": 0,
+   "chains": 0,
+   "paidMin": 0,
+   "dead": 0,
+   "idle": 0,
+   "cost": 0
+  },
+  "optimizeDay": {
+   "empty": false,
+   "chains": [
+    {
+     "tasks": [
+      {
+       "id": "tr0:2:oda#1",
+       "dir": "oda",
+       "teamId": "tm0",
+       "trainingId": "tr0",
+       "pax": 8,
+       "label": "tm0 · ODA (1/2)",
+       "breakdown": [
+        {
+         "stationId": "s0",
+         "count": 4
+        },
+        {
+         "stationId": "s1",
+         "count": 4
+        }
+       ],
+       "from": "s0",
+       "to": "v0",
+       "start": 782,
+       "end": 890,
+       "plan": [
+        {
+         "stationId": "s0",
+         "arr": 782,
+         "dep": 784,
+         "count": 4
+        },
+        {
+         "stationId": "s1",
+         "arr": 817,
+         "dep": 819,
+         "count": 4
+        }
+       ],
+       "venueTime": 890
+      },
+      {
+       "id": "tr0:2:vissza#1",
+       "dir": "vissza",
+       "teamId": "tm0",
+       "trainingId": "tr0",
+       "pax": 8,
+       "label": "tm0 · VISSZA (1/2)",
+       "breakdown": [
+        {
+         "stationId": "s1",
+         "count": 4
+        },
+        {
+         "stationId": "s0",
+         "count": 4
+        }
+       ],
+       "from": "v0",
+       "to": "s0",
+       "start": 970,
+       "end": 1076,
+       "plan": [
+        {
+         "stationId": "s1",
+         "arr": 1041,
+         "dep": 1043,
+         "count": 4
+        },
+        {
+         "stationId": "s0",
+         "arr": 1076,
+         "dep": 1078,
+         "count": 4
+        }
+       ],
+       "venueTime": 970
+      },
+      {
+       "id": "tr2:2:vissza",
+       "dir": "vissza",
+       "teamId": "tm2",
+       "trainingId": "tr2",
+       "pax": 8,
+       "label": "tm2 · VISSZA",
+       "breakdown": [
+        {
+         "stationId": "s2",
+         "count": 4
+        },
+        {
+         "stationId": "s1",
+         "count": 4
+        }
+       ],
+       "from": "v0",
+       "to": "s1",
+       "start": 1180,
+       "end": 1257,
+       "plan": [
+        {
+         "stationId": "s2",
+         "arr": 1233,
+         "dep": 1235,
+         "count": 4
+        },
+        {
+         "stationId": "s1",
+         "arr": 1257,
+         "dep": 1259,
+         "count": 4
+        }
+       ],
+       "venueTime": 1180
+      }
+     ],
+     "links": [
+      {
+       "a": {
+        "id": "tr0:2:oda#1",
+        "dir": "oda",
+        "teamId": "tm0",
+        "trainingId": "tr0",
+        "pax": 8,
+        "label": "tm0 · ODA (1/2)",
+        "breakdown": [
+         {
+          "stationId": "s0",
+          "count": 4
+         },
+         {
+          "stationId": "s1",
+          "count": 4
+         }
+        ],
+        "from": "s0",
+        "to": "v0",
+        "start": 782,
+        "end": 890,
+        "plan": [
+         {
+          "stationId": "s0",
+          "arr": 782,
+          "dep": 784,
+          "count": 4
+         },
+         {
+          "stationId": "s1",
+          "arr": 817,
+          "dep": 819,
+          "count": 4
+         }
+        ],
+        "venueTime": 890
+       },
+       "b": {
+        "id": "tr0:2:vissza#1",
+        "dir": "vissza",
+        "teamId": "tm0",
+        "trainingId": "tr0",
+        "pax": 8,
+        "label": "tm0 · VISSZA (1/2)",
+        "breakdown": [
+         {
+          "stationId": "s1",
+          "count": 4
+         },
+         {
+          "stationId": "s0",
+          "count": 4
+         }
+        ],
+        "from": "v0",
+        "to": "s0",
+        "start": 970,
+        "end": 1076,
+        "plan": [
+         {
+          "stationId": "s1",
+          "arr": 1041,
+          "dep": 1043,
+          "count": 4
+         },
+         {
+          "stationId": "s0",
+          "arr": 1076,
+          "dep": 1078,
+          "count": 4
+         }
+        ],
+        "venueTime": 970
+       },
+       "dead": 0,
+       "idle": 80,
+       "infeasible": false,
+       "short": -80
+      },
+      {
+       "a": {
+        "id": "tr0:2:vissza#1",
+        "dir": "vissza",
+        "teamId": "tm0",
+        "trainingId": "tr0",
+        "pax": 8,
+        "label": "tm0 · VISSZA (1/2)",
+        "breakdown": [
+         {
+          "stationId": "s1",
+          "count": 4
+         },
+         {
+          "stationId": "s0",
+          "count": 4
+         }
+        ],
+        "from": "v0",
+        "to": "s0",
+        "start": 970,
+        "end": 1076,
+        "plan": [
+         {
+          "stationId": "s1",
+          "arr": 1041,
+          "dep": 1043,
+          "count": 4
+         },
+         {
+          "stationId": "s0",
+          "arr": 1076,
+          "dep": 1078,
+          "count": 4
+         }
+        ],
+        "venueTime": 970
+       },
+       "b": {
+        "id": "tr2:2:vissza",
+        "dir": "vissza",
+        "teamId": "tm2",
+        "trainingId": "tr2",
+        "pax": 8,
+        "label": "tm2 · VISSZA",
+        "breakdown": [
+         {
+          "stationId": "s2",
+          "count": 4
+         },
+         {
+          "stationId": "s1",
+          "count": 4
+         }
+        ],
+        "from": "v0",
+        "to": "s1",
+        "start": 1180,
+        "end": 1257,
+        "plan": [
+         {
+          "stationId": "s2",
+          "arr": 1233,
+          "dep": 1235,
+          "count": 4
+         },
+         {
+          "stationId": "s1",
+          "arr": 1257,
+          "dep": 1259,
+          "count": 4
+         }
+        ],
+        "venueTime": 1180
+       },
+       "dead": 78,
+       "idle": 26,
+       "infeasible": false,
+       "short": -26
+      }
+     ],
+     "start": 782,
+     "end": 1257,
+     "maxPax": 8,
+     "driverId": "d1",
+     "vehicleId": "veh1",
+     "id": null
+    },
+    {
+     "tasks": [
+      {
+       "id": "tr2:2:oda",
+       "dir": "oda",
+       "teamId": "tm2",
+       "trainingId": "tr2",
+       "pax": 6,
+       "label": "tm2 · ODA",
+       "breakdown": [
+        {
+         "stationId": "s0",
+         "count": 1
+        },
+        {
+         "stationId": "s1",
+         "count": 4
+        },
+        {
+         "stationId": "s2",
+         "count": 1
+        }
+       ],
+       "from": "s0",
+       "to": "v0",
+       "start": 956,
+       "end": 1070,
+       "plan": [
+        {
+         "stationId": "s0",
+         "arr": 956,
+         "dep": 958,
+         "count": 1
+        },
+        {
+         "stationId": "s1",
+         "arr": 991,
+         "dep": 993,
+         "count": 4
+        },
+        {
+         "stationId": "s2",
+         "arr": 1015,
+         "dep": 1017,
+         "count": 1
+        }
+       ],
+       "venueTime": 1070
+      }
+     ],
+     "links": [],
+     "start": 956,
+     "end": 1070,
+     "maxPax": 6,
+     "driverId": "d0",
+     "vehicleId": "veh0",
+     "id": null
+    },
+    {
+     "tasks": [
+      {
+       "id": "tr0:2:vissza#2",
+       "dir": "vissza",
+       "teamId": "tm0",
+       "trainingId": "tr0",
+       "pax": 5,
+       "label": "tm0 · VISSZA (2/2)",
+       "breakdown": [
+        {
+         "stationId": "s2",
+         "count": 2
+        },
+        {
+         "stationId": "s3",
+         "count": 3
+        }
+       ],
+       "from": "v0",
+       "to": "s3",
+       "start": 970,
+       "end": 1058,
+       "plan": [
+        {
+         "stationId": "s2",
+         "arr": 1023,
+         "dep": 1025,
+         "count": 2
+        },
+        {
+         "stationId": "s3",
+         "arr": 1058,
+         "dep": 1060,
+         "count": 3
+        }
+       ],
+       "venueTime": 970
+      }
+     ],
+     "links": [],
+     "start": 970,
+     "end": 1058,
+     "maxPax": 5,
+     "driverId": "d3",
+     "vehicleId": "veh3",
+     "id": null
+    }
+   ],
+   "uncovered": [
+    {
+     "task": {
+      "id": "tr0:2:oda#2",
+      "dir": "oda",
+      "teamId": "tm0",
+      "trainingId": "tr0",
+      "pax": 5,
+      "label": "tm0 · ODA (2/2)",
+      "breakdown": [
+       {
+        "stationId": "s3",
+        "count": 3
+       },
+       {
+        "stationId": "s2",
+        "count": 2
+       }
+      ],
+      "from": "s3",
+      "to": "v0",
+      "start": 800,
+      "end": 890,
+      "plan": [
+       {
+        "stationId": "s3",
+        "arr": 800,
+        "dep": 802,
+        "count": 3
+       },
+       {
+        "stationId": "s2",
+        "arr": 835,
+        "dep": 837,
+        "count": 2
+       }
+      ],
+      "venueTime": 890
+     },
+     "reasons": [
+      "Erőforrás-ütközés: Szerda 13:20–14:50 között minden alkalmas erőforrás foglalt (elérhető sofőr: 1, elegendő férőhelyű jármű: 4)."
+     ]
+    },
+    {
+     "task": {
+      "id": "tr1:2:oda",
+      "dir": "oda",
+      "teamId": "tm1",
+      "trainingId": "tr1",
+      "pax": 1,
+      "label": "tm1 · ODA",
+      "breakdown": [
+       {
+        "stationId": "s3",
+        "count": 1
+       }
+      ],
+      "from": "s3",
+      "to": "v0",
+      "start": 984,
+      "end": 1070,
+      "plan": [
+       {
+        "stationId": "s3",
+        "arr": 984,
+        "dep": 986,
+        "count": 1
+       }
+      ],
+      "venueTime": 1070
+     },
+     "reasons": [
+      "Erőforrás-ütközés: Szerda 16:24–17:50 között minden alkalmas erőforrás foglalt (elérhető sofőr: 4, elegendő férőhelyű jármű: 4)."
+     ]
+    },
+    {
+     "task": {
+      "id": "tr1:2:vissza",
+      "dir": "vissza",
+      "teamId": "tm1",
+      "trainingId": "tr1",
+      "pax": 1,
+      "label": "tm1 · VISSZA",
+      "breakdown": [
+       {
+        "stationId": "s3",
+        "count": 1
+       }
+      ],
+      "from": "v0",
+      "to": "s3",
+      "start": 1180,
+      "end": 1264,
+      "plan": [
+       {
+        "stationId": "s3",
+        "arr": 1264,
+        "dep": 1266,
+        "count": 1
+       }
+      ],
+      "venueTime": 1180
+     },
+     "reasons": [
+      "Erőforrás-ütközés: Szerda 19:40–21:04 között minden alkalmas erőforrás foglalt (elérhető sofőr: 3, elegendő férőhelyű jármű: 4)."
+     ]
+    }
+   ],
+   "notes": [
+    "tm0: a 13 fős létszám meghaladja a legnagyobb jármű férőhelyét (8 fő), ezért 2 buszra bontva, megállónként.",
+    "tm0: a 13 fős létszám meghaladja a legnagyobb jármű férőhelyét (8 fő), ezért 2 buszra bontva, megállónként."
+   ],
+   "stats": {
+    "drivers": 3,
+    "chains": 3,
+    "paidMin": 1103,
+    "dead": 78,
+    "idle": 106,
+    "cost": 48933
+   },
+   "improve": {
+    "before": 10048933.333333332,
+    "after": 10048933.333333332
+   }
+  },
+  "ridesFromChains": []
+ }
+}

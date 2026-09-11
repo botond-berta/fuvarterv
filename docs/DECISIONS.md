@@ -39,6 +39,7 @@ Unless a record says otherwise, the decision is **still in force**.
 | [ADR-26](#adr-26--vitest-and-jsdom-tests-against-the-real-modules) | Tests | testing |
 | [ADR-27](#adr-27--an-error-boundary-inside-the-shell) | Error boundary | resilience |
 | [ADR-28](#adr-28--one-stylesheet-os-driven-dark-mode) | One stylesheet | UI |
+| [ADR-29](#adr-29--the-scheduling-domain-moves-to-a-java-service-the-browser-ui-stays) | Java compute service | architecture |
 
 ---
 
@@ -460,3 +461,77 @@ the operating system.
 
 **Still open.** 146 inline style objects remain and should migrate into classes over time.
 See `ACTION_PLAN.md` P1-2.
+
+## ADR-29 — The scheduling domain moves to a Java service; the browser UI stays
+
+**Context.** The wish was to keep the browser interface but write the logic in Java. The
+dependency graph decides how far that can go. `optimizeDay` calls `resolveDay`, which calls
+`genDayTasks`, which calls Held-Karp routing, the timetable planners and `legMin`. That same
+`resolveDay` runs in a `useMemo` keyed on the whole state, so it recomputes on every edit.
+Moving only the optimizer would leave task generation, the timetable and the wage model
+implemented twice, in two languages.
+
+The cost of that is not hypothetical. R6 records `taskHardIssues` in `ScheduleScreen`
+re-implementing part of the feasibility check, and the two have **already drifted**: the
+screen's copy omits the vignette, so a task blocked only by that shows no reason at all — a
+violation of ADR-24 that nobody noticed. One duplicated rule, already broken, inside a
+single language. A second fork across a language boundary would be worse.
+
+**Decision.** Move the **whole scheduling domain** to a Java service, not the optimizer
+alone, and let that service own the `app_state` row as well. Keep React, Tailwind, the
+stylesheet and the map picker exactly as they are. Keep Supabase Auth in the browser and
+verify its token in Java.
+
+The line is drawn by what a function does, not by where it is called from:
+
+| Stays in JavaScript | Moves to Java |
+|---|---|
+| `constants.js` — Hungarian UI copy, `DAYS` indexed by weekday | all of `optimizer.js` |
+| `datetime.js` formatters — `fmtDate`, `fmtWeekRange` | the scheduling half of `logic.js` |
+| `geo.js` map helpers — `defaultMapCenter`, `r5` | `geo.js` distance, `legMin`, `computeMatrix` |
+| form validators, as UX echoes of rules the server enforces | everything that prices, times or schedules |
+
+A validator existing on both sides is **not** the drift this ADR is about: a client-side
+check is a convenience, the server's is the rule, and the worst case is a form that lets
+the user try something the server then refuses. A duplicated *cost or timetable* function
+is the thing that must never exist, because both copies then claim to be the answer.
+
+**Consequence.** The browser stops computing the schedule and asks for it. `resolveDay`
+becomes a debounced request, which is the one real regression: ADR-05's offline tolerance
+narrows, and the view needs the last good result kept on screen while it refreshes. In
+exchange the service is a place to put the things the client cannot have: server-side
+validation (R7), error reporting (R9), a cached or paid-for router instead of the OSRM demo
+server (R2), and eventually per-entity writes instead of one blob (R3). The
+`requestAnimationFrame` hack that lets the optimise button paint its "calculating" state
+can go, because the call becomes genuinely asynchronous.
+
+Two consequences are security-shaped and must not be discovered later. First, **ADR-11 is
+weakened by construction**: once Java holds the database connection, Postgres can no longer
+tell one user from another, so admin-only writes become an application-level check. The
+policies stay in place and the service sets the caller's JWT claims on the session, so row
+level security remains a second line rather than the only one. Second, the service must
+**never reshape the blob on the write path**. There is no schema version (ADR-05), so a
+typed round-trip would silently drop any field the Java model does not know about and
+destroy data a newer client saved. The workspace is therefore stored and returned as a raw
+`JsonNode`; typed models exist only for computation.
+
+**Rejected.** *Moving only the optimizer.* Cheapest to start, and it creates exactly the
+duplication R6 already demonstrates the cost of.
+
+*Full Java including the UI, via Vaadin or Thymeleaf.* Four to eight weeks, no reuse beyond
+the algorithms and the SQL, and the result is harder to operate and worse on a phone than
+what exists. The users are club staff on their own phones.
+
+*Replacing Supabase Auth with Spring Security and our own user table.* Weeks of work, and
+it makes us responsible for password reset mail. The 369 lines of `AuthGate` are the code
+we least want to rewrite.
+
+**Where it lives.** `server/` — a Maven project on Java 21, with the port verified against
+committed parity fixtures generated from the JavaScript implementation. See
+`ACTION_PLAN.md` §6 for the staging, and `server/README.md` for what is ported so far.
+
+**Note for whoever finishes this.** `optimizeDay` is not quite pure: it calls `uid()` for
+skeleton chain ids, and `uid()` is `Math.random()`. That does not breach E2, which is about
+decision paths, but it does mean the function's output is not reproducible field for field,
+and the parity fixtures have to blank those ids out. If stable task ids land first (P2-1),
+consider making the id generator an injected seam on the JavaScript side too.

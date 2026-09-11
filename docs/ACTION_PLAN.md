@@ -28,6 +28,8 @@ reads honestly, and so nobody re-does them.
 | **Anonymised sample data** | real driver names and plates replaced with placeholders; stations and venues kept, since they are public places and make the distances realistic | the old R5 |
 | **Dead code removed** | nine unused imports and three unused variables; lint warnings went from 20 to 10, and the remainder are all documented as intentional | part of P0-3 |
 | **Everything translated** | code comments, tests and documentation are English. The UI stays Hungarian, as do two stored data values (`oda`/`vissza`, `sofor`) | ADR-25 |
+| **Parity harness for the Java port** | `npm run parity:fixtures` records the JavaScript domain's output over 56 generated states into `server/src/test/resources/parity/`. Each of the four traps named in P3-2 was introduced deliberately to prove the harness goes red | P3-1 |
+| **The domain ported to Java** | `server/` — `geo`, the scheduling half of `logic`, and all of `optimizer`, at 1,064 green parity assertions. Nothing is wired up yet; the app still runs the JavaScript | P3-2, ADR-29 |
 
 ---
 
@@ -43,9 +45,19 @@ reads honestly, and so nobody re-does them.
 | **P2-1** | Stable task ids | 1–2 days | **high** | R1 |
 | **P2-2** | Bundle splitting (Leaflet, Supabase) | ~half a day | low | — |
 | **P2-3** | Error reporting from production | ~half a day | low | R9 |
+| ~~P3-1~~ | Java port: the parity harness | — | — | **done**, see §1 |
+| ~~P3-2~~ | Java port: the domain, bottom-up | — | — | **done**, see §1 |
+| **P3-3** | Java port: the HTTP layer | ~2 days | medium | R7 |
+| **P3-4** | Java port: auth, and ADR-11's replacement | ~2 days | **high** | weakens ADR-11 |
+| **P3-5** | Java port: rewire the client | ~4 days | medium | part of R8 |
+| **P3-6** | Java port: deploy, then a real solver | ~2 days | medium | R2, later ADR-13 |
 
 **Suggested order.** P0 fits in one pull request. The P1 items are independent and can go
 in any order. P1-2 is worth doing before P2-1, since `ScheduleScreen` will change anyway.
+
+P3 is a different kind of item: a staged migration, not a fix. P2-1 is worth doing before
+P3-2, because stable task ids would make the parity fixtures simpler and the port is the
+last moment it stays cheap.
 
 ---
 
@@ -243,19 +255,141 @@ driver-role user **cannot** see the list.
 
 ---
 
-## 6. Deliberately not doing this now
+## 6. P3 — the Java compute service (ADR-29)
+
+Keeping the browser interface and moving the logic to Java. [ADR-29](DECISIONS.md#adr-29--the-scheduling-domain-moves-to-a-java-service-the-browser-ui-stays)
+says why the whole domain moves rather than the optimizer alone, and what it costs. This
+section is only the **order of work**, and the order matters more here than anywhere else in
+this file: every step before P3-6 is reversible and ships nothing to a user.
+
+The governing rule: **the JavaScript implementation is the specification.** It is the one
+that has been right in production for a season. The Java port is correct when it reproduces
+the JavaScript output exactly, not when it looks like better Java.
+
+**P3-1 and P3-2 are done.** [`server/README.md`](../server/README.md) is the live status: what is
+verified at parity, what is merely transcribed, what is deliberately left in JavaScript, and the
+one behaviour the port uncovered. The stages below keep their original text so the reasoning
+stays readable; the two finished ones are recorded in [§1](#1-already-done).
+
+### P3-1 · The parity harness
+
+**Why first.** A rewrite of 1,100 lines of scheduling logic with no oracle is a guess. The
+property test already generates random states from a seeded PRNG, so the oracle costs almost
+nothing: dump those states together with the JavaScript output of every domain function and
+commit them as fixtures.
+
+**What to do.** `npm run parity:fixtures` writes `server/src/test/resources/parity/`. Each
+fixture holds one generated state plus the expected output of `legMin` over every pair,
+`matrixKey`, `weekOccurrences`, `bestStationOrder`, `splitStationsByCapacity`,
+`driverAvailableFor`, `mergeShifts`, `driverPay`, `genDayTasks`, `resolveDay` and
+`optimizeDay`. Per-function, not one blob, so a failure says which layer broke.
+
+**Verification.** Regenerating the fixtures twice produces identical files. Chain ids are
+blanked, because `uid()` is `Math.random()`.
+
+### P3-2 · Port the domain, bottom-up
+
+**What to do.** In the order the layering already enforces — `geo`, then `logic`, then task
+generation and timetabling, then the cost model, then the three phases. Each layer green
+against its fixtures before the next one starts.
+
+**The four traps**, all of which produce a plausible-looking wrong answer rather than a
+crash:
+
+1. **Hash iteration order.** E2 requires determinism. JavaScript objects, `Map` and `Set`
+   iterate in insertion order and the optimizer leans on that in `lockedGroups`, in the
+   `seen` set and in `dayStats`' per-driver map. `LinkedHashMap` and `LinkedHashSet`
+   everywhere, never the plain ones.
+2. **Empty versus zero (ADR-23).** An unknown headcount is `""`, an explicit none is `0`.
+   In Java that is a nullable `Integer` plus a deserialiser mapping the empty string to
+   null. Getting it wrong leaves children at a stop.
+3. **JavaScript number coercion.** `Number(sc[id]) || 0` turns `""`, `null` and `NaN` into
+   `0`, and `timeToMin(t.start) - N` silently treats a missing time as `0` rather than
+   throwing. The port needs one helper that reproduces that, not a sprinkling of null
+   checks.
+4. **The wage arithmetic.** Paid time divides minutes by 60 and multiplies by an hourly
+   rate, and the improvement loop accepts a merge only when the total strictly falls. A
+   one-forint rounding difference flips that comparison and changes the schedule.
+
+**Verification.** `mvn -f server/pom.xml test` green, and `server/README.md` states which
+functions are at parity and which are not yet ported. An honest gap is fine; an unstated one
+is not.
+
+### P3-3 · The HTTP layer
+
+**What to do.** Spring Boot on the ported domain, four endpoints:
+
+```
+GET  /api/workspace            → blob + ETag
+PUT  /api/workspace            → If-Match: <etag>, 412 on conflict
+GET  /api/day?weekday=&week=   → tasks, chains, issues, stats, skipped
+POST /api/optimize             → proposal, notes, uncovered + reasons
+```
+
+ADR-06's `updated_at` guard becomes `If-Match` and a 412, which the existing stale overlay
+already handles. ADR-07's lost-response recovery gets simpler than the key-sorted JSON
+comparison it uses today: a client-supplied write id lets the server answer a replay
+idempotently.
+
+**The rule that cannot be broken.** The workspace is stored and returned as a raw
+`JsonNode`. No typed round-trip on the write path, or an unknown field from a newer client
+is silently dropped (ADR-05, and there is no schema version to catch it).
+
+**Verification.** A test proves a `PUT` carrying an unknown field reads back with that field
+intact, and that a stale `If-Match` returns 412 and writes nothing.
+
+### P3-4 · Authentication, and what happens to ADR-11
+
+**What to do.** Spring Security as a resource server verifying the Supabase token, roles
+read from the existing `user_roles` table. Login, refresh and password reset stay in the
+browser, untouched.
+
+**The part to do consciously.** ADR-11 is weakened by construction: one database connection
+means Postgres can no longer tell users apart, so admin-only writes become an application
+check. Keep the policies and have the service set the caller's JWT claims on the session, so
+row level security stays a second line rather than the only one.
+
+**Verification.** A driver-role token gets 403 from `PUT /api/workspace`, and the same test
+passes with the application-level check deliberately disabled, proving the database still
+refuses it.
+
+### P3-5 · Rewire the client
+
+**What to do.** `ScheduleScreen`, `WeekScreen`, `RideScreen`, `OccCard` and `StopListEditor`
+move from synchronous `useMemo` to debounced requests. Keep the last good result on screen
+while refreshing. Delete the JavaScript domain in **one** commit, once parity is green —
+never ship both.
+
+**Verification.** The existing jsdom suite still passes against a stubbed API, and the
+schedule view survives the service being down with a stated message rather than a blank tab.
+
+### P3-6 · Deploy, and only then consider a real solver
+
+**What to do.** The static app stays on Vercel; the service gets a container and the API
+origin joins `connect-src` in `vercel.json`. Pick a host that does **not** sleep: a cold JVM
+would make the first schedule of the day wait, which is precisely the user the system is
+for.
+
+**Afterwards, not before.** Timefold or OR-Tools would lift all three caps — ten stops for
+exact routing (ADR-13), 30,000 assignment iterations, 60 improvement rounds. Swapping the
+algorithm during the port would make it impossible to tell a port bug from a solver
+difference. Parity first, then a better solver as its own change, with its own ADR.
+
+---
+
+## 7. Deliberately not doing this now
 
 | Idea | Why not |
 |---|---|
 | **Multiple concurrent editors (CRDT or merge)** | R3 is a conscious trade-off. The single-editor model is documented, visible, and matches how the club actually works. A large step with no demonstrated need. |
 | **A TypeScript migration** | The domain is already heavily tested and `ensureShape` is the runtime shape defence. The cost today (the whole tree plus the tests) exceeds the benefit. If it ever happens: `checkJS` plus JSDoc on `src/domain/` first, incrementally. |
-| **Our own backend** | ADR-09. Supabase and Vercel give exactly what is needed with nothing to operate. |
+| **Our own backend** | **Reopened** — see [§6](#6--p3--the-java-compute-service-adr-29) and ADR-29. ADR-09's reasoning still holds for a backend bought only to have one; it does not hold once the logic itself is to be written in Java, which is a different question with a different answer. |
 | **Moving the optimizer into a Web Worker** | R8. **Measure first.** The worst case measured today is about a second and a half. Optimising without measuring is guessing. |
 | **Adding Prettier** | The style is already consistent, by hand. A formatting pull request would flatten `git blame` across the whole tree — a real loss in a codebase where the comments carry the knowledge. |
 
 ---
 
-## 7. Keeping this document honest
+## 8. Keeping this document honest
 
 - An item leaves this file when it is **done and verified**, not when it is started. Move
   it to §1 with a line saying what changed.
@@ -264,5 +398,5 @@ driver-role user **cannot** see the list.
 - If an item needs a **decision** (P2-3's own table versus Sentry, say), the decision goes
   into `DECISIONS.md` as an ADR and this file just links to it.
 - If an item turns out not to be worth doing, do not delete it: move it to
-  [§6](#6-deliberately-not-doing-this-now) with the reason. Knowing which road was
+  [§7](#7-deliberately-not-doing-this-now) with the reason. Knowing which road was
   rejected is knowledge too.
